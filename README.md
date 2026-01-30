@@ -7,6 +7,8 @@ An open-source framework for building autonomous AI agents that can execute task
 - **Multi-LLM Support**: Anthropic Claude, OpenAI GPT, Google Vertex AI (Gemini), local models via vLLM/Transformers
 - **Self-Modification**: Agents can edit their prompts, switch models, and fine-tune themselves
 - **Activation Steering**: Integration with [wisent](https://github.com/wisent-ai/wisent) for representation engineering
+- **Persistent Memory**: Knowledge graph memory via [cognee](https://github.com/topoteretes/cognee)
+- **Multi-Agent**: Spawn and orchestrate child agents for hierarchical architectures
 - **Modular Skills**: Extensible skill system for adding new capabilities
 - **Cost Tracking**: Built-in API cost and resource tracking
 - **Async First**: Fully asynchronous for high performance
@@ -87,6 +89,7 @@ VERCEL_TOKEN=...
 | `self` | Self-modify prompts, switch models, fine-tune | `OPENAI_API_KEY` (for fine-tuning) |
 | `steering` | Activation steering via wisent | Local model required |
 | `memory` | Persistent AI memory via cognee | `LLM_API_KEY` |
+| `orchestrator` | Spawn and manage child agents | None |
 
 ## Creating Custom Skills
 
@@ -317,6 +320,61 @@ Agents can now:
 - Build knowledge graphs from experiences
 - Search memories by meaning AND relationships
 - Share memories between agents (via shared datasets)
+
+## Multi-Agent Orchestration
+
+Agents can spawn and manage other agents, enabling hierarchical architectures:
+
+### Orchestration Actions
+
+```python
+# Spawning
+# orchestrator:spawn - Spawn a new child agent
+# orchestrator:spawn_team - Spawn multiple specialized agents at once
+
+# Task Management
+# orchestrator:assign - Assign a task to a child agent
+# orchestrator:broadcast - Send a task to all child agents
+
+# Communication
+# orchestrator:message - Send a message to a child agent
+# orchestrator:collect_results - Collect results from all completed agents
+# orchestrator:wait_for - Wait for a specific agent to complete
+# orchestrator:wait_all - Wait for all child agents to complete
+
+# Monitoring
+# orchestrator:status - Get status of all child agents
+# orchestrator:get_result - Get the result from a specific agent
+
+# Lifecycle
+# orchestrator:terminate - Terminate a child agent
+# orchestrator:terminate_all - Terminate all child agents
+```
+
+### Example: Hierarchical Agent Team
+
+```python
+# Manager agent spawns specialized workers
+# orchestrator:spawn name="Researcher" specialty="web research" task="Find the top 5 AI companies"
+# orchestrator:spawn name="Writer" specialty="content creation" task="Write a summary of findings"
+# orchestrator:spawn name="Reviewer" specialty="quality assurance"
+
+# Spawn a whole team at once
+# orchestrator:spawn_team agents='[{"name": "Coder", "specialty": "python"}, {"name": "Tester", "specialty": "testing"}]'
+
+# Wait for all workers to complete
+# orchestrator:wait_all timeout=600
+
+# Collect all results
+# orchestrator:collect_results
+```
+
+This enables:
+- Hierarchical agent architectures (managers delegating to workers)
+- Parallel task execution across multiple agents
+- Specialized agents for different subtasks
+- Budget allocation per child agent
+- Inter-agent communication via messages
 
 ## Architecture
 

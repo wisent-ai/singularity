@@ -42,6 +42,7 @@ from .skills.request import RequestSkill
 from .skills.self_modify import SelfModifySkill
 from .skills.steering import SteeringSkill
 from .skills.memory import MemorySkill
+from .skills.orchestrator import OrchestratorSkill
 
 
 class AutonomousAgent:
@@ -191,6 +192,7 @@ class AutonomousAgent:
             SelfModifySkill,
             SteeringSkill,
             MemorySkill,
+            OrchestratorSkill,
         ]
 
         for skill_class in skill_classes:
@@ -239,6 +241,13 @@ class AutonomousAgent:
                     skill.set_agent_context(
                         agent_name=self.name.lower().replace(" ", "_"),
                         dataset_prefix="wisentbot",
+                    )
+
+                # Wire up orchestrator skill with agent factory
+                if skill_class == OrchestratorSkill and skill:
+                    skill.set_parent_agent(
+                        agent=self,
+                        agent_factory=lambda **kwargs: AutonomousAgent(**kwargs),
                     )
 
                 if skill and skill.check_credentials():

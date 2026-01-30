@@ -20,6 +20,7 @@ from .vercel import VercelSkill
 from .self_modify import SelfModifySkill
 from .steering import SteeringSkill
 from .memory import MemorySkill
+from .orchestrator import OrchestratorSkill
 
 __all__ = [
     # Base
@@ -43,4 +44,5 @@ __all__ = [
     "SelfModifySkill",
     "SteeringSkill",
     "MemorySkill",
+    "OrchestratorSkill",
 ]
