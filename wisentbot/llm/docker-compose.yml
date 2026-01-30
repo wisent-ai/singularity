@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  qwen:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface

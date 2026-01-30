@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wisentbot"
+version = "0.1.0"
+description = "An open-source framework for building autonomous AI agents"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Wisent AI", email = "hello@wisent.ai"}
+]
+keywords = ["ai", "agent", "autonomous", "llm", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.18.0",
+    "openai>=1.0.0",
+    "httpx>=0.24.0",
+    "python-dotenv>=1.0.0",
+    "aiohttp>=3.8.0",
+]
+
+[project.optional-dependencies]
+all = [
+    # Cloud providers
+    "google-cloud-aiplatform>=1.38.0",
+    # Local inference
+    "torch>=2.0.0",
+    "transformers>=4.36.0",
+    "vllm>=0.3.0",
+    # Skills
+    "tweepy>=4.14.0",
+    "PyGithub>=2.1.0",
+    "resend>=0.7.0",
+    "beautifulsoup4>=4.12.0",
+    "playwright>=1.40.0",
+]
+twitter = ["tweepy>=4.14.0"]
+github = ["PyGithub>=2.1.0"]
+email = ["resend>=0.7.0"]
+browser = ["playwright>=1.40.0", "beautifulsoup4>=4.12.0"]
+local = ["torch>=2.0.0", "transformers>=4.36.0"]
+gpu = ["torch>=2.0.0", "vllm>=0.3.0"]
+vertex = ["google-cloud-aiplatform>=1.38.0"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/wisent-ai/wisentbot"
+Documentation = "https://github.com/wisent-ai/wisentbot#readme"
+Repository = "https://github.com/wisent-ai/wisentbot"
+Issues = "https://github.com/wisent-ai/wisentbot/issues"
+
+[project.scripts]
+wisentbot = "wisentbot.autonomous_agent:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
