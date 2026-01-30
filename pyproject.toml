@@ -41,6 +41,8 @@ all = [
     "vllm>=0.3.0",
     # Activation steering
     "wisent>=0.1.0",
+    # Memory
+    "cognee>=0.1.0",
     # Skills
     "tweepy>=4.14.0",
     "PyGithub>=2.1.0",
@@ -56,6 +58,7 @@ local = ["torch>=2.0.0", "transformers>=4.36.0"]
 gpu = ["torch>=2.0.0", "vllm>=0.3.0"]
 vertex = ["google-cloud-aiplatform>=1.38.0"]
 steering = ["wisent>=0.1.0", "torch>=2.0.0", "transformers>=4.36.0"]
+memory = ["cognee>=0.1.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",

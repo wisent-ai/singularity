@@ -41,6 +41,7 @@ from .skills.mcp_client import MCPClientSkill
 from .skills.request import RequestSkill
 from .skills.self_modify import SelfModifySkill
 from .skills.steering import SteeringSkill
+from .skills.memory import MemorySkill
 
 
 class AutonomousAgent:
@@ -189,6 +190,7 @@ class AutonomousAgent:
             RequestSkill,
             SelfModifySkill,
             SteeringSkill,
+            MemorySkill,
         ]
 
         for skill_class in skill_classes:
@@ -231,6 +233,13 @@ class AutonomousAgent:
                     )
                     # Store reference for steering during generation
                     self._steering_skill = skill
+
+                # Wire up memory skill with agent context
+                if skill_class == MemorySkill and skill:
+                    skill.set_agent_context(
+                        agent_name=self.name.lower().replace(" ", "_"),
+                        dataset_prefix="wisentbot",
+                    )
 
                 if skill and skill.check_credentials():
                     self._log("SKILL", f"+ {skill.manifest.name}")

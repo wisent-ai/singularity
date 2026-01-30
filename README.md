@@ -86,6 +86,7 @@ VERCEL_TOKEN=...
 | `mcp` | MCP protocol client | None |
 | `self` | Self-modify prompts, switch models, fine-tune | `OPENAI_API_KEY` (for fine-tuning) |
 | `steering` | Activation steering via wisent | Local model required |
+| `memory` | Persistent AI memory via cognee | `LLM_API_KEY` |
 
 ## Creating Custom Skills
 
@@ -261,6 +262,61 @@ This allows agents to:
 - Diagnose responses for hallucinations/harmful content
 - Autonomously improve responses using classifier marketplace
 - Save/load vectors for persistent behavioral modifications
+
+## Persistent Memory (Cognee Integration)
+
+Integration with [cognee](https://github.com/topoteretes/cognee) for persistent AI memory:
+
+```bash
+pip install wisentbot[memory]
+```
+
+### Memory Actions
+
+```python
+# Core Memory
+# memory:remember - Add text/experience to memory
+# memory:remember_file - Add a file to memory
+# memory:cognify - Process memories into knowledge graph
+# memory:memify - Add memory algorithms
+
+# Search (5 modes)
+# memory:recall - Search with type: graph, rag, chunks, summaries, code
+# memory:recall_context - Get raw context for conversation
+
+# Conversation & Learning
+# memory:remember_conversation - Store user/agent exchange
+# memory:remember_learning - Store what you learned
+
+# Management
+# memory:forget - Delete a dataset
+# memory:prune - Clean up storage
+# memory:datasets - List all datasets
+# memory:visualize - Visualize knowledge graph
+```
+
+### Example: Agent with Persistent Memory
+
+```python
+# Agent remembers conversations
+# memory:remember_conversation user_message="How do I deploy?" agent_response="Use vercel..." outcome="success"
+
+# Agent stores learnings
+# memory:remember_learning topic="deployment" learning="Vercel is faster than manual deploy"
+
+# Process into knowledge graph
+# memory:cognify
+# memory:memify
+
+# Later, agent recalls relevant context
+# memory:recall query="How did we handle deployment before?"
+```
+
+Agents can now:
+- Remember past conversations across sessions
+- Build knowledge graphs from experiences
+- Search memories by meaning AND relationships
+- Share memories between agents (via shared datasets)
 
 ## Architecture
 
