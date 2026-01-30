@@ -39,6 +39,7 @@ from .skills.filesystem import FilesystemSkill
 from .skills.shell import ShellSkill
 from .skills.mcp_client import MCPClientSkill
 from .skills.request import RequestSkill
+from .skills.self_modify import SelfModifySkill
 
 
 class AutonomousAgent:
@@ -182,6 +183,7 @@ class AutonomousAgent:
             ShellSkill,
             MCPClientSkill,
             RequestSkill,
+            SelfModifySkill,
         ]
 
         for skill_class in skill_classes:
@@ -195,6 +197,24 @@ class AutonomousAgent:
                         self.cognition.llm,
                         self.cognition.llm_type,
                         self.cognition.llm_model
+                    )
+
+                # Wire up self-modification skill to cognition engine
+                if skill_class == SelfModifySkill and skill:
+                    skill.set_cognition_hooks(
+                        get_prompt=self.cognition.get_system_prompt,
+                        set_prompt=self.cognition.set_system_prompt,
+                        append_prompt=self.cognition.append_to_prompt,
+                        get_available_models=self.cognition.get_available_models,
+                        get_current_model=self.cognition.get_current_model,
+                        switch_model=self.cognition.switch_model,
+                        record_example=self.cognition.record_training_example,
+                        get_examples=self.cognition.get_training_examples,
+                        clear_examples=self.cognition.clear_training_examples,
+                        export_training=self.cognition.export_training_data,
+                        start_finetune=self.cognition.start_finetune,
+                        check_finetune=self.cognition.check_finetune_status,
+                        use_finetuned=self.cognition.use_finetuned_model,
                     )
 
                 if skill and skill.check_credentials():

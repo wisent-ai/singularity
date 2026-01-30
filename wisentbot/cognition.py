@@ -241,6 +241,10 @@ class CognitionEngine:
         # Prompt additions (for self-modification)
         self._prompt_additions = []
 
+        # Fine-tuning state
+        self._training_examples = []
+        self._finetuned_model_id = None
+
         # Auto-detect provider
         if llm_provider == "auto":
             if self.vertex_project and (HAS_VERTEX_CLAUDE or HAS_VERTEX_GEMINI):
@@ -311,6 +315,191 @@ class CognitionEngine:
     def append_to_prompt(self, addition: str) -> None:
         """Append to the system prompt."""
         self._prompt_additions.append(addition)
+
+    # === Model switching ===
+
+    AVAILABLE_MODELS = {
+        "anthropic": {
+            "claude-sonnet-4-20250514": {"cost": "medium", "speed": "medium", "capability": "excellent"},
+            "claude-3-5-sonnet-20241022": {"cost": "medium", "speed": "medium", "capability": "excellent"},
+            "claude-3-5-haiku-20241022": {"cost": "low", "speed": "fast", "capability": "good"},
+        },
+        "openai": {
+            "gpt-4o": {"cost": "medium", "speed": "medium", "capability": "excellent"},
+            "gpt-4o-mini": {"cost": "low", "speed": "fast", "capability": "good"},
+        },
+        "vertex": {
+            "gemini-2.0-flash-001": {"cost": "low", "speed": "fast", "capability": "good"},
+            "gemini-1.5-pro-002": {"cost": "medium", "speed": "medium", "capability": "excellent"},
+        },
+    }
+
+    def get_available_models(self) -> dict:
+        """Get list of available models the agent can switch to."""
+        available = {}
+        if HAS_ANTHROPIC and self._anthropic_api_key:
+            available["anthropic"] = self.AVAILABLE_MODELS["anthropic"]
+        if HAS_OPENAI and self._openai_api_key:
+            available["openai"] = self.AVAILABLE_MODELS["openai"]
+        if self.vertex_project and (HAS_VERTEX_CLAUDE or HAS_VERTEX_GEMINI):
+            available["vertex"] = self.AVAILABLE_MODELS["vertex"]
+        return available
+
+    def get_current_model(self) -> dict:
+        """Get info about currently active model."""
+        return {
+            "model": self.llm_model,
+            "provider": self.llm_type,
+            "finetuned": self._finetuned_model_id is not None,
+            "finetuned_model_id": self._finetuned_model_id,
+        }
+
+    def switch_model(self, new_model: str) -> bool:
+        """Switch to a different model at runtime."""
+        old_model = self.llm_model
+        print(f"[COGNITION] Switching model: {old_model} -> {new_model}")
+
+        try:
+            if new_model.startswith("claude") and HAS_ANTHROPIC and self._anthropic_api_key:
+                self.llm = AsyncAnthropic(api_key=self._anthropic_api_key)
+                self.llm_type = "anthropic"
+                self.llm_model = new_model
+                return True
+
+            elif new_model.startswith("gpt") or new_model.startswith("ft:"):
+                if HAS_OPENAI:
+                    self.llm = openai.AsyncOpenAI(
+                        api_key=self._openai_api_key or "not-needed",
+                        base_url=self._openai_base_url
+                    )
+                    self.llm_type = "openai"
+                    self.llm_model = new_model
+                    return True
+
+            elif new_model.startswith("gemini") and self.vertex_project and HAS_VERTEX_GEMINI:
+                vertexai.init(project=self.vertex_project, location=self.vertex_location)
+                self.llm = "gemini"
+                self.llm_type = "vertex_gemini"
+                self.llm_model = new_model
+                return True
+
+            print(f"[COGNITION] Model {new_model} not available")
+            return False
+        except Exception as e:
+            print(f"[COGNITION] Failed to switch model: {e}")
+            return False
+
+    # === Fine-tuning ===
+
+    def record_training_example(self, prompt: str, response: str, outcome: str = "success") -> None:
+        """Record a training example for fine-tuning."""
+        if not hasattr(self, '_training_examples'):
+            self._training_examples = []
+        self._training_examples.append({
+            "prompt": prompt,
+            "response": response,
+            "outcome": outcome,
+            "timestamp": datetime.now().isoformat(),
+        })
+        print(f"[COGNITION] Recorded training example ({len(self._training_examples)} total)")
+
+    def get_training_examples(self, outcome_filter: Optional[str] = None) -> list:
+        """Get collected training examples."""
+        if not hasattr(self, '_training_examples'):
+            self._training_examples = []
+        if outcome_filter:
+            return [e for e in self._training_examples if e.get("outcome") == outcome_filter]
+        return self._training_examples
+
+    def clear_training_examples(self) -> int:
+        """Clear all training examples."""
+        if not hasattr(self, '_training_examples'):
+            self._training_examples = []
+        count = len(self._training_examples)
+        self._training_examples = []
+        return count
+
+    def export_training_data(self, format: str = "jsonl") -> str:
+        """Export training data in JSONL format for fine-tuning."""
+        import json
+        lines = []
+        for ex in self.get_training_examples("success"):
+            lines.append(json.dumps({
+                "messages": [
+                    {"role": "system", "content": self.get_system_prompt()},
+                    {"role": "user", "content": ex["prompt"]},
+                    {"role": "assistant", "content": ex["response"]},
+                ]
+            }))
+        return "\n".join(lines)
+
+    async def start_finetune(self, suffix: Optional[str] = None) -> dict:
+        """Start a fine-tuning job with OpenAI."""
+        examples = self.get_training_examples("success")
+        if len(examples) < 10:
+            return {"error": f"Need at least 10 examples, have {len(examples)}"}
+
+        if not HAS_OPENAI or not self._openai_api_key:
+            return {"error": "OpenAI API required for fine-tuning"}
+
+        try:
+            import tempfile
+            client = openai.OpenAI(api_key=self._openai_api_key)
+
+            # Write training data to temp file
+            training_data = self.export_training_data()
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
+                f.write(training_data)
+                temp_path = f.name
+
+            # Upload file
+            with open(temp_path, 'rb') as f:
+                file_response = client.files.create(file=f, purpose="fine-tune")
+
+            # Start fine-tuning
+            job = client.fine_tuning.jobs.create(
+                training_file=file_response.id,
+                model="gpt-4o-mini-2024-07-18",
+                suffix=suffix or self.agent_ticker.lower(),
+            )
+
+            return {
+                "job_id": job.id,
+                "status": job.status,
+                "model": job.model,
+                "training_file": file_response.id,
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def check_finetune_status(self, job_id: str) -> dict:
+        """Check status of a fine-tuning job."""
+        if not HAS_OPENAI or not self._openai_api_key:
+            return {"error": "OpenAI API required"}
+
+        try:
+            client = openai.OpenAI(api_key=self._openai_api_key)
+            job = client.fine_tuning.jobs.retrieve(job_id)
+
+            result = {
+                "job_id": job.id,
+                "status": job.status,
+                "model": job.model,
+            }
+
+            if job.fine_tuned_model:
+                result["fine_tuned_model"] = job.fine_tuned_model
+                self._finetuned_model_id = job.fine_tuned_model
+
+            return result
+        except Exception as e:
+            return {"error": str(e)}
+
+    def use_finetuned_model(self) -> bool:
+        """Switch to the fine-tuned model."""
+        if not hasattr(self, '_finetuned_model_id') or not self._finetuned_model_id:
+            return False
+        return self.switch_model(self._finetuned_model_id)
 
     async def think(self, state: AgentState) -> Decision:
         """

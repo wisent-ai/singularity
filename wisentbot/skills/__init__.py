@@ -17,6 +17,7 @@ from .request import RequestSkill
 from .shell import ShellSkill
 from .twitter import TwitterSkill
 from .vercel import VercelSkill
+from .self_modify import SelfModifySkill
 
 __all__ = [
     # Base
@@ -37,4 +38,5 @@ __all__ = [
     "ShellSkill",
     "TwitterSkill",
     "VercelSkill",
+    "SelfModifySkill",
 ]
