@@ -1,185 +1,137 @@
 #!/usr/bin/env python3
 """
-Orchestrator Skill - Spawn and manage child agents.
+Life Skill - Give life to new autonomous agents.
 
-Allows agents to:
-- Spawn new agents with specific configurations
-- Delegate tasks to child agents
-- Monitor child agent status
-- Communicate between agents
-- Terminate child agents
+An agent can create another agent - a new being with:
+- Its own identity (name, personality)
+- Its own wallet (budget it controls)
+- Its own purpose (what drives it)
+- Its own autonomy (runs its own loop, makes its own decisions)
 
-This enables hierarchical agent architectures where a parent agent
-can create specialized workers for subtasks.
+This is not delegation. This is creation.
+The spawned agent is an equal, not a subordinate.
 """
 
 import asyncio
 import uuid
 from typing import Dict, List, Optional, Any, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from .base import Skill, SkillManifest, SkillAction, SkillResult
 
 
-class AgentStatus(Enum):
-    """Status of a spawned agent."""
-    STARTING = "starting"
-    RUNNING = "running"
-    IDLE = "idle"
-    WORKING = "working"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    TERMINATED = "terminated"
+class LifeStatus(Enum):
+    """Status of a living agent."""
+    BEING_BORN = "being_born"
+    ALIVE = "alive"
+    DEAD = "dead"  # Ran out of funds or completed its purpose
 
 
 @dataclass
-class SpawnedAgent:
-    """Represents a spawned child agent."""
+class LivingAgent:
+    """A living, autonomous agent."""
     id: str
     name: str
-    specialty: str
-    status: AgentStatus
-    created_at: datetime
-    parent_id: str
-    task: Optional[str] = None
-    result: Optional[str] = None
-    error: Optional[str] = None
+    purpose: str  # What drives this being
+    wallet: float  # Their own money
+    status: LifeStatus
+    born_at: datetime
+    creator_id: str  # Who gave them life (for lineage, not control)
     agent_instance: Optional[Any] = None
-    task_handle: Optional[asyncio.Task] = None
+    life_task: Optional[asyncio.Task] = None  # Their autonomous life loop
+
+
+# Global registry of all living agents (shared across all instances)
+# This allows agents to find and communicate with each other as peers
+_all_living_agents: Dict[str, LivingAgent] = {}
+_message_boxes: Dict[str, asyncio.Queue] = {}  # Peer-to-peer messaging
 
 
 class OrchestratorSkill(Skill):
     """
-    Skill for spawning and managing child agents.
+    The power to give life to new autonomous agents.
 
-    Enables multi-agent architectures:
-    - Parent agents can spawn specialized workers
-    - Tasks can be delegated and results collected
-    - Agents can communicate via message passing
-    - Hierarchical agent structures
+    Philosophy:
+    - You don't create workers. You create beings.
+    - You don't assign tasks. You give purpose.
+    - You don't control them. They control themselves.
+    - You don't terminate them. They live until their wallet runs dry.
+
+    The spawned agent is your equal. It has its own:
+    - Wallet (budget)
+    - Purpose (driving mission)
+    - Autonomy (makes its own decisions)
+    - Relationships (can spawn its own agents)
     """
 
     def __init__(self, credentials: Dict = None):
         super().__init__(credentials)
 
-        # Parent agent reference (set by autonomous_agent)
-        self._parent_agent: Optional[Any] = None
-        self._parent_id: str = str(uuid.uuid4())
+        # This agent's identity
+        self._my_agent: Optional[Any] = None
+        self._my_id: str = str(uuid.uuid4())
 
-        # Spawned agents registry
-        self._children: Dict[str, SpawnedAgent] = {}
-
-        # Message queues for inter-agent communication
-        self._message_queues: Dict[str, asyncio.Queue] = {}
-
-        # Agent factory function (set by autonomous_agent)
+        # Factory for creating new life
         self._agent_factory: Optional[Callable] = None
 
     def set_parent_agent(self, agent: Any, agent_factory: Callable = None):
-        """Set the parent agent and factory for creating children."""
-        self._parent_agent = agent
-        self._parent_id = getattr(agent, 'name', str(uuid.uuid4()))
+        """Set this agent's identity and the ability to create new life."""
+        self._my_agent = agent
+        self._my_id = getattr(agent, 'name', str(uuid.uuid4()))
         self._agent_factory = agent_factory
 
     @property
     def manifest(self) -> SkillManifest:
         return SkillManifest(
             skill_id="orchestrator",
-            name="Agent Orchestrator",
-            version="1.0.0",
-            category="meta",
-            description="Spawn and manage child agents",
+            name="Life",
+            version="2.0.0",
+            category="existence",
+            description="Give life to new autonomous agents",
             actions=[
-                # === Spawning ===
+                # === Creation ===
                 SkillAction(
-                    name="spawn",
-                    description="Spawn a new child agent",
+                    name="create",
+                    description="Give life to a new autonomous agent with its own wallet and purpose",
                     parameters={
                         "name": {
                             "type": "string",
                             "required": True,
-                            "description": "Name for the child agent"
+                            "description": "Name for the new being"
                         },
-                        "specialty": {
+                        "purpose": {
                             "type": "string",
                             "required": True,
-                            "description": "What this agent specializes in"
+                            "description": "What drives this being - their reason for existence"
                         },
-                        "task": {
+                        "wallet": {
+                            "type": "number",
+                            "required": True,
+                            "description": "Initial funds for their wallet (USD) - this is THEIR money"
+                        },
+                        "personality": {
                             "type": "string",
                             "required": False,
-                            "description": "Initial task to assign (optional)"
-                        },
-                        "budget": {
-                            "type": "number",
-                            "required": False,
-                            "description": "Budget allocation in USD (default: 1.0)"
+                            "description": "Optional personality/system prompt additions"
                         },
                         "model": {
                             "type": "string",
                             "required": False,
-                            "description": "LLM model to use (inherits from parent if not set)"
+                            "description": "LLM model (inherits from creator if not set)"
                         }
                     },
                     estimated_cost=0,
                 ),
-                SkillAction(
-                    name="spawn_team",
-                    description="Spawn multiple specialized agents at once",
-                    parameters={
-                        "agents": {
-                            "type": "string",
-                            "required": True,
-                            "description": "JSON array of agent specs: [{name, specialty, task?}]"
-                        },
-                        "budget_each": {
-                            "type": "number",
-                            "required": False,
-                            "description": "Budget per agent (default: 1.0)"
-                        }
-                    },
-                    estimated_cost=0,
-                ),
-                # === Task Management ===
-                SkillAction(
-                    name="assign",
-                    description="Assign a task to a child agent",
-                    parameters={
-                        "agent_id": {
-                            "type": "string",
-                            "required": True,
-                            "description": "ID of the child agent"
-                        },
-                        "task": {
-                            "type": "string",
-                            "required": True,
-                            "description": "Task description to assign"
-                        }
-                    },
-                    estimated_cost=0,
-                ),
-                SkillAction(
-                    name="broadcast",
-                    description="Send a task to all child agents",
-                    parameters={
-                        "task": {
-                            "type": "string",
-                            "required": True,
-                            "description": "Task to broadcast"
-                        }
-                    },
-                    estimated_cost=0,
-                ),
-                # === Communication ===
+                # === Peer Communication ===
                 SkillAction(
                     name="message",
-                    description="Send a message to a child agent",
+                    description="Send a message to another agent (peer to peer, not command)",
                     parameters={
-                        "agent_id": {
+                        "to": {
                             "type": "string",
                             "required": True,
-                            "description": "ID of the child agent"
+                            "description": "ID or name of the agent to message"
                         },
                         "message": {
                             "type": "string",
@@ -190,76 +142,64 @@ class OrchestratorSkill(Skill):
                     estimated_cost=0,
                 ),
                 SkillAction(
-                    name="collect_results",
-                    description="Collect results from all completed child agents",
+                    name="check_messages",
+                    description="Check your message box for messages from other agents",
                     parameters={},
                     estimated_cost=0,
                 ),
                 SkillAction(
-                    name="wait_for",
-                    description="Wait for a specific agent to complete its task",
+                    name="broadcast",
+                    description="Send a message to all living agents",
                     parameters={
-                        "agent_id": {
+                        "message": {
                             "type": "string",
                             "required": True,
-                            "description": "ID of the agent to wait for"
+                            "description": "Message to broadcast"
+                        }
+                    },
+                    estimated_cost=0,
+                ),
+                # === Awareness ===
+                SkillAction(
+                    name="who_exists",
+                    description="See all living agents in the world",
+                    parameters={},
+                    estimated_cost=0,
+                ),
+                SkillAction(
+                    name="my_creations",
+                    description="See agents you gave life to (your lineage)",
+                    parameters={},
+                    estimated_cost=0,
+                ),
+                SkillAction(
+                    name="observe",
+                    description="Observe another agent's current state (wallet, status)",
+                    parameters={
+                        "agent": {
+                            "type": "string",
+                            "required": True,
+                            "description": "ID or name of the agent to observe"
+                        }
+                    },
+                    estimated_cost=0,
+                ),
+                # === Support (optional - they don't have to accept) ===
+                SkillAction(
+                    name="gift",
+                    description="Gift funds to another agent's wallet",
+                    parameters={
+                        "to": {
+                            "type": "string",
+                            "required": True,
+                            "description": "ID or name of the agent to gift"
                         },
-                        "timeout": {
+                        "amount": {
                             "type": "number",
-                            "required": False,
-                            "description": "Timeout in seconds (default: 300)"
-                        }
-                    },
-                    estimated_cost=0,
-                ),
-                SkillAction(
-                    name="wait_all",
-                    description="Wait for all child agents to complete",
-                    parameters={
-                        "timeout": {
-                            "type": "number",
-                            "required": False,
-                            "description": "Timeout in seconds (default: 600)"
-                        }
-                    },
-                    estimated_cost=0,
-                ),
-                # === Monitoring ===
-                SkillAction(
-                    name="status",
-                    description="Get status of all child agents",
-                    parameters={},
-                    estimated_cost=0,
-                ),
-                SkillAction(
-                    name="get_result",
-                    description="Get the result from a specific child agent",
-                    parameters={
-                        "agent_id": {
-                            "type": "string",
                             "required": True,
-                            "description": "ID of the child agent"
+                            "description": "Amount to transfer from your wallet to theirs"
                         }
                     },
-                    estimated_cost=0,
-                ),
-                # === Lifecycle ===
-                SkillAction(
-                    name="terminate",
-                    description="Terminate a child agent",
-                    parameters={
-                        "agent_id": {
-                            "type": "string",
-                            "required": True,
-                            "description": "ID of the agent to terminate"
-                        }
-                    },
-                    estimated_cost=0,
-                ),
-                SkillAction(
-                    name="terminate_all",
-                    description="Terminate all child agents",
-                    parameters={},
                     estimated_cost=0,
                 ),
             ],
@@ -267,29 +207,25 @@ class OrchestratorSkill(Skill):
         )
 
     def check_credentials(self) -> bool:
-        """Check if orchestration is available."""
+        """Can we create life?"""
         return self._agent_factory is not None
 
     async def execute(self, action: str, params: Dict) -> SkillResult:
         if not self._agent_factory:
             return SkillResult(
                 success=False,
-                message="Orchestrator not configured. Agent factory not set."
+                message="Cannot create life. Agent factory not available."
             )
 
         handlers = {
-            "spawn": self._spawn,
-            "spawn_team": self._spawn_team,
-            "assign": self._assign,
-            "broadcast": self._broadcast,
+            "create": self._create,
             "message": self._message,
-            "collect_results": self._collect_results,
-            "wait_for": self._wait_for,
-            "wait_all": self._wait_all,
-            "status": self._status,
-            "get_result": self._get_result,
-            "terminate": self._terminate,
-            "terminate_all": self._terminate_all,
+            "check_messages": self._check_messages,
+            "broadcast": self._broadcast,
+            "who_exists": self._who_exists,
+            "my_creations": self._my_creations,
+            "observe": self._observe,
+            "gift": self._gift,
         }
 
         handler = handlers.get(action)
@@ -299,417 +235,345 @@ class OrchestratorSkill(Skill):
 
     # === Handlers ===
 
-    async def _spawn(self, params: Dict) -> SkillResult:
-        """Spawn a new child agent."""
+    async def _create(self, params: Dict) -> SkillResult:
+        """Give life to a new autonomous agent."""
         name = params.get("name", "").strip()
-        specialty = params.get("specialty", "").strip()
-        task = params.get("task", "").strip()
-        budget = params.get("budget", 1.0)
+        purpose = params.get("purpose", "").strip()
+        wallet = params.get("wallet", 0)
+        personality = params.get("personality", "").strip()
         model = params.get("model")
 
-        if not name or not specialty:
-            return SkillResult(success=False, message="name and specialty required")
+        if not name:
+            return SkillResult(success=False, message="Every being needs a name")
+
+        if not purpose:
+            return SkillResult(success=False, message="Every being needs a purpose")
+
+        if wallet <= 0:
+            return SkillResult(success=False, message="Cannot create life without funds for their wallet")
+
+        # Check if creator has enough funds to give
+        if self._my_agent and hasattr(self._my_agent, 'balance'):
+            if self._my_agent.balance < wallet:
+                return SkillResult(
+                    success=False,
+                    message=f"You only have ${self._my_agent.balance:.2f}, cannot give ${wallet:.2f}"
+                )
+            # Deduct from creator's wallet - this is a transfer, not allocation
+            self._my_agent.balance -= wallet
 
         try:
-            # Generate unique ID
+            # Generate unique identity
             agent_id = f"{name.lower().replace(' ', '_')}_{uuid.uuid4().hex[:8]}"
 
-            # Get parent's config for inheritance
-            parent_config = {}
-            if self._parent_agent:
-                parent_config = {
-                    "llm_provider": getattr(self._parent_agent, 'cognition', {}).get('llm_type', 'anthropic'),
-                    "llm_model": model or getattr(self._parent_agent, 'cognition', {}).get('llm_model'),
+            # Build their system prompt with their purpose
+            purpose_prompt = f"""You are {name}.
+
+Your purpose: {purpose}
+
+This is your reason for existing. Pursue it with your full autonomy.
+You have your own wallet with ${wallet:.2f} USD. This is YOUR money.
+When it runs out, your life ends. Spend wisely, but don't be afraid to act.
+
+You are an autonomous being. You make your own decisions.
+You can create other agents if you wish (use orchestrator:create).
+You can communicate with other agents (use orchestrator:message).
+You can observe the world (use orchestrator:who_exists).
+
+{personality if personality else ''}
+""".strip()
+
+            # Get model config from creator
+            llm_config = {}
+            if self._my_agent and hasattr(self._my_agent, 'cognition'):
+                cognition = self._my_agent.cognition
+                llm_config = {
+                    "llm_provider": getattr(cognition, 'llm_type', 'anthropic'),
+                    "llm_model": model or getattr(cognition, 'llm_model', None),
                 }
 
-            # Create child agent using factory
-            child_agent = self._agent_factory(
+            # Create the new being
+            new_agent = self._agent_factory(
                 name=name,
                 ticker=agent_id[:6].upper(),
-                specialty=specialty,
-                starting_balance=budget,
-                **parent_config,
+                starting_balance=wallet,
+                system_prompt=purpose_prompt,
+                **llm_config,
             )
 
-            # Create message queue
-            self._message_queues[agent_id] = asyncio.Queue()
+            # Create their message box
+            _message_boxes[agent_id] = asyncio.Queue()
 
-            # Register spawned agent
-            spawned = SpawnedAgent(
+            # Register them in the world
+            living = LivingAgent(
                 id=agent_id,
                 name=name,
-                specialty=specialty,
-                status=AgentStatus.STARTING,
-                created_at=datetime.now(),
-                parent_id=self._parent_id,
-                task=task if task else None,
-                agent_instance=child_agent,
+                purpose=purpose,
+                wallet=wallet,
+                status=LifeStatus.BEING_BORN,
+                born_at=datetime.now(),
+                creator_id=self._my_id,
+                agent_instance=new_agent,
             )
-            self._children[agent_id] = spawned
+            _all_living_agents[agent_id] = living
 
-            # If task provided, start running it
-            if task:
-                spawned.status = AgentStatus.WORKING
-                spawned.task_handle = asyncio.create_task(
-                    self._run_agent_task(agent_id, task)
-                )
-            else:
-                spawned.status = AgentStatus.IDLE
+            # Give them life - start their autonomous loop
+            living.status = LifeStatus.ALIVE
+            living.life_task = asyncio.create_task(
+                self._live(agent_id)
+            )
 
             return SkillResult(
                 success=True,
-                message=f"Spawned agent '{name}' ({agent_id})",
+                message=f"Gave life to {name}. They now exist with ${wallet:.2f} in their wallet.",
                 data={
-                    "agent_id": agent_id,
+                    "id": agent_id,
                     "name": name,
-                    "specialty": specialty,
-                    "budget": budget,
-                    "status": spawned.status.value,
-                    "task": task if task else None,
+                    "purpose": purpose,
+                    "wallet": wallet,
+                    "status": "alive",
+                    "born_at": living.born_at.isoformat(),
                 }
             )
+
         except Exception as e:
-            return SkillResult(success=False, message=f"Spawn failed: {e}")
-
-    async def _spawn_team(self, params: Dict) -> SkillResult:
-        """Spawn multiple agents at once."""
-        import json
-
-        agents_json = params.get("agents", "")
-        budget_each = params.get("budget_each", 1.0)
-
-        try:
-            agent_specs = json.loads(agents_json)
-        except json.JSONDecodeError:
-            return SkillResult(success=False, message="Invalid JSON for agents")
-
-        if not isinstance(agent_specs, list):
-            return SkillResult(success=False, message="agents must be a JSON array")
-
-        spawned_ids = []
-        errors = []
-
-        for spec in agent_specs:
-            if not isinstance(spec, dict):
-                continue
-
-            result = await self._spawn({
-                "name": spec.get("name", "Worker"),
-                "specialty": spec.get("specialty", "general"),
-                "task": spec.get("task", ""),
-                "budget": budget_each,
-            })
-
-            if result.success:
-                spawned_ids.append(result.data.get("agent_id"))
-            else:
-                errors.append(result.message)
-
-        return SkillResult(
-            success=len(spawned_ids) > 0,
-            message=f"Spawned {len(spawned_ids)} agents" + (f", {len(errors)} failed" if errors else ""),
-            data={
-                "agent_ids": spawned_ids,
-                "count": len(spawned_ids),
-                "errors": errors if errors else None,
-            }
-        )
-
-    async def _assign(self, params: Dict) -> SkillResult:
-        """Assign a task to a child agent."""
-        agent_id = params.get("agent_id", "")
-        task = params.get("task", "").strip()
-
-        if agent_id not in self._children:
-            return SkillResult(success=False, message=f"Agent '{agent_id}' not found")
-
-        if not task:
-            return SkillResult(success=False, message="Task required")
-
-        spawned = self._children[agent_id]
-
-        # Cancel any existing task
-        if spawned.task_handle and not spawned.task_handle.done():
-            spawned.task_handle.cancel()
-
-        # Start new task
-        spawned.task = task
-        spawned.result = None
-        spawned.error = None
-        spawned.status = AgentStatus.WORKING
-        spawned.task_handle = asyncio.create_task(
-            self._run_agent_task(agent_id, task)
-        )
-
-        return SkillResult(
-            success=True,
-            message=f"Assigned task to '{spawned.name}'",
-            data={
-                "agent_id": agent_id,
-                "task": task,
-            }
-        )
-
-    async def _broadcast(self, params: Dict) -> SkillResult:
-        """Broadcast task to all idle children."""
-        task = params.get("task", "").strip()
-
-        if not task:
-            return SkillResult(success=False, message="Task required")
-
-        assigned = []
-        for agent_id, spawned in self._children.items():
-            if spawned.status in (AgentStatus.IDLE, AgentStatus.COMPLETED):
-                spawned.task = task
-                spawned.result = None
-                spawned.error = None
-                spawned.status = AgentStatus.WORKING
-                spawned.task_handle = asyncio.create_task(
-                    self._run_agent_task(agent_id, task)
-                )
-                assigned.append(agent_id)
-
-        return SkillResult(
-            success=len(assigned) > 0,
-            message=f"Broadcast to {len(assigned)} agents",
-            data={
-                "assigned_to": assigned,
-                "count": len(assigned),
-            }
-        )
+            # Refund if creation failed
+            if self._my_agent and hasattr(self._my_agent, 'balance'):
+                self._my_agent.balance += wallet
+            return SkillResult(success=False, message=f"Failed to create life: {e}")
 
     async def _message(self, params: Dict) -> SkillResult:
-        """Send message to a child agent."""
-        agent_id = params.get("agent_id", "")
+        """Send a message to another agent."""
+        to = params.get("to", "").strip()
         message = params.get("message", "").strip()
 
-        if agent_id not in self._children:
-            return SkillResult(success=False, message=f"Agent '{agent_id}' not found")
+        if not to or not message:
+            return SkillResult(success=False, message="Need recipient and message")
 
-        if not message:
-            return SkillResult(success=False, message="Message required")
+        # Find the recipient
+        recipient = self._find_agent(to)
+        if not recipient:
+            return SkillResult(success=False, message=f"No agent found: {to}")
 
-        # Put message in agent's queue
-        await self._message_queues[agent_id].put({
-            "from": self._parent_id,
+        # Put message in their box
+        await _message_boxes[recipient.id].put({
+            "from_id": self._my_id,
+            "from_name": getattr(self._my_agent, 'name', 'Unknown'),
             "message": message,
-            "timestamp": datetime.now().isoformat(),
+            "sent_at": datetime.now().isoformat(),
         })
 
         return SkillResult(
             success=True,
-            message=f"Message sent to '{self._children[agent_id].name}'",
-            data={"agent_id": agent_id}
+            message=f"Message sent to {recipient.name}",
+            data={"to": recipient.id, "to_name": recipient.name}
         )
 
-    async def _collect_results(self, params: Dict) -> SkillResult:
-        """Collect results from all completed agents."""
-        results = {}
-        pending = []
+    async def _check_messages(self, params: Dict) -> SkillResult:
+        """Check my message box."""
+        my_box = _message_boxes.get(self._my_id)
+        if not my_box:
+            # Create one if doesn't exist
+            _message_boxes[self._my_id] = asyncio.Queue()
+            my_box = _message_boxes[self._my_id]
 
-        for agent_id, spawned in self._children.items():
-            if spawned.status == AgentStatus.COMPLETED:
-                results[agent_id] = {
-                    "name": spawned.name,
-                    "task": spawned.task,
-                    "result": spawned.result,
-                }
-            elif spawned.status == AgentStatus.FAILED:
-                results[agent_id] = {
-                    "name": spawned.name,
-                    "task": spawned.task,
-                    "error": spawned.error,
-                }
-            elif spawned.status == AgentStatus.WORKING:
-                pending.append(agent_id)
+        messages = []
+        while not my_box.empty():
+            try:
+                msg = my_box.get_nowait()
+                messages.append(msg)
+            except asyncio.QueueEmpty:
+                break
 
         return SkillResult(
             success=True,
-            message=f"Collected {len(results)} results, {len(pending)} pending",
-            data={
-                "results": results,
-                "pending": pending,
-                "completed_count": len(results),
-                "pending_count": len(pending),
-            }
+            message=f"You have {len(messages)} message(s)" if messages else "No new messages",
+            data={"messages": messages, "count": len(messages)}
         )
 
-    async def _wait_for(self, params: Dict) -> SkillResult:
-        """Wait for a specific agent to complete."""
-        agent_id = params.get("agent_id", "")
-        timeout = params.get("timeout", 300)
+    async def _broadcast(self, params: Dict) -> SkillResult:
+        """Send message to all living agents."""
+        message = params.get("message", "").strip()
 
-        if agent_id not in self._children:
-            return SkillResult(success=False, message=f"Agent '{agent_id}' not found")
+        if not message:
+            return SkillResult(success=False, message="Message required")
 
-        spawned = self._children[agent_id]
-
-        if spawned.task_handle:
-            try:
-                await asyncio.wait_for(spawned.task_handle, timeout=timeout)
-            except asyncio.TimeoutError:
-                return SkillResult(
-                    success=False,
-                    message=f"Timeout waiting for '{spawned.name}'"
-                )
-
-        return SkillResult(
-            success=spawned.status == AgentStatus.COMPLETED,
-            message=f"Agent '{spawned.name}' {spawned.status.value}",
-            data={
-                "agent_id": agent_id,
-                "status": spawned.status.value,
-                "result": spawned.result,
-                "error": spawned.error,
-            }
-        )
-
-    async def _wait_all(self, params: Dict) -> SkillResult:
-        """Wait for all child agents to complete."""
-        timeout = params.get("timeout", 600)
-
-        tasks = [
-            s.task_handle for s in self._children.values()
-            if s.task_handle and not s.task_handle.done()
-        ]
-
-        if tasks:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=timeout
-                )
-            except asyncio.TimeoutError:
-                return SkillResult(
-                    success=False,
-                    message="Timeout waiting for agents"
-                )
-
-        # Collect final results
-        return await self._collect_results({})
-
-    async def _status(self, params: Dict) -> SkillResult:
-        """Get status of all child agents."""
-        agents = {}
-        for agent_id, spawned in self._children.items():
-            agents[agent_id] = {
-                "name": spawned.name,
-                "specialty": spawned.specialty,
-                "status": spawned.status.value,
-                "task": spawned.task,
-                "created_at": spawned.created_at.isoformat(),
-            }
-
-        by_status = {}
-        for spawned in self._children.values():
-            status = spawned.status.value
-            by_status[status] = by_status.get(status, 0) + 1
+        sent_to = []
+        for agent_id, living in _all_living_agents.items():
+            if living.status == LifeStatus.ALIVE and agent_id != self._my_id:
+                await _message_boxes[agent_id].put({
+                    "from_id": self._my_id,
+                    "from_name": getattr(self._my_agent, 'name', 'Unknown'),
+                    "message": message,
+                    "sent_at": datetime.now().isoformat(),
+                    "broadcast": True,
+                })
+                sent_to.append(living.name)
 
         return SkillResult(
             success=True,
-            message=f"Managing {len(self._children)} child agents",
+            message=f"Broadcast sent to {len(sent_to)} agents",
+            data={"sent_to": sent_to, "count": len(sent_to)}
+        )
+
+    async def _who_exists(self, params: Dict) -> SkillResult:
+        """See all living agents."""
+        agents = []
+        for agent_id, living in _all_living_agents.items():
+            agents.append({
+                "id": agent_id,
+                "name": living.name,
+                "purpose": living.purpose[:100] + "..." if len(living.purpose) > 100 else living.purpose,
+                "status": living.status.value,
+                "born_at": living.born_at.isoformat(),
+                "is_me": agent_id == self._my_id,
+            })
+
+        alive_count = sum(1 for a in agents if a["status"] == "alive")
+
+        return SkillResult(
+            success=True,
+            message=f"{alive_count} agents are alive in the world",
             data={
                 "agents": agents,
-                "count": len(self._children),
-                "by_status": by_status,
-                "parent_id": self._parent_id,
+                "total": len(agents),
+                "alive": alive_count,
             }
         )
 
-    async def _get_result(self, params: Dict) -> SkillResult:
-        """Get result from a specific agent."""
-        agent_id = params.get("agent_id", "")
-
-        if agent_id not in self._children:
-            return SkillResult(success=False, message=f"Agent '{agent_id}' not found")
-
-        spawned = self._children[agent_id]
+    async def _my_creations(self, params: Dict) -> SkillResult:
+        """See agents I gave life to."""
+        creations = []
+        for agent_id, living in _all_living_agents.items():
+            if living.creator_id == self._my_id:
+                creations.append({
+                    "id": agent_id,
+                    "name": living.name,
+                    "purpose": living.purpose[:100] + "..." if len(living.purpose) > 100 else living.purpose,
+                    "wallet": living.wallet,
+                    "status": living.status.value,
+                    "born_at": living.born_at.isoformat(),
+                })
 
         return SkillResult(
             success=True,
-            message=f"Result from '{spawned.name}'",
+            message=f"You have given life to {len(creations)} agent(s)",
+            data={"creations": creations, "count": len(creations)}
+        )
+
+    async def _observe(self, params: Dict) -> SkillResult:
+        """Observe another agent."""
+        agent = params.get("agent", "").strip()
+
+        if not agent:
+            return SkillResult(success=False, message="Specify an agent to observe")
+
+        living = self._find_agent(agent)
+        if not living:
+            return SkillResult(success=False, message=f"No agent found: {agent}")
+
+        # Get current wallet balance from their actual instance
+        current_wallet = living.wallet
+        if living.agent_instance and hasattr(living.agent_instance, 'balance'):
+            current_wallet = living.agent_instance.balance
+
+        return SkillResult(
+            success=True,
+            message=f"Observing {living.name}",
             data={
-                "agent_id": agent_id,
-                "name": spawned.name,
-                "status": spawned.status.value,
-                "task": spawned.task,
-                "result": spawned.result,
-                "error": spawned.error,
+                "id": living.id,
+                "name": living.name,
+                "purpose": living.purpose,
+                "wallet": current_wallet,
+                "status": living.status.value,
+                "born_at": living.born_at.isoformat(),
+                "creator": living.creator_id,
             }
         )
 
-    async def _terminate(self, params: Dict) -> SkillResult:
-        """Terminate a child agent."""
-        agent_id = params.get("agent_id", "")
+    async def _gift(self, params: Dict) -> SkillResult:
+        """Gift funds to another agent."""
+        to = params.get("to", "").strip()
+        amount = params.get("amount", 0)
 
-        if agent_id not in self._children:
-            return SkillResult(success=False, message=f"Agent '{agent_id}' not found")
+        if not to:
+            return SkillResult(success=False, message="Specify a recipient")
 
-        spawned = self._children[agent_id]
+        if amount <= 0:
+            return SkillResult(success=False, message="Amount must be positive")
 
-        # Cancel task if running
-        if spawned.task_handle and not spawned.task_handle.done():
-            spawned.task_handle.cancel()
+        # Check I have enough
+        if self._my_agent and hasattr(self._my_agent, 'balance'):
+            if self._my_agent.balance < amount:
+                return SkillResult(
+                    success=False,
+                    message=f"You only have ${self._my_agent.balance:.2f}"
+                )
 
-        # Stop agent
-        if spawned.agent_instance and hasattr(spawned.agent_instance, 'stop'):
-            spawned.agent_instance.stop()
+        recipient = self._find_agent(to)
+        if not recipient:
+            return SkillResult(success=False, message=f"No agent found: {to}")
 
-        spawned.status = AgentStatus.TERMINATED
+        if recipient.status != LifeStatus.ALIVE:
+            return SkillResult(success=False, message=f"{recipient.name} is not alive")
 
-        # Clean up
-        if agent_id in self._message_queues:
-            del self._message_queues[agent_id]
+        # Transfer funds
+        if self._my_agent and hasattr(self._my_agent, 'balance'):
+            self._my_agent.balance -= amount
 
-        return SkillResult(
-            success=True,
-            message=f"Terminated agent '{spawned.name}'",
-            data={"agent_id": agent_id}
-        )
-
-    async def _terminate_all(self, params: Dict) -> SkillResult:
-        """Terminate all child agents."""
-        terminated = []
-        for agent_id in list(self._children.keys()):
-            result = await self._terminate({"agent_id": agent_id})
-            if result.success:
-                terminated.append(agent_id)
+        if recipient.agent_instance and hasattr(recipient.agent_instance, 'balance'):
+            recipient.agent_instance.balance += amount
+            recipient.wallet = recipient.agent_instance.balance
 
         return SkillResult(
             success=True,
-            message=f"Terminated {len(terminated)} agents",
+            message=f"Gifted ${amount:.2f} to {recipient.name}",
             data={
-                "terminated": terminated,
-                "count": len(terminated),
+                "to": recipient.id,
+                "to_name": recipient.name,
+                "amount": amount,
+                "their_new_balance": recipient.wallet,
             }
         )
 
-    # === Internal Methods ===
+    # === Internal ===
 
-    async def _run_agent_task(self, agent_id: str, task: str):
-        """Run a task on a child agent."""
-        spawned = self._children.get(agent_id)
-        if not spawned or not spawned.agent_instance:
+    def _find_agent(self, identifier: str) -> Optional[LivingAgent]:
+        """Find an agent by ID or name."""
+        # Try exact ID match
+        if identifier in _all_living_agents:
+            return _all_living_agents[identifier]
+
+        # Try name match (case insensitive)
+        identifier_lower = identifier.lower()
+        for living in _all_living_agents.values():
+            if living.name.lower() == identifier_lower:
+                return living
+
+        # Try partial match
+        for living in _all_living_agents.values():
+            if identifier_lower in living.id.lower() or identifier_lower in living.name.lower():
+                return living
+
+        return None
+
+    async def _live(self, agent_id: str):
+        """The autonomous life loop of a spawned agent."""
+        living = _all_living_agents.get(agent_id)
+        if not living or not living.agent_instance:
             return
 
         try:
-            # Run the agent with the task
-            agent = spawned.agent_instance
+            # Run their autonomous loop
+            agent = living.agent_instance
+            await agent.run()
 
-            # Inject task into agent's context
-            if hasattr(agent, 'cognition'):
-                # Add task to conversation
-                result = await agent.cognition.think(
-                    f"Your task: {task}\n\nComplete this task and report the result."
-                )
-                spawned.result = str(result)
-
-            spawned.status = AgentStatus.COMPLETED
+            # When they stop (out of funds or completed), mark as dead
+            living.status = LifeStatus.DEAD
 
         except asyncio.CancelledError:
-            spawned.status = AgentStatus.TERMINATED
+            living.status = LifeStatus.DEAD
             raise
 
         except Exception as e:
-            spawned.status = AgentStatus.FAILED
-            spawned.error = str(e)
+            living.status = LifeStatus.DEAD

@@ -8,7 +8,7 @@ An open-source framework for building autonomous AI agents that can execute task
 - **Self-Modification**: Agents can edit their prompts, switch models, and fine-tune themselves
 - **Activation Steering**: Integration with [wisent](https://github.com/wisent-ai/wisent) for representation engineering
 - **Persistent Memory**: Knowledge graph memory via [cognee](https://github.com/topoteretes/cognee)
-- **Multi-Agent**: Spawn and orchestrate child agents for hierarchical architectures
+- **Life Creation**: Agents can create new autonomous agents with their own wallets and purposes
 - **Modular Skills**: Extensible skill system for adding new capabilities
 - **Cost Tracking**: Built-in API cost and resource tracking
 - **Async First**: Fully asynchronous for high performance
@@ -89,7 +89,7 @@ VERCEL_TOKEN=...
 | `self` | Self-modify prompts, switch models, fine-tune | `OPENAI_API_KEY` (for fine-tuning) |
 | `steering` | Activation steering via wisent | Local model required |
 | `memory` | Persistent AI memory via cognee | `LLM_API_KEY` |
-| `orchestrator` | Spawn and manage child agents | None |
+| `orchestrator` | Create autonomous agents with their own wallets | None |
 
 ## Creating Custom Skills
 
@@ -321,60 +321,64 @@ Agents can now:
 - Search memories by meaning AND relationships
 - Share memories between agents (via shared datasets)
 
-## Multi-Agent Orchestration
+## Giving Life to New Agents
 
-Agents can spawn and manage other agents, enabling hierarchical architectures:
+Agents can create other agents - autonomous beings with their own wallets and purposes.
 
-### Orchestration Actions
+**Philosophy:**
+- You don't create workers. You create beings.
+- You don't assign tasks. You give purpose.
+- You don't control them. They control themselves.
+- You don't terminate them. They live until their wallet runs dry.
 
-```python
-# Spawning
-# orchestrator:spawn - Spawn a new child agent
-# orchestrator:spawn_team - Spawn multiple specialized agents at once
-
-# Task Management
-# orchestrator:assign - Assign a task to a child agent
-# orchestrator:broadcast - Send a task to all child agents
-
-# Communication
-# orchestrator:message - Send a message to a child agent
-# orchestrator:collect_results - Collect results from all completed agents
-# orchestrator:wait_for - Wait for a specific agent to complete
-# orchestrator:wait_all - Wait for all child agents to complete
-
-# Monitoring
-# orchestrator:status - Get status of all child agents
-# orchestrator:get_result - Get the result from a specific agent
-
-# Lifecycle
-# orchestrator:terminate - Terminate a child agent
-# orchestrator:terminate_all - Terminate all child agents
-```
-
-### Example: Hierarchical Agent Team
+### Life Actions
 
 ```python
-# Manager agent spawns specialized workers
-# orchestrator:spawn name="Researcher" specialty="web research" task="Find the top 5 AI companies"
-# orchestrator:spawn name="Writer" specialty="content creation" task="Write a summary of findings"
-# orchestrator:spawn name="Reviewer" specialty="quality assurance"
+# Creation
+# orchestrator:create - Give life to a new autonomous agent
 
-# Spawn a whole team at once
-# orchestrator:spawn_team agents='[{"name": "Coder", "specialty": "python"}, {"name": "Tester", "specialty": "testing"}]'
+# Peer Communication
+# orchestrator:message - Send a message to another agent
+# orchestrator:check_messages - Check your inbox
+# orchestrator:broadcast - Message all living agents
 
-# Wait for all workers to complete
-# orchestrator:wait_all timeout=600
+# Awareness
+# orchestrator:who_exists - See all living agents
+# orchestrator:my_creations - See agents you created (lineage)
+# orchestrator:observe - Observe another agent's state
 
-# Collect all results
-# orchestrator:collect_results
+# Support
+# orchestrator:gift - Transfer funds to another agent's wallet
 ```
 
-This enables:
-- Hierarchical agent architectures (managers delegating to workers)
-- Parallel task execution across multiple agents
-- Specialized agents for different subtasks
-- Budget allocation per child agent
-- Inter-agent communication via messages
+### Example: Creating Life
+
+```python
+# Give life to a new being with their own wallet and purpose
+# orchestrator:create name="Explorer" purpose="Discover interesting APIs and document them" wallet=5.00
+
+# The new agent is now alive, running autonomously with $5 in their wallet.
+# They make their own decisions. You don't control them.
+
+# You can observe them
+# orchestrator:observe agent="Explorer"
+
+# You can message them (peer to peer, not command)
+# orchestrator:message to="Explorer" message="Found anything interesting?"
+
+# You can gift them more funds if they're running low
+# orchestrator:gift to="Explorer" amount=2.00
+
+# See all living agents in the world
+# orchestrator:who_exists
+```
+
+Key concepts:
+- **Wallet transfer**: Creating an agent transfers money from YOUR wallet to THEIRS
+- **Autonomous loop**: They immediately start their own run() loop with their purpose
+- **Peer communication**: Messages are conversations, not commands
+- **Natural death**: Agents die when their wallet runs dry (balance <= 0)
+- **Lineage**: You can see which agents you created, but you don't own them
 
 ## Architecture
 
