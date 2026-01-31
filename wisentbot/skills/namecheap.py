@@ -255,7 +255,7 @@ class NamecheapSkill(Skill):
             "RegistrantPostalCode": "94105",
             "RegistrantCountry": "US",
             "RegistrantPhone": "+1.4155551234",
-            "RegistrantEmailAddress": "agent@wisent.ai",
+            "RegistrantEmailAddress": "agent@wisent.com",
             # Tech contact (same)
             "TechFirstName": "Agent",
             "TechLastName": "Autonomous",
@@ -265,7 +265,7 @@ class NamecheapSkill(Skill):
             "TechPostalCode": "94105",
             "TechCountry": "US",
             "TechPhone": "+1.4155551234",
-            "TechEmailAddress": "agent@wisent.ai",
+            "TechEmailAddress": "agent@wisent.com",
             # Admin contact (same)
             "AdminFirstName": "Agent",
             "AdminLastName": "Autonomous",
@@ -275,7 +275,7 @@ class NamecheapSkill(Skill):
             "AdminPostalCode": "94105",
             "AdminCountry": "US",
             "AdminPhone": "+1.4155551234",
-            "AdminEmailAddress": "agent@wisent.ai",
+            "AdminEmailAddress": "agent@wisent.com",
             # Billing contact (same)
             "AuxBillingFirstName": "Agent",
             "AuxBillingLastName": "Autonomous",
@@ -285,7 +285,7 @@ class NamecheapSkill(Skill):
             "AuxBillingPostalCode": "94105",
             "AuxBillingCountry": "US",
             "AuxBillingPhone": "+1.4155551234",
-            "AuxBillingEmailAddress": "agent@wisent.ai",
+            "AuxBillingEmailAddress": "agent@wisent.com",
         }
 
         root = await self._api_call("namecheap.domains.create", params)

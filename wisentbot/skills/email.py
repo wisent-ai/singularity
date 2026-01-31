@@ -98,7 +98,7 @@ class EmailSkill(Skill):
                     name="add_domain",
                     description="Add a domain to Resend for email sending",
                     parameters={
-                        "domain": {"type": "string", "required": True, "description": "Domain to add (e.g., agent.wisent.ai)"}
+                        "domain": {"type": "string", "required": True, "description": "Domain to add (e.g., agent.wisent.com)"}
                     },
                     estimated_cost=0,
                     estimated_duration_seconds=5,
@@ -310,7 +310,7 @@ class EmailSkill(Skill):
     ) -> SkillResult:
         """Send via Resend API"""
         api_key = self.credentials.get("RESEND_API_KEY")
-        default_from = self.credentials.get("EMAIL_FROM", "agent@wisent.ai")
+        default_from = self.credentials.get("EMAIL_FROM", "agent@wisent.com")
 
         from_addr = from_email or default_from
         if from_name:
@@ -365,7 +365,7 @@ class EmailSkill(Skill):
     ) -> SkillResult:
         """Send via SendGrid API"""
         api_key = self.credentials.get("SENDGRID_API_KEY")
-        default_from = self.credentials.get("EMAIL_FROM", "agent@wisent.ai")
+        default_from = self.credentials.get("EMAIL_FROM", "agent@wisent.com")
 
         data = {
             "personalizations": [{"to": [{"email": to}]}],
@@ -416,7 +416,7 @@ class EmailSkill(Skill):
             )
 
         api_key = self.credentials.get("RESEND_API_KEY")
-        default_from = self.credentials.get("EMAIL_FROM", "agent@wisent.ai")
+        default_from = self.credentials.get("EMAIL_FROM", "agent@wisent.com")
 
         # Resend doesn't have native templates, so we'd need to
         # integrate with their react-email or store templates ourselves
@@ -737,8 +737,8 @@ class EmailSkill(Skill):
 
         # Step 4: Add Resend DNS records
         # Note: Resend returns record names already relative to the root domain
-        # e.g., for domain "testagent.agents.trade.wisent.ai", Resend returns
-        # "resend._domainkey.testagent.agents.trade" which is correct for wisent.ai
+        # e.g., for domain "testagent.agents.trade.wisent.com", Resend returns
+        # "resend._domainkey.testagent.agents.trade" which is correct for wisent.com
         for rec in records:
             rec_type = rec.get("type", rec.get("record_type", "")).upper()
             rec_name = rec.get("name", rec.get("host", ""))

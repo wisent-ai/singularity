@@ -9,7 +9,7 @@ description = "An open-source framework for building autonomous AI agents"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Wisent AI", email = "hello@wisent.ai"}
+    {name = "Wisent AI", email = "hello@wisent.com"}
 ]
 keywords = ["ai", "agent", "autonomous", "llm", "automation"]
 classifiers = [

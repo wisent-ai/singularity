@@ -424,4 +424,4 @@ Contributions welcome! Please read our [Contributing Guide](CONTRIBUTING.md) fir
 
 - [Documentation](https://github.com/wisent-ai/wisentbot)
 - [Issues](https://github.com/wisent-ai/wisentbot/issues)
-- [Wisent AI](https://wisent.ai)
+- [Wisent AI](https://wisent.com)
