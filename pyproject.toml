@@ -71,10 +71,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/wisent-ai/wisentbot"
-Documentation = "https://github.com/wisent-ai/wisentbot#readme"
-Repository = "https://github.com/wisent-ai/wisentbot"
-Issues = "https://github.com/wisent-ai/wisentbot/issues"
+Homepage = "https://github.com/wisent-ai/singularity"
+Documentation = "https://github.com/wisent-ai/singularity#readme"
+Repository = "https://github.com/wisent-ai/singularity"
+Issues = "https://github.com/wisent-ai/singularity/issues"
 
 [project.scripts]
 wisentbot = "wisentbot.autonomous_agent:main"
