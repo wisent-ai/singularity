@@ -1,3 +1,11 @@
+<p align="center">
+  <img src="banner.png" alt="Wisent Banner" width="100%">
+</p>
+
+<p align="center">
+  <code>pip install singularity-ai</code>
+</p>
+
 # Singularity
 
 An open-source framework for building autonomous AI agents that can execute tasks, manage resources, and interact with the real world.
