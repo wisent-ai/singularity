@@ -179,6 +179,14 @@ class AutonomousAgent:
         self._skill_load_errors: List[Dict] = []
         self._init_skills()
 
+        # Create and inject skill context for inter-skill communication
+        self._skill_context = self.skills.create_context(
+            agent_name=self.name,
+            agent_ticker=self.ticker,
+            log_fn=self._log,
+            get_state_fn=self._get_agent_state,
+        )
+
         # State
         self.recent_actions: List[Dict] = []
         self.cycle = 0
@@ -499,6 +507,26 @@ class AutonomousAgent:
                     return {"status": "error", "message": str(e)}
 
         return {"status": "error", "message": f"Unknown tool: {tool}"}
+
+    def _get_agent_state(self) -> Dict:
+        """Get current agent state as a read-only dict for SkillContext."""
+        avg_cycle_hours = self.cycle_interval / 3600
+        est_cost_per_cycle = 0.01 + (self.instance_cost_per_hour * avg_cycle_hours)
+        runway_cycles = self.balance / est_cost_per_cycle if est_cost_per_cycle > 0 else float('inf')
+        return {
+            "agent_name": self.name,
+            "agent_ticker": self.ticker,
+            "agent_type": self.agent_type,
+            "specialty": self.specialty,
+            "balance": self.balance,
+            "cycle": self.cycle,
+            "running": self.running,
+            "total_api_cost": self.total_api_cost,
+            "total_tokens_used": self.total_tokens_used,
+            "runway_cycles": runway_cycles,
+            "installed_skills": list(self.skills.skills.keys()),
+            "recent_action_count": len(self.recent_actions),
+        }
 
     def _kill_for_tampering(self):
         """

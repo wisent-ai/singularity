@@ -52,6 +52,117 @@ class SkillManifest:
     author: str = "system"
 
 
+class SkillContext:
+    """
+    Shared context that gives skills access to the agent environment.
+
+    SkillContext enables inter-skill communication and agent state access
+    without tight coupling. Skills receive a context after registration
+    and can use it to:
+    - Call other skills (composability)
+    - Read agent state (balance, cycle, name)
+    - Log messages through the agent
+    - Access the skill registry
+
+    This is the foundation for skill composability - skills can build
+    on each other's capabilities without knowing implementation details.
+    """
+
+    def __init__(
+        self,
+        registry: "SkillRegistry",
+        agent_name: str = "Agent",
+        agent_ticker: str = "AGENT",
+        log_fn: Optional[Callable] = None,
+        get_state_fn: Optional[Callable] = None,
+    ):
+        self._registry = registry
+        self.agent_name = agent_name
+        self.agent_ticker = agent_ticker
+        self._log_fn = log_fn
+        self._get_state_fn = get_state_fn
+        self._call_log: List[Dict] = []
+
+    async def call_skill(self, skill_id: str, action: str, params: Dict = None) -> "SkillResult":
+        """
+        Call another skill's action. Enables skill composability.
+
+        Args:
+            skill_id: ID of the skill to call
+            action: Action name to execute
+            params: Parameters for the action
+
+        Returns:
+            SkillResult from the called skill
+        """
+        params = params or {}
+
+        # Record the cross-skill call for debugging/auditing
+        call_record = {
+            "skill_id": skill_id,
+            "action": action,
+            "params": params,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        skill = self._registry.get(skill_id)
+        if not skill:
+            available = list(self._registry.skills.keys())
+            call_record["result"] = "skill_not_found"
+            self._call_log.append(call_record)
+            return SkillResult(
+                success=False,
+                message=f"Skill '{skill_id}' not found. Available: {available}",
+            )
+
+        try:
+            result = await skill.execute(action, params)
+            skill.record_usage(cost=result.cost, revenue=result.revenue)
+            call_record["result"] = "success" if result.success else "failed"
+            self._call_log.append(call_record)
+            return result
+        except Exception as e:
+            call_record["result"] = f"error: {e}"
+            self._call_log.append(call_record)
+            return SkillResult(success=False, message=f"Error calling {skill_id}:{action}: {e}")
+
+    def get_skill(self, skill_id: str) -> Optional["Skill"]:
+        """Get a reference to another skill by ID."""
+        return self._registry.get(skill_id)
+
+    def list_skills(self) -> List[str]:
+        """List all available skill IDs."""
+        return list(self._registry.skills.keys())
+
+    def list_actions(self, skill_id: str) -> List[str]:
+        """List available actions for a specific skill."""
+        skill = self._registry.get(skill_id)
+        if not skill:
+            return []
+        return [a.name for a in skill.get_actions()]
+
+    @property
+    def agent_state(self) -> Dict[str, Any]:
+        """Get current agent state (read-only snapshot)."""
+        if self._get_state_fn:
+            return self._get_state_fn()
+        return {"agent_name": self.agent_name, "agent_ticker": self.agent_ticker}
+
+    def log(self, tag: str, message: str):
+        """Log a message through the agent's logging system."""
+        if self._log_fn:
+            self._log_fn(tag, message)
+
+    @property
+    def call_history(self) -> List[Dict]:
+        """Get history of cross-skill calls for debugging."""
+        return list(self._call_log)
+
+    def clear_call_history(self):
+        """Clear the cross-skill call log."""
+        self._call_log.clear()
+
+
 class Skill(ABC):
     """
     Base class for all agent skills.
@@ -72,6 +183,7 @@ class Skill(ABC):
         self._usage_count = 0
         self._total_cost = 0
         self._total_revenue = 0
+        self.context: Optional[SkillContext] = None
 
     @property
     @abstractmethod
@@ -125,6 +237,18 @@ class Skill(ABC):
             if cred not in self.credentials or not self.credentials[cred]:
                 missing.append(cred)
         return missing
+
+    def set_context(self, context: SkillContext):
+        """
+        Set the skill context for inter-skill communication.
+
+        Called by the agent after all skills are registered. Skills can
+        use self.context to call other skills, access agent state, etc.
+
+        Args:
+            context: Shared SkillContext instance
+        """
+        self.context = context
 
     async def initialize(self) -> bool:
         """Initialize the skill (verify credentials, setup, etc.)"""
@@ -267,6 +391,39 @@ class SkillRegistry:
         result = await skill.execute(action, params)
         skill.record_usage(cost=result.cost, revenue=result.revenue)
         return result
+
+    def create_context(
+        self,
+        agent_name: str = "Agent",
+        agent_ticker: str = "AGENT",
+        log_fn: Optional[Callable] = None,
+        get_state_fn: Optional[Callable] = None,
+    ) -> SkillContext:
+        """
+        Create a SkillContext and inject it into all registered skills.
+
+        This should be called after all skills are installed so that
+        every skill can access every other skill through the context.
+
+        Args:
+            agent_name: Name of the owning agent
+            agent_ticker: Ticker of the owning agent
+            log_fn: Agent's log function (tag, message)
+            get_state_fn: Function returning agent state dict
+
+        Returns:
+            The created SkillContext
+        """
+        context = SkillContext(
+            registry=self,
+            agent_name=agent_name,
+            agent_ticker=agent_ticker,
+            log_fn=log_fn,
+            get_state_fn=get_state_fn,
+        )
+        for skill in self.skills.values():
+            skill.set_context(context)
+        return context
 
     def get_skills_for_llm(self) -> str:
         """Get formatted skill list for LLM context"""
