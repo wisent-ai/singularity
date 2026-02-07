@@ -1,0 +1,516 @@
+{
+  "status": "stopped",
+  "logs": [
+    {
+      "timestamp": "2026-02-07T07:23:25.241024",
+      "tag": "TOOL",
+      "message": "github:search_issues"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.241161",
+      "tag": "TOOL",
+      "message": "github:fork_repo"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.241296",
+      "tag": "TOOL",
+      "message": "github:star_repo"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.241432",
+      "tag": "TOOL",
+      "message": "github:get_user"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.241572",
+      "tag": "TOOL",
+      "message": "github:create_gist"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.241713",
+      "tag": "TOOL",
+      "message": "email:send_email"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.241860",
+      "tag": "TOOL",
+      "message": "email:send_template"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.242010",
+      "tag": "TOOL",
+      "message": "email:send_bulk"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.242164",
+      "tag": "TOOL",
+      "message": "email:check_delivery"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.242318",
+      "tag": "TOOL",
+      "message": "email:add_domain"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.242700",
+      "tag": "TOOL",
+      "message": "email:get_domain_dns"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.242932",
+      "tag": "TOOL",
+      "message": "email:verify_domain"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.243113",
+      "tag": "TOOL",
+      "message": "email:list_domains"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.243289",
+      "tag": "TOOL",
+      "message": "email:setup_domain"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.243466",
+      "tag": "TOOL",
+      "message": "email:get_received_emails"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.243644",
+      "tag": "TOOL",
+      "message": "email:get_received_email"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.243831",
+      "tag": "TOOL",
+      "message": "email:wait_for_email"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.244013",
+      "tag": "TOOL",
+      "message": "email:extract_code"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.244196",
+      "tag": "TOOL",
+      "message": "browser:goto"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.244386",
+      "tag": "TOOL",
+      "message": "browser:click"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.244574",
+      "tag": "TOOL",
+      "message": "browser:type"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.244764",
+      "tag": "TOOL",
+      "message": "browser:get_text"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.244960",
+      "tag": "TOOL",
+      "message": "browser:screenshot"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.245156",
+      "tag": "TOOL",
+      "message": "browser:get_page_content"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.245359",
+      "tag": "TOOL",
+      "message": "browser:fill_form"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.245629",
+      "tag": "TOOL",
+      "message": "browser:wait_for"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.245882",
+      "tag": "TOOL",
+      "message": "browser:evaluate"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.246134",
+      "tag": "TOOL",
+      "message": "browser:keyboard_type"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.246390",
+      "tag": "TOOL",
+      "message": "browser:press"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.246647",
+      "tag": "TOOL",
+      "message": "filesystem:glob"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.246905",
+      "tag": "TOOL",
+      "message": "filesystem:grep"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.247166",
+      "tag": "TOOL",
+      "message": "filesystem:view"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.247432",
+      "tag": "TOOL",
+      "message": "filesystem:write"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.247702",
+      "tag": "TOOL",
+      "message": "filesystem:patch"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.248011",
+      "tag": "TOOL",
+      "message": "filesystem:ls"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.248283",
+      "tag": "TOOL",
+      "message": "filesystem:mkdir"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.248557",
+      "tag": "TOOL",
+      "message": "filesystem:rm"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.248835",
+      "tag": "TOOL",
+      "message": "shell:bash"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.249120",
+      "tag": "TOOL",
+      "message": "shell:fetch"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.249405",
+      "tag": "TOOL",
+      "message": "shell:spawn"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.249692",
+      "tag": "TOOL",
+      "message": "mcp:add_server"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.249980",
+      "tag": "TOOL",
+      "message": "mcp:connect"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.250271",
+      "tag": "TOOL",
+      "message": "mcp:disconnect"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.250567",
+      "tag": "TOOL",
+      "message": "mcp:list_servers"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.250865",
+      "tag": "TOOL",
+      "message": "mcp:list_tools"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.251169",
+      "tag": "TOOL",
+      "message": "mcp:call_tool"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.251473",
+      "tag": "TOOL",
+      "message": "mcp:list_resources"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.251785",
+      "tag": "TOOL",
+      "message": "mcp:read_resource"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.252096",
+      "tag": "TOOL",
+      "message": "request:submit"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.252408",
+      "tag": "TOOL",
+      "message": "request:list"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.252734",
+      "tag": "TOOL",
+      "message": "request:get"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.253058",
+      "tag": "TOOL",
+      "message": "request:cancel"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.253383",
+      "tag": "TOOL",
+      "message": "request:add_comment"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.253710",
+      "tag": "TOOL",
+      "message": "self:get_prompt"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.254040",
+      "tag": "TOOL",
+      "message": "self:set_prompt"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.254375",
+      "tag": "TOOL",
+      "message": "self:append_prompt"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.254715",
+      "tag": "TOOL",
+      "message": "self:add_rule"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.255096",
+      "tag": "TOOL",
+      "message": "self:add_goal"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.255440",
+      "tag": "TOOL",
+      "message": "self:add_learning"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.255787",
+      "tag": "TOOL",
+      "message": "self:list_models"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.256170",
+      "tag": "TOOL",
+      "message": "self:current_model"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.256551",
+      "tag": "TOOL",
+      "message": "self:switch_model"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.256946",
+      "tag": "TOOL",
+      "message": "self:record_experience"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.257526",
+      "tag": "TOOL",
+      "message": "self:training_stats"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.257928",
+      "tag": "TOOL",
+      "message": "self:clear_training"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.258558",
+      "tag": "TOOL",
+      "message": "self:start_finetune"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.259163",
+      "tag": "TOOL",
+      "message": "self:check_finetune"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.259722",
+      "tag": "TOOL",
+      "message": "self:use_finetuned"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.260361",
+      "tag": "TOOL",
+      "message": "memory:remember"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.260972",
+      "tag": "TOOL",
+      "message": "memory:remember_file"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.261522",
+      "tag": "TOOL",
+      "message": "memory:cognify"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.262169",
+      "tag": "TOOL",
+      "message": "memory:memify"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.262726",
+      "tag": "TOOL",
+      "message": "memory:recall"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.263283",
+      "tag": "TOOL",
+      "message": "memory:recall_context"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.263848",
+      "tag": "TOOL",
+      "message": "memory:forget"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.264422",
+      "tag": "TOOL",
+      "message": "memory:prune"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.264863",
+      "tag": "TOOL",
+      "message": "memory:datasets"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.265438",
+      "tag": "TOOL",
+      "message": "memory:status"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.265887",
+      "tag": "TOOL",
+      "message": "memory:remember_conversation"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.266505",
+      "tag": "TOOL",
+      "message": "memory:remember_learning"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.267100",
+      "tag": "TOOL",
+      "message": "memory:visualize"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.267565",
+      "tag": "TOOL",
+      "message": "orchestrator:create"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.268161",
+      "tag": "TOOL",
+      "message": "orchestrator:message"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.268632",
+      "tag": "TOOL",
+      "message": "orchestrator:check_messages"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.269106",
+      "tag": "TOOL",
+      "message": "orchestrator:broadcast"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.269589",
+      "tag": "TOOL",
+      "message": "orchestrator:who_exists"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.270071",
+      "tag": "TOOL",
+      "message": "orchestrator:my_creations"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.270699",
+      "tag": "TOOL",
+      "message": "orchestrator:observe"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.271181",
+      "tag": "TOOL",
+      "message": "orchestrator:gift"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.271808",
+      "tag": "CYCLE",
+      "message": "#1 | $10.0000 | ~1000 cycles left"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.272852",
+      "tag": "THINK",
+      "message": "reading file"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.273373",
+      "tag": "DO",
+      "message": "filesystem:read {'path': '/tmp/test.txt'}"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.273920",
+      "tag": "RESULT",
+      "message": "{'status': 'failed', 'data': {}, 'message': 'Unknown action: read'}"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.274386",
+      "tag": "COST",
+      "message": "API: $0.001000 + Instance: $0.000000 = $0.001000"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.274870",
+      "tag": "CYCLE",
+      "message": "#2 | $9.9990 | ~1000 cycles left"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.275829",
+      "tag": "THINK",
+      "message": "finished"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.276257",
+      "tag": "DO",
+      "message": "agent:done {'summary': 'done', 'result': 'ok'}"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.276690",
+      "tag": "DONE",
+      "message": "Task completed: done"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.277117",
+      "tag": "END",
+      "message": "Balance: $9.9990"
+    },
+    {
+      "timestamp": "2026-02-07T07:23:25.277542",
+      "tag": "SUMMARY",
+      "message": "Ran 2 cycles in 0.00h | API: $0.0010 | Tokens: 150"
+    }
+  ],
+  "state": {
+    "name": "Test",
+    "ticker": "T",
+    "agent_type": "general",
+    "balance_usd": 9.999,
+    "total_api_cost": 0.001,
+    "total_tokens_used": 150,
+    "runway_cycles": 999.9000000000001,
+    "cycle": 2,
+    "updated_at": "2026-02-07T07:23:25.277951"
+  }
+}

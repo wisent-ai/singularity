@@ -578,13 +578,43 @@ class CognitionEngine:
             for t in state.tools
         ])
 
-        # Format recent actions
+        # Format recent actions with rich context
         recent_text = ""
         if state.recent_actions:
-            recent_text = "\nRecent actions:\n" + "\n".join([
-                f"- {a['tool']}: {a.get('result', {}).get('status', 'unknown')}"
-                for a in state.recent_actions[-5:]
-            ])
+            action_lines = []
+            for a in state.recent_actions[-5:]:
+                tool = a.get('tool', 'unknown')
+                result = a.get('result', {})
+                status = result.get('status', 'unknown')
+                cycle = a.get('cycle', '?')
+
+                # Show key parameters (truncated)
+                params = a.get('params', {})
+                param_parts = []
+                for k, v in list(params.items())[:3]:
+                    v_str = str(v)
+                    if len(v_str) > 60:
+                        v_str = v_str[:57] + "..."
+                    param_parts.append(f"{k}={v_str}")
+                param_str = f"({', '.join(param_parts)})" if param_parts else ""
+
+                # Show result message or data summary
+                msg = result.get('message', '')
+                if not msg and isinstance(result.get('data'), dict):
+                    data = result['data']
+                    # Summarize data keys
+                    msg = f"keys: {list(data.keys())[:5]}"
+                elif not msg and isinstance(result.get('data'), str):
+                    msg = result['data'][:80]
+                if msg and len(msg) > 100:
+                    msg = msg[:97] + "..."
+
+                line = f"- [C{cycle}] {tool}{param_str}: {status}"
+                if msg:
+                    line += f" - {msg}"
+                action_lines.append(line)
+
+            recent_text = "\nRecent actions:\n" + "\n".join(action_lines)
 
         user_prompt = f"""Current state:
 - Balance: ${state.balance:.4f}

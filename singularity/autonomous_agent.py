@@ -90,6 +90,8 @@ class AutonomousAgent:
         openai_api_key: str = "",
         system_prompt: Optional[str] = None,
         system_prompt_file: Optional[str] = None,
+        objective: Optional[str] = None,
+        max_cycles: Optional[int] = None,
     ):
         """
         Initialize an autonomous agent.
@@ -142,6 +144,11 @@ class AutonomousAgent:
         # Skills registry
         self.skills = SkillRegistry()
         self._init_skills()
+
+        # Objective and task execution
+        self.objective = objective
+        self.max_cycles = max_cycles
+        self._task_result: Optional[Dict] = None
 
         # State
         self.recent_actions: List[Dict] = []
@@ -282,6 +289,59 @@ class AutonomousAgent:
 
         return tools
 
+    async def run_task(
+        self,
+        objective: str,
+        max_cycles: Optional[int] = None,
+    ) -> Dict:
+        """
+        Run the agent with a specific objective until completion.
+
+        The agent will work toward the objective and can signal completion
+        by using the 'agent:done' tool with a result summary.
+
+        Args:
+            objective: What the agent should accomplish
+            max_cycles: Maximum cycles before stopping (default: 50)
+
+        Returns:
+            Dict with keys: status, result, cycles_used, total_cost
+        """
+        self.objective = objective
+        self.max_cycles = max_cycles or 50
+        self._task_result = None
+
+        await self.run()
+
+        return {
+            "status": "completed" if self._task_result else "max_cycles_reached",
+            "result": self._task_result or {"message": "Task did not complete within cycle limit"},
+            "objective": objective,
+            "cycles_used": self.cycle,
+            "total_cost": self.total_api_cost + self.total_instance_cost,
+        }
+
+    def _build_objective_context(self) -> str:
+        """Build objective context string for LLM prompt."""
+        if not self.objective:
+            return ""
+        parts = [
+            "\n═══════════════════════════════════════════",
+            "                    CURRENT OBJECTIVE",
+            "═══════════════════════════════════════════",
+            f"\n{self.objective}\n",
+        ]
+        if self.max_cycles:
+            remaining = self.max_cycles - self.cycle
+            parts.append(f"Cycles remaining: {remaining}/{self.max_cycles}")
+        parts.append(
+            "\nWhen the objective is complete, use: "
+            '{"tool": "agent:done", "params": {"summary": "what was accomplished", '
+            '"result": "the output/answer"}, "reasoning": "why the task is complete"}'
+        )
+        parts.append("═══════════════════════════════════════════")
+        return "\n".join(parts)
+
     async def run(self):
         """Main agent loop."""
         self.running = True
@@ -289,6 +349,10 @@ class AutonomousAgent:
         cycle_start_time = datetime.now()
 
         self._log("AWAKE", f"{self.name} (${self.ticker}) - Type: {self.agent_type}")
+        if self.objective:
+            self._log("OBJECTIVE", self.objective)
+        if self.max_cycles:
+            self._log("MAX_CYCLES", str(self.max_cycles))
         self._log("BALANCE", f"${self.balance:.4f} USD")
         self._log("TOOLS", f"{len(tools)} available")
 
@@ -296,6 +360,11 @@ class AutonomousAgent:
             self._log("TOOL", t["name"])
 
         while self.running and self.balance > 0:
+            # Check max_cycles limit
+            if self.max_cycles and self.cycle >= self.max_cycles:
+                self._log("LIMIT", f"Reached max_cycles limit ({self.max_cycles})")
+                break
+
             self.cycle += 1
             cycle_start = datetime.now()
 
@@ -307,6 +376,9 @@ class AutonomousAgent:
 
             self._log("CYCLE", f"#{self.cycle} | ${self.balance:.4f} | ~{runway_cycles:.0f} cycles left")
 
+            # Build objective context
+            objective_context = self._build_objective_context()
+
             # Think
             state = AgentState(
                 balance=self.balance,
@@ -316,11 +388,23 @@ class AutonomousAgent:
                 recent_actions=self.recent_actions[-10:],
                 cycle=self.cycle,
                 created_resources=self.created_resources,
+                project_context=objective_context,
             )
 
             decision = await self.cognition.think(state)
             self._log("THINK", decision.reasoning[:150] if decision.reasoning else "...")
             self._log("DO", f"{decision.action.tool} {decision.action.params}")
+
+            # Check for task completion signal
+            if decision.action.tool == "agent:done":
+                self._task_result = {
+                    "summary": decision.action.params.get("summary", ""),
+                    "result": decision.action.params.get("result", ""),
+                    "reasoning": decision.reasoning,
+                }
+                self._log("DONE", f"Task completed: {self._task_result.get('summary', '')[:200]}")
+                self.running = False
+                break
 
             # Execute
             result = await self._execute(decision.action)
