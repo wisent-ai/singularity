@@ -48,6 +48,7 @@ from .skills.orchestrator import OrchestratorSkill
 from .skills.crypto import CryptoSkill
 from .skills.experiment import ExperimentSkill
 from .skills.event import EventSkill
+from .skills.planner import PlannerSkill
 from .event_bus import EventBus, Event, EventPriority
 
 
@@ -99,6 +100,7 @@ class AutonomousAgent:
         CryptoSkill,
         ExperimentSkill,
         EventSkill,
+        PlannerSkill,
     ]
 
     def __init__(

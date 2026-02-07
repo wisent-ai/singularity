@@ -24,6 +24,7 @@ from .orchestrator import OrchestratorSkill
 from .crypto import CryptoSkill
 from .experiment import ExperimentSkill
 from .event import EventSkill
+from .planner import PlannerSkill
 
 __all__ = [
     # Base
@@ -51,4 +52,5 @@ __all__ = [
     "CryptoSkill",
     "ExperimentSkill",
     "EventSkill",
+    "PlannerSkill",
 ]
