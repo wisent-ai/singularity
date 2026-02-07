@@ -95,7 +95,3 @@ line-length = 100
 select = ["E", "F", "I", "W"]
 ignore = ["E501"]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-
