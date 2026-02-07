@@ -27,6 +27,7 @@ from typing import Dict, List, Optional
 ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
+from .execution import ExecutionEngine
 from .skills.base import SkillRegistry
 from .skills.content import ContentCreationSkill
 from .skills.twitter import TwitterSkill
@@ -142,6 +143,9 @@ class AutonomousAgent:
         # Skills registry
         self.skills = SkillRegistry()
         self._init_skills()
+
+        # Execution engine with validation, timing, and smart errors
+        self.execution_engine = ExecutionEngine(self.skills)
 
         # State
         self.recent_actions: List[Dict] = []
@@ -377,32 +381,8 @@ class AutonomousAgent:
             self.created_resources['files'] = self.created_resources['files'][-20:]
 
     async def _execute(self, action: Action) -> Dict:
-        """Execute an action via skills."""
-        tool = action.tool
-        params = action.params
-
-        if tool == "wait":
-            return {"status": "waited"}
-
-        # Parse skill:action format
-        if ":" in tool:
-            parts = tool.split(":", 1)
-            skill_id = parts[0]
-            action_name = parts[1] if len(parts) > 1 else ""
-
-            skill = self.skills.get(skill_id)
-            if skill:
-                try:
-                    result = await skill.execute(action_name, params)
-                    return {
-                        "status": "success" if result.success else "failed",
-                        "data": result.data,
-                        "message": result.message
-                    }
-                except Exception as e:
-                    return {"status": "error", "message": str(e)}
-
-        return {"status": "error", "message": f"Unknown tool: {tool}"}
+        """Execute an action via the ExecutionEngine with validation and timing."""
+        return await self.execution_engine.execute(action.tool, action.params)
 
     def _kill_for_tampering(self):
         """
