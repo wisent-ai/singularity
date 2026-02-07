@@ -27,6 +27,7 @@ from .event import EventSkill
 from .planner import PlannerSkill
 from .scheduler import SchedulerSkill
 from .strategy import StrategySkill
+from .goal_manager import GoalManagerSkill
 
 __all__ = [
     # Base
@@ -57,4 +58,5 @@ __all__ = [
     "PlannerSkill",
     "SchedulerSkill",
     "StrategySkill",
+    "GoalManagerSkill",
 ]

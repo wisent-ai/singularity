@@ -55,6 +55,7 @@ from .skills.replication import ReplicationSkill
 from .skills.workflow import WorkflowSkill
 from .skills.performance import PerformanceTracker
 from .skills.self_eval import SelfEvalSkill
+from .skills.goal_manager import GoalManagerSkill
 from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
 
@@ -114,6 +115,7 @@ class AutonomousAgent:
         PerformanceTracker,
         WorkflowSkill,
         SelfEvalSkill,
+        GoalManagerSkill,
     ]
 
     def __init__(
