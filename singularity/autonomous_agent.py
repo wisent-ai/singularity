@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Type
 
 ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
@@ -75,6 +75,26 @@ class AutonomousAgent:
         "local": 0.0,  # Running locally
     }
 
+    # Default skill classes used when no explicit skills list is provided
+    DEFAULT_SKILL_CLASSES = [
+        ContentCreationSkill,
+        TwitterSkill,
+        GitHubSkill,
+        NamecheapSkill,
+        EmailSkill,
+        BrowserSkill,
+        VercelSkill,
+        FilesystemSkill,
+        ShellSkill,
+        MCPClientSkill,
+        RequestSkill,
+        SelfModifySkill,
+        SteeringSkill,
+        MemorySkill,
+        OrchestratorSkill,
+        CryptoSkill,
+    ]
+
     def __init__(
         self,
         name: str = "Agent",
@@ -91,6 +111,9 @@ class AutonomousAgent:
         openai_api_key: str = "",
         system_prompt: Optional[str] = None,
         system_prompt_file: Optional[str] = None,
+        skills: Optional[List[Type]] = None,
+        project_context: str = "",
+        project_context_file: Optional[str] = None,
     ):
         """
         Initialize an autonomous agent.
@@ -110,6 +133,9 @@ class AutonomousAgent:
             openai_api_key: OpenAI API key
             system_prompt: Custom system prompt
             system_prompt_file: Path to file containing system prompt
+            skills: List of skill classes to load (default: all built-in skills)
+            project_context: Runtime project context injected into LLM prompt
+            project_context_file: Path to file containing project context
         """
         self.name = name
         self.ticker = ticker
@@ -140,8 +166,17 @@ class AutonomousAgent:
             system_prompt_file=system_prompt_file,
         )
 
-        # Skills registry
+        # Project context for LLM prompt
+        self.project_context = project_context
+        if project_context_file:
+            ctx_path = Path(project_context_file)
+            if ctx_path.exists():
+                self.project_context = ctx_path.read_text().strip()
+
+        # Skills registry - use provided skills or defaults
+        self._skill_classes = list(skills) if skills is not None else list(self.DEFAULT_SKILL_CLASSES)
         self.skills = SkillRegistry()
+        self._skill_load_errors: List[Dict] = []
         self._init_skills()
 
         # State
@@ -182,26 +217,7 @@ class AutonomousAgent:
         }
         self.skills.set_credentials(credentials)
 
-        skill_classes = [
-            ContentCreationSkill,
-            TwitterSkill,
-            GitHubSkill,
-            NamecheapSkill,
-            EmailSkill,
-            BrowserSkill,
-            VercelSkill,
-            FilesystemSkill,
-            ShellSkill,
-            MCPClientSkill,
-            RequestSkill,
-            SelfModifySkill,
-            SteeringSkill,
-            MemorySkill,
-            OrchestratorSkill,
-            CryptoSkill,
-        ]
-
-        for skill_class in skill_classes:
+        for skill_class in self._skill_classes:
             try:
                 self.skills.install(skill_class)
                 skill = self.skills.get(skill_class(credentials).manifest.skill_id)
@@ -262,7 +278,58 @@ class AutonomousAgent:
                 else:
                     self.skills.uninstall(skill_class(credentials).manifest.skill_id)
             except Exception as e:
-                pass  # Skip skills that fail to load
+                self._skill_load_errors.append({
+                    "skill": skill_class.__name__,
+                    "error": str(e),
+                })
+
+    def add_skill(self, skill_class: Type) -> bool:
+        """Add a skill class at runtime. Returns True if successfully loaded."""
+        if skill_class in self._skill_classes:
+            return False
+        self._skill_classes.append(skill_class)
+        try:
+            credentials = self.skills._credentials
+            self.skills.install(skill_class)
+            skill = self.skills.get(skill_class(credentials).manifest.skill_id)
+            if skill and skill.check_credentials():
+                self._log("SKILL", f"+ {skill.manifest.name} (dynamic)")
+                return True
+            else:
+                self.skills.uninstall(skill_class(credentials).manifest.skill_id)
+                self._skill_classes.remove(skill_class)
+                return False
+        except Exception as e:
+            self._skill_load_errors.append({
+                "skill": skill_class.__name__,
+                "error": str(e),
+            })
+            self._skill_classes.remove(skill_class)
+            return False
+
+    def remove_skill(self, skill_id: str) -> bool:
+        """Remove a skill by its ID at runtime. Returns True if removed."""
+        skill = self.skills.get(skill_id)
+        if skill:
+            self.skills.uninstall(skill_id)
+            self._log("SKILL", f"- {skill.manifest.name} (removed)")
+            return True
+        return False
+
+    def get_skill_status(self) -> Dict:
+        """Get status of all skills: loaded, failed, and available tools."""
+        loaded = []
+        for skill in self.skills.skills.values():
+            loaded.append({
+                "id": skill.manifest.skill_id,
+                "name": skill.manifest.name,
+                "actions": [a.name for a in skill.manifest.actions],
+            })
+        return {
+            "loaded": loaded,
+            "load_errors": self._skill_load_errors,
+            "total_tools": sum(len(s["actions"]) for s in loaded),
+        }
 
     def _get_tools(self) -> List[Dict]:
         """Get tools from installed skills."""
@@ -320,6 +387,7 @@ class AutonomousAgent:
                 recent_actions=self.recent_actions[-10:],
                 cycle=self.cycle,
                 created_resources=self.created_resources,
+                project_context=self.project_context,
             )
 
             decision = await self.cognition.think(state)
