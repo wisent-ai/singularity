@@ -44,6 +44,7 @@ from .skills.steering import SteeringSkill
 from .skills.memory import MemorySkill
 from .skills.orchestrator import OrchestratorSkill
 from .skills.crypto import CryptoSkill
+from .skills.working_memory import WorkingMemorySkill
 
 
 class AutonomousAgent:
@@ -159,6 +160,9 @@ class AutonomousAgent:
         # Steering skill reference (set during skill init)
         self._steering_skill = None
 
+        # Working memory reference (set during skill init)
+        self._working_memory_skill = None
+
     def _init_skills(self):
         """Install skills that have credentials configured."""
         credentials = {
@@ -195,6 +199,7 @@ class AutonomousAgent:
             MemorySkill,
             OrchestratorSkill,
             CryptoSkill,
+            WorkingMemorySkill,
         ]
 
         for skill_class in skill_classes:
@@ -253,6 +258,10 @@ class AutonomousAgent:
                         agent_factory=lambda **kwargs: AutonomousAgent(**kwargs),
                     )
 
+                # Store working memory reference for context injection
+                if skill_class == WorkingMemorySkill and skill:
+                    self._working_memory_skill = skill
+
                 if skill and skill.check_credentials():
                     self._log("SKILL", f"+ {skill.manifest.name}")
                 else:
@@ -308,6 +317,11 @@ class AutonomousAgent:
             self._log("CYCLE", f"#{self.cycle} | ${self.balance:.4f} | ~{runway_cycles:.0f} cycles left")
 
             # Think
+            # Build project context with working memory
+            project_ctx = ""
+            if self._working_memory_skill and self._working_memory_skill.has_content():
+                project_ctx = self._working_memory_skill.get_context_summary()
+
             state = AgentState(
                 balance=self.balance,
                 burn_rate=est_cost_per_cycle,
@@ -315,6 +329,7 @@ class AutonomousAgent:
                 tools=self._get_tools(),
                 recent_actions=self.recent_actions[-10:],
                 cycle=self.cycle,
+                project_context=project_ctx,
                 created_resources=self.created_resources,
             )
 
