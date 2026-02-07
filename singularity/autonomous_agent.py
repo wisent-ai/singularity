@@ -52,6 +52,7 @@ from .skills.planner import PlannerSkill
 from .skills.scheduler import SchedulerSkill
 from .skills.strategy import StrategySkill
 from .skills.replication import ReplicationSkill
+from .skills.workflow import WorkflowSkill
 from .skills.performance import PerformanceTracker
 from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
@@ -110,6 +111,7 @@ class AutonomousAgent:
         StrategySkill,
         ReplicationSkill,
         PerformanceTracker,
+        WorkflowSkill,
     ]
 
     def __init__(
