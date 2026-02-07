@@ -73,6 +73,7 @@ from .skills.context_synthesis import ContextSynthesisSkill
 from .skills.secret_vault import SecretVaultSkill
 from .skills.deployment import DeploymentSkill
 from .skills.learned_behavior import LearnedBehaviorSkill
+from .skills.code_review import CodeReviewSkill
 
 
 
@@ -155,6 +156,7 @@ class AutonomousAgent:
         SecretVaultSkill,
         DeploymentSkill,
         LearnedBehaviorSkill,
+        CodeReviewSkill,
     ]
 
 
