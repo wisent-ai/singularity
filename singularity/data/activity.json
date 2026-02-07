@@ -1,0 +1,21 @@
+{
+  "status": "stopped",
+  "logs": [
+    {
+      "timestamp": "2026-02-07T08:26:49.222669",
+      "tag": "LISTENER_ERROR",
+      "message": "Action listener failed: kaboom"
+    }
+  ],
+  "state": {
+    "name": "Test",
+    "ticker": "TST",
+    "agent_type": "general",
+    "balance_usd": 100.0,
+    "total_api_cost": 0.0,
+    "total_tokens_used": 0,
+    "runway_cycles": 10000.0,
+    "cycle": 0,
+    "updated_at": "2026-02-07T08:26:49.222665"
+  }
+}

@@ -44,6 +44,7 @@ from .skills.steering import SteeringSkill
 from .skills.memory import MemorySkill
 from .skills.orchestrator import OrchestratorSkill
 from .skills.crypto import CryptoSkill
+from .agent_profile import AgentProfile, ProfileRegistry, get_default_registry
 
 
 class AutonomousAgent:
@@ -159,6 +160,69 @@ class AutonomousAgent:
         # Steering skill reference (set during skill init)
         self._steering_skill = None
 
+        # Profile-based skill filtering
+        self._allowed_skills: Optional[List[str]] = None  # Whitelist
+        self._disabled_skills: Optional[List[str]] = None  # Blacklist
+
+        # Action callbacks for external monitoring and integration
+        self._action_listeners: List = []
+
+    @classmethod
+    def from_profile(
+        cls,
+        profile,
+        **overrides,
+    ) -> "AutonomousAgent":
+        """
+        Create an agent from a profile.
+
+        Args:
+            profile: AgentProfile instance, profile name (str), or dict
+            **overrides: Override any profile field
+
+        Returns:
+            Configured AutonomousAgent instance
+
+        Examples:
+            agent = AutonomousAgent.from_profile("coder")
+            agent = AutonomousAgent.from_profile("coder", starting_balance=200)
+            agent = AutonomousAgent.from_profile(AgentProfile(name="Custom", ...))
+        """
+        # Resolve profile
+        if isinstance(profile, str):
+            registry = get_default_registry()
+            resolved = registry.get(profile)
+            if resolved is None:
+                raise ValueError(f"Unknown profile: '{profile}'. Available: {registry.list_profiles()}")
+            profile = resolved
+        elif isinstance(profile, dict):
+            profile = AgentProfile.from_dict(profile)
+
+        # Apply overrides
+        if overrides:
+            profile = profile.merge(overrides)
+
+        # Get constructor kwargs from profile
+        kwargs = profile.to_agent_kwargs()
+
+        # Create agent
+        agent = cls(**kwargs)
+
+        # Apply skill filtering from profile
+        if profile.skills is not None:
+            agent._allowed_skills = profile.skills
+        if profile.disabled_skills is not None:
+            agent._disabled_skills = profile.disabled_skills
+
+        # Re-initialize skills with filtering applied
+        agent.skills = SkillRegistry()
+        agent._init_skills()
+
+        # Store profile reference
+        agent._profile = profile
+
+        return agent
+
     def _init_skills(self):
         """Install skills that have credentials configured."""
         credentials = {
@@ -199,8 +263,15 @@ class AutonomousAgent:
 
         for skill_class in skill_classes:
             try:
+                # Check skill filtering before installing
+                skill_id = skill_class(credentials).manifest.skill_id
+                if self._allowed_skills is not None and skill_id not in self._allowed_skills:
+                    continue  # Not in whitelist
+                if self._disabled_skills is not None and skill_id in self._disabled_skills:
+                    continue  # In blacklist
+
                 self.skills.install(skill_class)
-                skill = self.skills.get(skill_class(credentials).manifest.skill_id)
+                skill = self.skills.get(skill_id)
 
                 # Inject LLM into content skill
                 if skill_class == ContentCreationSkill and skill:
@@ -339,6 +410,19 @@ class AutonomousAgent:
                 "tokens": decision.token_usage.total_tokens()
             })
 
+            # Notify action listeners
+            await self._notify_listeners({
+                "cycle": self.cycle,
+                "tool": decision.action.tool,
+                "params": decision.action.params,
+                "result": result,
+                "reasoning": decision.reasoning,
+                "api_cost_usd": decision.api_cost_usd,
+                "tokens": decision.token_usage.total_tokens(),
+                "balance": self.balance,
+                "timestamp": datetime.now().isoformat(),
+            })
+
             # Calculate costs
             cycle_duration_hours = (datetime.now() - cycle_start).total_seconds() / 3600
             instance_cost = self.instance_cost_per_hour * cycle_duration_hours
@@ -472,6 +556,60 @@ class AutonomousAgent:
                     json.dump(data, f, indent=2)
         except Exception:
             pass
+
+    def add_action_listener(self, callback) -> None:
+        """
+        Register a callback to be invoked after each action execution.
+
+        The callback receives a dict with:
+            - cycle: int - current cycle number
+            - tool: str - tool that was executed
+            - params: dict - parameters passed to the tool
+            - result: dict - execution result with status, data, message
+            - api_cost_usd: float - LLM API cost for this cycle
+            - reasoning: str - LLM's reasoning for choosing this action
+            - balance: float - agent's remaining balance after this cycle
+            - timestamp: str - ISO format timestamp
+
+        Callbacks can be sync or async functions. Errors in callbacks
+        are caught and logged to prevent disrupting the agent loop.
+
+        Args:
+            callback: A callable (sync or async) that receives an action dict
+
+        Example:
+            def on_action(action_info):
+                print(f"Agent did: {action_info['tool']}")
+
+            agent.add_action_listener(on_action)
+        """
+        self._action_listeners.append(callback)
+
+    def remove_action_listener(self, callback) -> bool:
+        """
+        Remove a previously registered action listener.
+
+        Args:
+            callback: The callback to remove
+
+        Returns:
+            True if the callback was found and removed, False otherwise
+        """
+        try:
+            self._action_listeners.remove(callback)
+            return True
+        except ValueError:
+            return False
+
+    async def _notify_listeners(self, action_info: Dict) -> None:
+        """Notify all registered action listeners. Errors are caught."""
+        for listener in self._action_listeners:
+            try:
+                result = listener(action_info)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as e:
+                self._log("LISTENER_ERROR", f"Action listener failed: {e}")
 
     def stop(self):
         """Stop the agent gracefully."""
