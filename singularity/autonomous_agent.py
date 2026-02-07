@@ -71,6 +71,7 @@ from .skills.skill_composer import SkillComposerSkill
 from .skills.agent_network import AgentNetworkSkill
 from .skills.context_synthesis import ContextSynthesisSkill
 from .skills.secret_vault import SecretVaultSkill
+from .skills.deployment import DeploymentSkill
 
 
 
@@ -151,6 +152,7 @@ class AutonomousAgent:
         AgentNetworkSkill,
         ContextSynthesisSkill,
         SecretVaultSkill,
+        DeploymentSkill,
     ]
 
 
