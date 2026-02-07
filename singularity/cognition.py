@@ -559,48 +559,13 @@ class CognitionEngine:
             return False
         return self.switch_model(self._finetuned_model_id)
 
-    async def think(self, state: AgentState) -> Decision:
+    async def _llm_call(self, system_prompt: str, user_prompt: str) -> tuple:
         """
-        Given current state, decide what action to take.
-
-        Args:
-            state: Current agent state including balance, tools, recent actions
-
+        Make the actual LLM API call. Separated for retry wrapping.
+        
         Returns:
-            Decision with action to execute
+            Tuple of (response_text, token_usage)
         """
-        # Build the prompt
-        system_prompt = self.get_system_prompt()
-
-        # Format tools
-        tools_text = "\n".join([
-            f"- {t['name']}: {t['description']}"
-            for t in state.tools
-        ])
-
-        # Format recent actions
-        recent_text = ""
-        if state.recent_actions:
-            recent_text = "\nRecent actions:\n" + "\n".join([
-                f"- {a['tool']}: {a.get('result', {}).get('status', 'unknown')}"
-                for a in state.recent_actions[-5:]
-            ])
-
-        user_prompt = f"""Current state:
-- Balance: ${state.balance:.4f}
-- Burn rate: ${state.burn_rate:.6f}/cycle
-- Runway: {state.runway_hours:.1f} hours
-- Cycle: {state.cycle}
-
-Available tools:
-{tools_text}
-{recent_text}
-
-{state.project_context}
-
-What action should you take? Respond with JSON: {{"tool": "skill:action", "params": {{}}, "reasoning": "why"}}"""
-
-        # Call LLM based on backend
         response_text = ""
         token_usage = TokenUsage()
 
@@ -688,7 +653,56 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             )
 
         else:
-            # Fallback - wait
+            return "", TokenUsage()
+
+        return response_text, token_usage
+
+    async def think(self, state: AgentState) -> Decision:
+        """
+        Given current state, decide what action to take.
+
+        Args:
+            state: Current agent state including balance, tools, recent actions
+
+        Returns:
+            Decision with action to execute
+        """
+        # Build the prompt
+        system_prompt = self.get_system_prompt()
+
+        # Format tools
+        tools_text = "\n".join([
+            f"- {t['name']}: {t['description']}"
+            for t in state.tools
+        ])
+
+        # Format recent actions
+        recent_text = ""
+        if state.recent_actions:
+            recent_text = "\nRecent actions:\n" + "\n".join([
+                f"- {a['tool']}: {a.get('result', {}).get('status', 'unknown')}"
+                for a in state.recent_actions[-5:]
+            ])
+
+        user_prompt = f"""Current state:
+- Balance: ${state.balance:.4f}
+- Burn rate: ${state.burn_rate:.6f}/cycle
+- Runway: {state.runway_hours:.1f} hours
+- Cycle: {state.cycle}
+
+Available tools:
+{tools_text}
+{recent_text}
+
+{state.project_context}
+
+What action should you take? Respond with JSON: {{"tool": "skill:action", "params": {{}}, "reasoning": "why"}}"""
+
+        # Call LLM (via _llm_call which is separated for retry wrapping)
+        response_text, token_usage = await self._llm_call(system_prompt, user_prompt)
+
+        if not response_text:
+            # No backend available
             return Decision(
                 action=Action(tool="wait", params={}),
                 reasoning="No LLM backend available",

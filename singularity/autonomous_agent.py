@@ -27,6 +27,7 @@ from typing import Dict, List, Optional
 ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
+from .llm_retry import LLMRetryWrapper, RetryConfig, RetryStats
 from .skills.base import SkillRegistry
 from .skills.content import ContentCreationSkill
 from .skills.twitter import TwitterSkill
@@ -137,6 +138,12 @@ class AutonomousAgent:
             agent_specialty=self.specialty,
             system_prompt=system_prompt,
             system_prompt_file=system_prompt_file,
+        )
+
+        # LLM retry wrapper for resilient API calls
+        self._llm_retry = LLMRetryWrapper(
+            self.cognition,
+            config=RetryConfig(max_retries=3, base_delay=1.0, max_delay=60.0)
         )
 
         # Skills registry
@@ -318,7 +325,19 @@ class AutonomousAgent:
                 created_resources=self.created_resources,
             )
 
-            decision = await self.cognition.think(state)
+            try:
+                decision, retry_stats = await self._llm_retry.think_with_retry(state)
+                if retry_stats.attempts > 1:
+                    self._log("RETRY", f"LLM call succeeded after {retry_stats.attempts} attempts ({retry_stats.total_delay:.1f}s delay)")
+            except Exception as e:
+                self._log("ERROR", f"LLM call failed after retries: {e}")
+                decision = Decision(
+                    action=Action(tool="wait", params={}),
+                    reasoning=f"LLM call failed: {e}",
+                    token_usage=TokenUsage(),
+                    api_cost_usd=0.0,
+                )
+                retry_stats = RetryStats()
             self._log("THINK", decision.reasoning[:150] if decision.reasoning else "...")
             self._log("DO", f"{decision.action.tool} {decision.action.params}")
 
