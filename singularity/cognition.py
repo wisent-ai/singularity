@@ -320,7 +320,7 @@ class CognitionEngine:
 
         elif llm_provider == "vllm" and HAS_VLLM:
             self.llm = LLM(model=llm_model, trust_remote_code=True, max_model_len=8192, gpu_memory_utilization=0.90)
-            self.sampling_params = SamplingParams(temperature=0.2, top_p=0.9, max_tokens=500)
+            self.sampling_params = SamplingParams(temperature=0.2, top_p=0.9, max_tokens=1024)
             self.llm_type = "vllm"
 
         elif llm_provider == "transformers" and HAS_TRANSFORMERS:
@@ -607,7 +607,7 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         if self.llm_type == "anthropic":
             response = await self.llm.messages.create(
                 model=self.llm_model,
-                max_tokens=500,
+                max_tokens=1024,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}]
             )
@@ -620,7 +620,7 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         elif self.llm_type == "vertex":
             response = self.llm.messages.create(
                 model=self.llm_model,
-                max_tokens=500,
+                max_tokens=1024,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}]
             )
@@ -647,7 +647,7 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         elif self.llm_type == "openai":
             response = await self.llm.chat.completions.create(
                 model=self.llm_model,
-                max_tokens=500,
+                max_tokens=1024,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -709,18 +709,29 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
 
     def _parse_action(self, response: str) -> Action:
         """Parse LLM response into an Action."""
-        # Try to extract JSON from response
-        json_match = re.search(r'\{[^{}]*"tool"[^{}]*\}', response, re.DOTALL)
-        if json_match:
-            try:
-                data = json.loads(json_match.group())
-                return Action(
-                    tool=data.get("tool", "wait"),
-                    params=data.get("params", {}),
-                    reasoning=data.get("reasoning", "")
-                )
-            except json.JSONDecodeError:
-                pass
+        # Try balanced brace extraction for nested JSON support
+        start = response.find('{')
+        while start != -1:
+            depth = 0
+            for i in range(start, len(response)):
+                if response[i] == '{':
+                    depth += 1
+                elif response[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        candidate = response[start:i + 1]
+                        try:
+                            data = json.loads(candidate)
+                            if 'tool' in data:
+                                return Action(
+                                    tool=data.get("tool", "wait"),
+                                    params=data.get("params", {}),
+                                    reasoning=data.get("reasoning", "")
+                                )
+                        except json.JSONDecodeError:
+                            pass
+                        break
+            start = response.find('{', start + 1)
 
         # Fallback - look for tool name
         tool_match = re.search(r'(\w+:\w+)', response)
