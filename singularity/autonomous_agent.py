@@ -57,6 +57,7 @@ from .skills.performance import PerformanceTracker
 from .skills.self_eval import SelfEvalSkill
 from .skills.goal_manager import GoalManagerSkill
 from .skills.marketplace import MarketplaceSkill
+from .skills.feedback_loop import FeedbackLoopSkill
 from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
 
@@ -118,6 +119,7 @@ class AutonomousAgent:
         SelfEvalSkill,
         GoalManagerSkill,
         MarketplaceSkill,
+        FeedbackLoopSkill,
     ]
 
     def __init__(
@@ -323,6 +325,13 @@ class AutonomousAgent:
                 # Wire up replication skill with agent reference
                 if skill_class == ReplicationSkill and skill:
                     skill.set_agent(self)
+
+                # Wire up feedback loop skill to cognition engine
+                if skill_class == FeedbackLoopSkill and skill:
+                    skill.set_cognition_hooks(
+                        append_prompt=self.cognition.append_to_prompt,
+                        get_prompt=self.cognition.get_system_prompt,
+                    )
 
                 # Store reference to performance tracker for auto-recording
                 if skill_class == PerformanceTracker and skill:
