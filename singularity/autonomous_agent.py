@@ -28,6 +28,7 @@ ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
 from .skills.base import SkillRegistry
+from .tool_resolver import ToolResolver
 from .skills.content import ContentCreationSkill
 from .skills.twitter import TwitterSkill
 from .skills.github import GitHubSkill
@@ -158,6 +159,9 @@ class AutonomousAgent:
 
         # Steering skill reference (set during skill init)
         self._steering_skill = None
+
+        # Tool resolver for fuzzy matching (lazy-initialized)
+        self._tool_resolver = None
 
     def _init_skills(self):
         """Install skills that have credentials configured."""
@@ -377,12 +381,36 @@ class AutonomousAgent:
             self.created_resources['files'] = self.created_resources['files'][-20:]
 
     async def _execute(self, action: Action) -> Dict:
-        """Execute an action via skills."""
+        """Execute an action via skills with fuzzy tool matching."""
         tool = action.tool
         params = action.params
 
         if tool == "wait":
             return {"status": "waited"}
+
+        # Use ToolResolver for fuzzy matching
+        if not hasattr(self, '_tool_resolver') or self._tool_resolver is None:
+            self._tool_resolver = ToolResolver(self._get_tools())
+
+        match = self._tool_resolver.resolve(tool)
+
+        # If auto-corrected, log the correction
+        if match.was_corrected:
+            self._log("AUTO-FIX", f"Tool '{match.original}' -> '{match.resolved}' (confidence: {match.confidence:.0%})")
+            tool = match.resolved
+        elif match.error:
+            return {"status": "error", "message": match.error}
+
+        # Validate parameters
+        validation = self._tool_resolver.validate_params(tool, params)
+        if not validation.valid:
+            return {
+                "status": "error",
+                "message": f"Missing required parameters: {', '.join(validation.missing_required)}"
+            }
+        if validation.warnings:
+            for warning in validation.warnings:
+                self._log("PARAM-WARN", warning)
 
         # Parse skill:action format
         if ":" in tool:
