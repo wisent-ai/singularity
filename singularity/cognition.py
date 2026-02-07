@@ -153,6 +153,7 @@ class AgentState:
     project_context: str = ""
     created_resources: Dict[str, Any] = field(default_factory=dict)
     pending_events: List[Dict] = field(default_factory=list)
+    performance_context: str = ""
 
 
 @dataclass
@@ -958,6 +959,8 @@ Available tools:
 {events_text}
 
 {state.project_context}
+
+{state.performance_context}
 
 What action should you take? Respond with JSON: {{"tool": "skill:action", "params": {{}}, "reasoning": "why"}}"""
 

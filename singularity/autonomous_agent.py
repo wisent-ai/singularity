@@ -50,6 +50,18 @@ from .skills.experiment import ExperimentSkill
 from .skills.event import EventSkill
 from .skills.planner import PlannerSkill
 from .skills.outcome_tracker import OutcomeTracker
+from .skills.scheduler import SchedulerSkill
+from .skills.strategy import StrategySkill
+from .skills.replication import ReplicationSkill
+from .skills.workflow import WorkflowSkill
+from .skills.performance import PerformanceTracker
+from .skills.self_eval import SelfEvalSkill
+from .skills.goal_manager import GoalManagerSkill
+from .skills.marketplace import MarketplaceSkill
+from .skills.feedback_loop import FeedbackLoopSkill
+from .skills.task_delegator import TaskDelegator
+from .skills.knowledge_sharing import KnowledgeSharingSkill
+from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
 
 
@@ -103,6 +115,17 @@ class AutonomousAgent:
         EventSkill,
         PlannerSkill,
         OutcomeTracker,
+        SchedulerSkill,
+        StrategySkill,
+        ReplicationSkill,
+        PerformanceTracker,
+        WorkflowSkill,
+        SelfEvalSkill,
+        GoalManagerSkill,
+        MarketplaceSkill,
+        FeedbackLoopSkill,
+        TaskDelegator,
+        KnowledgeSharingSkill,
     ]
 
     def __init__(
@@ -225,9 +248,13 @@ class AutonomousAgent:
 
         # Outcome tracker reference for self-improvement feedback loop
         self._outcome_tracker = None
+        # Performance tracker reference (set during skill init)
+        self._performance_tracker = None
         # Tool resolver for fuzzy matching (lazy-initialized)
         self._tool_resolver = None
 
+        # Adaptive executor for smart retry, circuit breakers, and cost guards
+        self._adaptive_executor = AdaptiveExecutor(balance=starting_balance)
     def _init_skills(self):
         """Install skills that have credentials configured."""
         credentials = {
@@ -306,6 +333,24 @@ class AutonomousAgent:
                 # Store outcome tracker reference for feedback loop
                 if skill_class == OutcomeTracker and skill:
                     self._outcome_tracker = skill
+                # Wire up replication skill with agent reference
+                if skill_class == ReplicationSkill and skill:
+                    skill.set_agent(self)
+
+                # Wire up feedback loop skill to cognition engine
+                if skill_class == FeedbackLoopSkill and skill:
+                    skill.set_cognition_hooks(
+                        append_prompt=self.cognition.append_to_prompt,
+                        get_prompt=self.cognition.get_system_prompt,
+                    )
+
+                # Wire up knowledge sharing skill with agent identity
+                if skill_class == KnowledgeSharingSkill and skill:
+                    skill.set_agent_id(f"{self.name}_{self.ticker}")
+
+                # Store reference to performance tracker for auto-recording
+                if skill_class == PerformanceTracker and skill:
+                    self._performance_tracker = skill
 
                 if skill and skill.check_credentials():
                     self._log("SKILL", f"+ {skill.manifest.name}")
@@ -326,6 +371,18 @@ class AutonomousAgent:
                 self._log("EVENT", "EventBus wired into EventSkill")
                 break
 
+
+    async def _tick_scheduler(self):
+        """Execute any due scheduled tasks."""
+        for skill in self.skills.skills.values():
+            if isinstance(skill, SchedulerSkill):
+                due_count = skill.get_due_count()
+                if due_count > 0:
+                    self._log("SCHED", f"{due_count} scheduled task(s) due")
+                    results = await skill.tick()
+                    for result in results:
+                        self._log("SCHED", f"{'OK' if result.success else 'FAIL'}: {result.message[:100]}")
+                break
     async def _emit_event(self, topic: str, data: Dict = None, priority: EventPriority = EventPriority.NORMAL):
         """Emit an event from the agent core."""
         event = Event(
@@ -448,8 +505,16 @@ class AutonomousAgent:
             # Think
             # Check for pending events from subscriptions
             pending_events = self._get_pending_events()
+
+            # Tick scheduler - execute any due scheduled tasks
+            await self._tick_scheduler()
             if pending_events:
                 self._log("EVENTS", f"{len(pending_events)} pending event(s)")
+
+            # Get performance context for LLM awareness
+            perf_context = ''
+            if self._performance_tracker:
+                perf_context = self._performance_tracker.get_context_summary()
 
             state = AgentState(
                 balance=self.balance,
@@ -461,6 +526,7 @@ class AutonomousAgent:
                 created_resources=self.created_resources,
                 project_context=self.project_context,
                 pending_events=pending_events,
+                performance_context=perf_context,
             )
 
             self.metrics.start_timer("decision")
@@ -503,6 +569,23 @@ class AutonomousAgent:
             # Track created resources
             self._track_created_resource(decision.action.tool, decision.action.params, result)
 
+            # Auto-record performance for cross-session analytics
+            if self._performance_tracker:
+                skill_id, action_name = '', ''
+                if ':' in decision.action.tool:
+                    parts = decision.action.tool.split(':', 1)
+                    skill_id, action_name = parts[0], parts[1]
+                else:
+                    skill_id = decision.action.tool
+                self._performance_tracker.record_outcome(
+                    skill_id=skill_id,
+                    action=action_name,
+                    success=exec_success,
+                    latency_ms=exec_time * 1000,
+                    cost_usd=decision.api_cost_usd,
+                    error=str(result.get('message', ''))[:200] if not exec_success else '',
+                )
+
             # Record action
             self.recent_actions.append({
                 "cycle": self.cycle,
@@ -526,7 +609,7 @@ class AutonomousAgent:
 
             # Deduct cost from balance
             self.balance -= total_cycle_cost
-
+            self._adaptive_executor.update_balance(self.balance)
             self._log("COST", f"API: ${api_cost:.6f} + Instance: ${instance_cost:.6f} = ${total_cycle_cost:.6f}")
 
             await asyncio.sleep(self.cycle_interval)
@@ -611,18 +694,49 @@ class AutonomousAgent:
 
             skill = self.skills.get(skill_id)
             if skill:
+                # Get adaptive execution advice (circuit breaker, retry config, cost guard)
+                advice = self._adaptive_executor.get_advice(
+                    skill_id, action_name,
+                    estimated_cost=self._get_action_cost_estimate(skill_id, action_name),
+                )
+                if advice.cost_warning:
+                    self._log("COST-WARN", advice.cost_warning)
+
+                if not advice.should_execute:
+                    self._log("CIRCUIT", advice.reason)
+                    return {"status": "blocked", "message": advice.reason}
+
                 try:
                     result = await skill.execute(action_name, params)
-                    return {
+                    outcome = {
                         "status": "success" if result.success else "failed",
                         "data": result.data,
                         "message": result.message
                     }
+                    # Record outcome for adaptive learning
+                    self._adaptive_executor.record_outcome(
+                        skill_id, action_name,
+                        success=result.success,
+                        error=result.message if not result.success else "",
+                    )
+                    return outcome
                 except Exception as e:
+                    self._adaptive_executor.record_outcome(
+                        skill_id, action_name,
+                        success=False, error=str(e),
+                    )
                     return {"status": "error", "message": str(e)}
 
         return {"status": "error", "message": f"Unknown tool: {tool}"}
 
+    def _get_action_cost_estimate(self, skill_id: str, action_name: str) -> float:
+        """Estimate cost for an action from skill manifest."""
+        skill = self.skills.get(skill_id)
+        if skill and hasattr(skill, "manifest"):
+            for act in skill.manifest.actions:
+                if act.name == action_name:
+                    return act.estimated_cost
+        return 0.0
     def _get_agent_state(self) -> Dict:
         """Get current agent state as a read-only dict for SkillContext."""
         avg_cycle_hours = self.cycle_interval / 3600
@@ -737,3 +851,4 @@ def entry_point():
 
 if __name__ == "__main__":
     entry_point()
+

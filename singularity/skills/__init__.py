@@ -26,6 +26,11 @@ from .experiment import ExperimentSkill
 from .event import EventSkill
 from .planner import PlannerSkill
 from .outcome_tracker import OutcomeTracker
+from .scheduler import SchedulerSkill
+from .strategy import StrategySkill
+from .goal_manager import GoalManagerSkill
+from .task_delegator import TaskDelegator
+from .knowledge_sharing import KnowledgeSharingSkill
 
 __all__ = [
     # Base
@@ -55,4 +60,9 @@ __all__ = [
     "EventSkill",
     "PlannerSkill",
     "OutcomeTracker",
+    "SchedulerSkill",
+    "StrategySkill",
+    "GoalManagerSkill",
+    "TaskDelegator",
+    "KnowledgeSharingSkill",
 ]
