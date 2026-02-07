@@ -56,6 +56,7 @@ from .skills.workflow import WorkflowSkill
 from .skills.performance import PerformanceTracker
 from .skills.self_eval import SelfEvalSkill
 from .skills.goal_manager import GoalManagerSkill
+from .skills.marketplace import MarketplaceSkill
 from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
 
@@ -116,6 +117,7 @@ class AutonomousAgent:
         WorkflowSkill,
         SelfEvalSkill,
         GoalManagerSkill,
+        MarketplaceSkill,
     ]
 
     def __init__(
