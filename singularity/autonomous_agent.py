@@ -65,6 +65,7 @@ from .skills.resource_watcher import ResourceWatcherSkill
 from .skills.revenue_services import RevenueServiceSkill
 from .skills.auto_catalog import AutoCatalogSkill
 from .skills.usage_tracking import UsageTrackingSkill
+from .skills.skill_composer import SkillComposerSkill
 from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
 
@@ -134,6 +135,7 @@ class AutonomousAgent:
         RevenueServiceSkill,
         AutoCatalogSkill,
         UsageTrackingSkill,
+        SkillComposerSkill,
     ]
 
     def __init__(
