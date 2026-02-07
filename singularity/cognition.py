@@ -246,6 +246,7 @@ class CognitionEngine:
         agent_specialty: str = "",
         system_prompt: Optional[str] = None,
         system_prompt_file: Optional[str] = None,
+        max_history_turns: int = 10,
         # Legacy parameter names for compatibility
         worker_system_prompt: str = "",
         worker_system_prompt_file: str = "",
@@ -284,6 +285,10 @@ class CognitionEngine:
 
         # Prompt additions (for self-modification)
         self._prompt_additions = []
+
+        # Conversation memory - persists across think() calls
+        self._conversation_history: List[Dict[str, str]] = []
+        self._max_history_turns: int = max(1, max_history_turns)
 
         # Fine-tuning state
         self._training_examples = []
@@ -373,6 +378,44 @@ class CognitionEngine:
     def append_to_prompt(self, addition: str) -> None:
         """Append to the system prompt."""
         self._prompt_additions.append(addition)
+
+    # === Conversation memory ===
+
+    def clear_conversation(self) -> int:
+        """Clear conversation history. Returns number of messages cleared."""
+        count = len(self._conversation_history)
+        self._conversation_history = []
+        return count
+
+    def get_conversation_length(self) -> int:
+        """Get number of messages in conversation history."""
+        return len(self._conversation_history)
+
+    def get_conversation_turns(self) -> int:
+        """Get number of user/assistant turn pairs in history."""
+        return len(self._conversation_history) // 2
+
+    def set_max_history_turns(self, turns: int) -> None:
+        """Set maximum number of conversation turns to keep.
+        
+        Args:
+            turns: Number of user/assistant pairs to retain (default 10)
+        """
+        self._max_history_turns = max(1, turns)
+        # Trim if needed
+        max_messages = self._max_history_turns * 2
+        if len(self._conversation_history) > max_messages:
+            self._conversation_history = self._conversation_history[-max_messages:]
+
+    def get_conversation_summary(self) -> Dict:
+        """Get a summary of the conversation state."""
+        return {
+            "turns": self.get_conversation_turns(),
+            "messages": self.get_conversation_length(),
+            "max_turns": self._max_history_turns,
+            "last_user": self._conversation_history[-2]["content"][:100] if len(self._conversation_history) >= 2 else None,
+            "last_assistant": self._conversation_history[-1]["content"][:100] if len(self._conversation_history) >= 1 else None,
+        }
 
     # === Model switching ===
 
@@ -600,6 +643,10 @@ Available tools:
 
 What action should you take? Respond with JSON: {{"tool": "skill:action", "params": {{}}, "reasoning": "why"}}"""
 
+        # Build messages with conversation history
+        messages = list(self._conversation_history)
+        messages.append({"role": "user", "content": user_prompt})
+
         # Call LLM based on backend
         response_text = ""
         token_usage = TokenUsage()
@@ -607,9 +654,9 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         if self.llm_type == "anthropic":
             response = await self.llm.messages.create(
                 model=self.llm_model,
-                max_tokens=500,
+                max_tokens=1024,
                 system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}]
+                messages=messages
             )
             response_text = response.content[0].text
             token_usage = TokenUsage(
@@ -620,9 +667,9 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         elif self.llm_type == "vertex":
             response = self.llm.messages.create(
                 model=self.llm_model,
-                max_tokens=500,
+                max_tokens=1024,
                 system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}]
+                messages=messages
             )
             response_text = response.content[0].text
             token_usage = TokenUsage(
@@ -631,11 +678,18 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             )
 
         elif self.llm_type == "vertex_gemini":
+            # Gemini uses a different format - build conversation parts
             model = GenerativeModel(self.llm_model, system_instruction=system_prompt)
+            # For Gemini, combine history into the prompt
+            history_text = ""
+            for msg in self._conversation_history:
+                role_label = "User" if msg["role"] == "user" else "Assistant"
+                history_text += f"\n{role_label}: {msg['content']}\n"
+            full_user_prompt = history_text + "\nUser: " + user_prompt if history_text else user_prompt
             response = await asyncio.to_thread(
                 model.generate_content,
-                user_prompt,
-                generation_config=GenerationConfig(max_output_tokens=500, temperature=0.2)
+                full_user_prompt,
+                generation_config=GenerationConfig(max_output_tokens=1024, temperature=0.2)
             )
             response_text = response.text
             if hasattr(response, 'usage_metadata'):
@@ -645,13 +699,12 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
                 )
 
         elif self.llm_type == "openai":
+            oai_messages = [{"role": "system", "content": system_prompt}]
+            oai_messages.extend(messages)
             response = await self.llm.chat.completions.create(
                 model=self.llm_model,
-                max_tokens=500,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
+                max_tokens=1024,
+                messages=oai_messages
             )
             response_text = response.choices[0].message.content
             if response.usage:
@@ -661,7 +714,12 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
                 )
 
         elif self.llm_type == "vllm":
-            full_prompt = f"{system_prompt}\n\nUser: {user_prompt}\n\nAssistant:"
+            # Build conversation text for vLLM
+            conv_text = ""
+            for msg in self._conversation_history:
+                role_label = "User" if msg["role"] == "user" else "Assistant"
+                conv_text += f"\n{role_label}: {msg['content']}\n"
+            full_prompt = f"{system_prompt}\n{conv_text}\nUser: {user_prompt}\n\nAssistant:"
             outputs = self.llm.generate([full_prompt], self.sampling_params)
             response_text = outputs[0].outputs[0].text
             token_usage = TokenUsage(
@@ -670,16 +728,14 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             )
 
         elif self.llm_type == "transformers":
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
+            tf_messages = [{"role": "system", "content": system_prompt}]
+            tf_messages.extend(messages)
             inputs = self.tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
+                tf_messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
             ).to(self.llm.device)
 
             with torch.no_grad():
-                outputs = self.llm.generate(**inputs, max_new_tokens=500, temperature=0.2, do_sample=True)
+                outputs = self.llm.generate(**inputs, max_new_tokens=1024, temperature=0.2, do_sample=True)
 
             response_text = self.tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
             token_usage = TokenUsage(
@@ -695,6 +751,15 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
                 token_usage=TokenUsage(),
                 api_cost_usd=0.0
             )
+
+        # Store exchange in conversation history
+        self._conversation_history.append({"role": "user", "content": user_prompt})
+        self._conversation_history.append({"role": "assistant", "content": response_text})
+
+        # Trim history to keep last N turns (each turn = user + assistant = 2 messages)
+        max_messages = self._max_history_turns * 2
+        if len(self._conversation_history) > max_messages:
+            self._conversation_history = self._conversation_history[-max_messages:]
 
         # Parse response
         action = self._parse_action(response_text)
