@@ -66,6 +66,9 @@ from .skills.revenue_services import RevenueServiceSkill
 from .skills.auto_catalog import AutoCatalogSkill
 from .skills.webhook import WebhookSkill
 from .skills.payment import PaymentSkill
+from .skills.usage_tracking import UsageTrackingSkill
+from .skills.skill_composer import SkillComposerSkill
+from .skills.agent_network import AgentNetworkSkill
 from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
 
@@ -136,7 +139,9 @@ class AutonomousAgent:
         AutoCatalogSkill,
         WebhookSkill,
         PaymentSkill,
-    ]
+        UsageTrackingSkill,
+        SkillComposerSkill,
+        AgentNetworkSkill,    ]
 
     def __init__(
         self,
