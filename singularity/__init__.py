@@ -10,6 +10,13 @@ __version__ = "0.1.0"
 from .autonomous_agent import AutonomousAgent
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
 from .skills.base import Skill, SkillRegistry, SkillManifest, SkillAction, SkillResult
+from .lifecycle import (
+    LifecycleHook,
+    HookManager,
+    OutcomeTrackingHook,
+    CycleMetricsHook,
+    AdaptiveIntervalHook,
+)
 
 __all__ = [
     "AutonomousAgent",

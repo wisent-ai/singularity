@@ -17,6 +17,7 @@ except RuntimeError:
 import asyncio
 import os
 import json
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -44,6 +45,16 @@ from .skills.steering import SteeringSkill
 from .skills.memory import MemorySkill
 from .skills.orchestrator import OrchestratorSkill
 from .skills.crypto import CryptoSkill
+from .lifecycle import (
+    LifecycleHook,
+    HookManager,
+    StartupInfo,
+    CycleInfo,
+    CycleResult,
+    ShutdownInfo,
+    OutcomeTrackingHook,
+    CycleMetricsHook,
+)
 
 
 class AutonomousAgent:
@@ -90,6 +101,7 @@ class AutonomousAgent:
         openai_api_key: str = "",
         system_prompt: Optional[str] = None,
         system_prompt_file: Optional[str] = None,
+        lifecycle_hooks: Optional[List[LifecycleHook]] = None,
     ):
         """
         Initialize an autonomous agent.
@@ -158,6 +170,16 @@ class AutonomousAgent:
 
         # Steering skill reference (set during skill init)
         self._steering_skill = None
+
+        # Lifecycle hooks
+        self.hook_manager = HookManager()
+        # Add built-in hooks (outcome tracking + cycle metrics)
+        self.hook_manager.add(OutcomeTrackingHook())
+        self.hook_manager.add(CycleMetricsHook())
+        # Add user-provided hooks
+        if lifecycle_hooks:
+            for hook in lifecycle_hooks:
+                self.hook_manager.add(hook)
 
     def _init_skills(self):
         """Install skills that have credentials configured."""
@@ -287,6 +309,7 @@ class AutonomousAgent:
         self.running = True
         tools = self._get_tools()
         cycle_start_time = datetime.now()
+        run_start_time = time.time()
 
         self._log("AWAKE", f"{self.name} (${self.ticker}) - Type: {self.agent_type}")
         self._log("BALANCE", f"${self.balance:.4f} USD")
@@ -294,6 +317,18 @@ class AutonomousAgent:
 
         for t in tools:
             self._log("TOOL", t["name"])
+
+        # Dispatch startup hooks
+        startup_info = StartupInfo(
+            agent_name=self.name,
+            agent_ticker=self.ticker,
+            agent_type=self.agent_type,
+            balance=self.balance,
+            instance_type=self.instance_type,
+            skill_count=len(self.skills.skills),
+            skill_ids=list(self.skills.skills.keys()),
+        )
+        self.hook_manager.dispatch_startup(startup_info)
 
         while self.running and self.balance > 0:
             self.cycle += 1
@@ -307,6 +342,21 @@ class AutonomousAgent:
 
             self._log("CYCLE", f"#{self.cycle} | ${self.balance:.4f} | ~{runway_cycles:.0f} cycles left")
 
+            # Dispatch pre-cycle hooks
+            cycle_info = CycleInfo(
+                cycle=self.cycle,
+                balance=self.balance,
+                runway_cycles=runway_cycles,
+                runway_hours=runway_hours,
+            )
+            hook_hints = self.hook_manager.dispatch_pre_cycle(cycle_info)
+
+            # Check if hooks want to skip this cycle
+            if hook_hints.get('skip_cycle'):
+                self._log("HOOK", "Cycle skipped by lifecycle hook")
+                await asyncio.sleep(self.cycle_interval)
+                continue
+
             # Think
             state = AgentState(
                 balance=self.balance,
@@ -317,6 +367,18 @@ class AutonomousAgent:
                 cycle=self.cycle,
                 created_resources=self.created_resources,
             )
+
+            # Inject lifecycle hook context hints into recent_actions
+            if hook_hints.get('context_hints'):
+                for hint in hook_hints['context_hints']:
+                    state.recent_actions.append({
+                        "cycle": self.cycle,
+                        "tool": "lifecycle_hook",
+                        "params": {},
+                        "result": {"status": "info", "message": hint},
+                        "api_cost_usd": 0,
+                        "tokens": 0,
+                    })
 
             decision = await self.cognition.think(state)
             self._log("THINK", decision.reasoning[:150] if decision.reasoning else "...")
@@ -339,8 +401,23 @@ class AutonomousAgent:
                 "tokens": decision.token_usage.total_tokens()
             })
 
+            # Dispatch post-cycle hooks
+            cycle_duration_secs = (datetime.now() - cycle_start).total_seconds()
+            cycle_result = CycleResult(
+                cycle=self.cycle,
+                tool=decision.action.tool,
+                params=decision.action.params,
+                result=result,
+                success=result.get("status") == "success",
+                api_cost=decision.api_cost_usd,
+                tokens_used=decision.token_usage.total_tokens(),
+                duration_seconds=cycle_duration_secs,
+                balance_after=self.balance,
+            )
+            self.hook_manager.dispatch_post_cycle(cycle_result)
+
             # Calculate costs
-            cycle_duration_hours = (datetime.now() - cycle_start).total_seconds() / 3600
+            cycle_duration_hours = cycle_duration_secs / 3600
             instance_cost = self.instance_cost_per_hour * cycle_duration_hours
             api_cost = decision.api_cost_usd
             total_cycle_cost = instance_cost + api_cost
@@ -357,9 +434,27 @@ class AutonomousAgent:
 
             await asyncio.sleep(self.cycle_interval)
 
-        total_runtime_hours = (datetime.now() - cycle_start_time).total_seconds() / 3600
+        total_runtime_seconds = time.time() - run_start_time
+        total_runtime_hours = total_runtime_seconds / 3600
         self._log("END", f"Balance: ${self.balance:.4f}")
         self._log("SUMMARY", f"Ran {self.cycle} cycles in {total_runtime_hours:.2f}h | API: ${self.total_api_cost:.4f} | Tokens: {self.total_tokens_used}")
+
+        # Dispatch shutdown hooks
+        shutdown_reason = "normal" if self.balance > 0 else "out_of_funds"
+        shutdown_info = ShutdownInfo(
+            total_cycles=self.cycle,
+            total_api_cost=self.total_api_cost,
+            total_tokens=self.total_tokens_used,
+            balance_remaining=self.balance,
+            runtime_seconds=total_runtime_seconds,
+            reason=shutdown_reason,
+        )
+        self.hook_manager.dispatch_shutdown(shutdown_info)
+
+        # Log hook statuses
+        for status in self.hook_manager.get_all_status():
+            self._log("HOOK", f"{status.get('name', '?')}: {json.dumps(status, default=str)[:300]}")
+
         self._mark_stopped()
 
     def _track_created_resource(self, tool: str, params: Dict, result: Dict):
