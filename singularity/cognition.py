@@ -296,6 +296,14 @@ class CognitionEngine:
         self._training_examples = []
         self._finetuned_model_id = None
 
+        # Conversation memory for multi-turn context
+        self._conversation_history: List[Dict[str, str]] = []
+        self._max_history_turns: int = 10  # Keep last N exchanges
+
+        # Configurable LLM parameters
+        self._max_tokens: int = 1024
+        self._temperature: float = 0.2
+
         # Fallback tracking
         self._fallback_stats = {
             "primary_failures": 0,
@@ -437,12 +445,61 @@ class CognitionEngine:
             self._fallback_clients[provider] = client
         return client
 
+    # === Conversation memory ===
+
+    def set_max_tokens(self, max_tokens: int) -> None:
+        """Set max output tokens for LLM calls."""
+        self._max_tokens = max(1, max_tokens)
+
+    def set_temperature(self, temperature: float) -> None:
+        """Set temperature for LLM calls."""
+        self._temperature = max(0.0, min(2.0, temperature))
+
+    def set_max_history(self, max_turns: int) -> None:
+        """Set maximum conversation history turns to keep."""
+        self._max_history_turns = max(0, max_turns)
+        # Trim existing history if needed
+        if len(self._conversation_history) > self._max_history_turns * 2:
+            self._conversation_history = self._conversation_history[-(self._max_history_turns * 2):]
+
+    def clear_conversation(self) -> int:
+        """Clear conversation history. Returns number of messages cleared."""
+        count = len(self._conversation_history)
+        self._conversation_history = []
+        return count
+
+    def get_conversation_history(self) -> List[Dict[str, str]]:
+        """Get the current conversation history."""
+        return list(self._conversation_history)
+
+    def _build_messages(self, user_prompt: str) -> List[Dict[str, str]]:
+        """Build messages list including conversation history."""
+        messages = []
+        # Add conversation history (already trimmed)
+        messages.extend(self._conversation_history)
+        # Add current user message
+        messages.append({"role": "user", "content": user_prompt})
+        return messages
+
+    def _record_exchange(self, user_prompt: str, assistant_response: str) -> None:
+        """Record a conversation exchange in history."""
+        self._conversation_history.append({"role": "user", "content": user_prompt})
+        self._conversation_history.append({"role": "assistant", "content": assistant_response})
+        # Trim to max history
+        max_messages = self._max_history_turns * 2
+        if len(self._conversation_history) > max_messages:
+            self._conversation_history = self._conversation_history[-max_messages:]
+
     async def _call_provider(
         self, provider_type: str, model: str, client: Any,
         system_prompt: str, user_prompt: str
     ) -> tuple:
         """
         Call a specific LLM provider and return (response_text, token_usage).
+
+        Includes conversation history for providers that support multi-turn
+        messages (Anthropic, OpenAI, Vertex Claude). For other providers,
+        history is injected into the prompt text.
 
         Args:
             provider_type: The provider type string
@@ -457,12 +514,14 @@ class CognitionEngine:
         Raises:
             Exception: If the provider call fails
         """
+        messages = self._build_messages(user_prompt)
+
         if provider_type == "anthropic":
             response = await client.messages.create(
                 model=model,
-                max_tokens=500,
+                max_tokens=self._max_tokens,
                 system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}]
+                messages=messages,
             )
             return response.content[0].text, TokenUsage(
                 input_tokens=response.usage.input_tokens,
@@ -472,9 +531,9 @@ class CognitionEngine:
         elif provider_type == "vertex":
             response = client.messages.create(
                 model=model,
-                max_tokens=500,
+                max_tokens=self._max_tokens,
                 system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}]
+                messages=messages,
             )
             return response.content[0].text, TokenUsage(
                 input_tokens=response.usage.input_tokens,
@@ -482,11 +541,17 @@ class CognitionEngine:
             )
 
         elif provider_type == "vertex_gemini":
+            # Gemini doesn't support messages array natively - inject history into prompt
+            history_text = self._format_history_as_text()
+            full_prompt = f"{history_text}{user_prompt}" if history_text else user_prompt
             gen_model = GenerativeModel(model, system_instruction=system_prompt)
             response = await asyncio.to_thread(
                 gen_model.generate_content,
-                user_prompt,
-                generation_config=GenerationConfig(max_output_tokens=500, temperature=0.2)
+                full_prompt,
+                generation_config=GenerationConfig(
+                    max_output_tokens=self._max_tokens,
+                    temperature=self._temperature,
+                )
             )
             usage = TokenUsage()
             if hasattr(response, 'usage_metadata'):
@@ -497,13 +562,12 @@ class CognitionEngine:
             return response.text, usage
 
         elif provider_type == "openai":
+            oai_messages = [{"role": "system", "content": system_prompt}]
+            oai_messages.extend(messages)
             response = await client.chat.completions.create(
                 model=model,
-                max_tokens=500,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
+                max_tokens=self._max_tokens,
+                messages=oai_messages,
             )
             usage = TokenUsage()
             if response.usage:
@@ -514,7 +578,8 @@ class CognitionEngine:
             return response.choices[0].message.content, usage
 
         elif provider_type == "vllm":
-            full_prompt = f"{system_prompt}\n\nUser: {user_prompt}\n\nAssistant:"
+            history_text = self._format_history_as_text()
+            full_prompt = f"{system_prompt}\n\n{history_text}User: {user_prompt}\n\nAssistant:"
             outputs = client.generate([full_prompt], self.sampling_params)
             text = outputs[0].outputs[0].text
             return text, TokenUsage(
@@ -523,16 +588,17 @@ class CognitionEngine:
             )
 
         elif provider_type == "transformers":
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
+            tf_messages = [{"role": "system", "content": system_prompt}]
+            tf_messages.extend(messages)
             inputs = self.tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
+                tf_messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
             ).to(client.device)
 
             with torch.no_grad():
-                outputs = client.generate(**inputs, max_new_tokens=500, temperature=0.2, do_sample=True)
+                outputs = client.generate(
+                    **inputs, max_new_tokens=self._max_tokens,
+                    temperature=self._temperature, do_sample=True,
+                )
 
             text = self.tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
             return text, TokenUsage(
@@ -541,6 +607,18 @@ class CognitionEngine:
             )
 
         raise ValueError(f"Unsupported provider type: {provider_type}")
+
+    def _format_history_as_text(self) -> str:
+        """Format conversation history as text for providers that don't support messages."""
+        if not self._conversation_history:
+            return ""
+        lines = []
+        for msg in self._conversation_history:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            # Truncate long messages in history
+            content = msg["content"][:500]
+            lines.append(f"{role}: {content}")
+        return "\n".join(lines) + "\n\n"
 
     async def _call_with_fallback(self, system_prompt: str, user_prompt: str) -> tuple:
         """
@@ -891,6 +969,9 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
                 api_cost_usd=0.0,
             )
 
+        # Record exchange in conversation memory
+        self._record_exchange(user_prompt, response_text)
+
         # Parse response
         action = self._parse_action(response_text)
         api_cost = calculate_api_cost(used_provider, used_model, token_usage)
@@ -903,19 +984,27 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         )
 
     def _parse_action(self, response: str) -> Action:
-        """Parse LLM response into an Action."""
-        # Try to extract JSON from response
-        json_match = re.search(r'\{[^{}]*"tool"[^{}]*\}', response, re.DOTALL)
-        if json_match:
-            try:
-                data = json.loads(json_match.group())
+        """Parse LLM response into an Action.
+
+        Uses balanced brace matching to correctly handle nested JSON objects
+        in params (e.g. params with nested dicts/lists).
+        """
+        # Strategy 1: Find JSON with balanced braces containing "tool"
+        action = self._extract_json_action(response)
+        if action:
+            return action
+
+        # Strategy 2: Try the whole response as JSON
+        try:
+            data = json.loads(response.strip())
+            if isinstance(data, dict) and "tool" in data:
                 return Action(
                     tool=data.get("tool", "wait"),
                     params=data.get("params", {}),
-                    reasoning=data.get("reasoning", "")
+                    reasoning=data.get("reasoning", ""),
                 )
-            except json.JSONDecodeError:
-                pass
+        except (json.JSONDecodeError, ValueError):
+            pass
 
         # Fallback - look for tool name
         tool_match = re.search(r'(\w+:\w+)', response)
@@ -923,3 +1012,62 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             return Action(tool=tool_match.group(1), params={}, reasoning=response[:200])
 
         return Action(tool="wait", params={}, reasoning="Could not parse response")
+
+    def _extract_json_action(self, text: str) -> Optional[Action]:
+        """Extract a JSON action object using balanced brace matching.
+
+        Handles nested objects like: {"tool": "x", "params": {"key": {"nested": true}}}
+        """
+        # Find all positions where '{' followed eventually by '"tool"'
+        start = 0
+        while start < len(text):
+            brace_pos = text.find('{', start)
+            if brace_pos == -1:
+                break
+
+            # Try to find balanced closing brace
+            depth = 0
+            in_string = False
+            escape_next = False
+            end_pos = None
+
+            for i in range(brace_pos, len(text)):
+                ch = text[i]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if ch == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end_pos = i
+                        break
+
+            if end_pos is None:
+                start = brace_pos + 1
+                continue
+
+            candidate = text[brace_pos:end_pos + 1]
+            try:
+                data = json.loads(candidate)
+                if isinstance(data, dict) and "tool" in data:
+                    return Action(
+                        tool=data.get("tool", "wait"),
+                        params=data.get("params", {}),
+                        reasoning=data.get("reasoning", ""),
+                    )
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+            start = brace_pos + 1
+
+        return None
