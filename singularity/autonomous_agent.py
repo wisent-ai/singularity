@@ -69,6 +69,7 @@ from .skills.payment import PaymentSkill
 from .skills.usage_tracking import UsageTrackingSkill
 from .skills.skill_composer import SkillComposerSkill
 from .skills.agent_network import AgentNetworkSkill
+from .skills.secret_vault import SecretVaultSkill
 from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
 
@@ -141,7 +142,9 @@ class AutonomousAgent:
         PaymentSkill,
         UsageTrackingSkill,
         SkillComposerSkill,
-        AgentNetworkSkill,    ]
+        AgentNetworkSkill,
+        SecretVaultSkill,
+    ]
 
     def __init__(
         self,
