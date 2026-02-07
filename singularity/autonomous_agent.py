@@ -17,12 +17,14 @@ except RuntimeError:
 import asyncio
 import os
 import json
+import signal
+import traceback
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
@@ -90,6 +92,8 @@ class AutonomousAgent:
         openai_api_key: str = "",
         system_prompt: Optional[str] = None,
         system_prompt_file: Optional[str] = None,
+        max_cycles: Optional[int] = None,
+        max_consecutive_errors: int = 5,
     ):
         """
         Initialize an autonomous agent.
@@ -109,6 +113,8 @@ class AutonomousAgent:
             openai_api_key: OpenAI API key
             system_prompt: Custom system prompt
             system_prompt_file: Path to file containing system prompt
+            max_cycles: Maximum number of cycles before stopping (None = unlimited)
+            max_consecutive_errors: Stop after this many consecutive errors
         """
         self.name = name
         self.ticker = ticker
@@ -118,11 +124,18 @@ class AutonomousAgent:
         self.instance_type = instance_type
         self.cycle_interval = cycle_interval_seconds
         self.instance_cost_per_hour = self.INSTANCE_COSTS.get(instance_type, 0.0)
+        self.max_cycles = max_cycles
+        self.max_consecutive_errors = max_consecutive_errors
 
         # Cost tracking
         self.total_api_cost = 0.0
         self.total_instance_cost = 0.0
         self.total_tokens_used = 0
+
+        # Error tracking
+        self.consecutive_errors = 0
+        self.total_errors = 0
+        self.last_error: Optional[str] = None
 
         # Initialize cognition engine
         self.cognition = CognitionEngine(
@@ -147,6 +160,10 @@ class AutonomousAgent:
         self.recent_actions: List[Dict] = []
         self.cycle = 0
         self.running = False
+        self._stop_reason: Optional[str] = None
+
+        # Shutdown callbacks
+        self._shutdown_callbacks: List[Callable] = []
 
         # Track created resources
         self.created_resources: Dict[str, List] = {
@@ -282,20 +299,83 @@ class AutonomousAgent:
 
         return tools
 
+    def on_shutdown(self, callback: Callable) -> None:
+        """Register a callback to be called on agent shutdown.
+
+        Args:
+            callback: A callable (sync or async) to run during shutdown.
+                      Receives a dict with 'reason', 'cycles', 'balance'.
+        """
+        self._shutdown_callbacks.append(callback)
+
+    def _install_signal_handlers(self):
+        """Install signal handlers for graceful shutdown."""
+        loop = asyncio.get_event_loop()
+
+        def _signal_handler(sig, frame):
+            sig_name = signal.Signals(sig).name
+            self._log("SIGNAL", f"Received {sig_name}, initiating graceful shutdown...")
+            self._stop_reason = f"signal_{sig_name}"
+            self.running = False
+
+        # Install handlers - only works in main thread
+        try:
+            signal.signal(signal.SIGINT, _signal_handler)
+            signal.signal(signal.SIGTERM, _signal_handler)
+        except (ValueError, OSError):
+            # Can't install signal handlers outside main thread
+            pass
+
+    async def _run_shutdown_callbacks(self):
+        """Run all registered shutdown callbacks."""
+        info = {
+            "reason": self._stop_reason or "unknown",
+            "cycles": self.cycle,
+            "balance": self.balance,
+            "total_api_cost": self.total_api_cost,
+            "total_errors": self.total_errors,
+        }
+        for cb in self._shutdown_callbacks:
+            try:
+                result = cb(info)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception as e:
+                self._log("SHUTDOWN", f"Callback error: {e}")
+
     async def run(self):
-        """Main agent loop."""
+        """Main agent loop with error recovery and graceful shutdown.
+
+        The loop continues until one of these conditions is met:
+        - balance <= 0 (out of funds)
+        - max_cycles reached (if set)
+        - max_consecutive_errors reached
+        - SIGINT or SIGTERM received
+        - stop() called
+        """
         self.running = True
+        self._stop_reason = None
+        self._install_signal_handlers()
+
         tools = self._get_tools()
         cycle_start_time = datetime.now()
 
         self._log("AWAKE", f"{self.name} (${self.ticker}) - Type: {self.agent_type}")
         self._log("BALANCE", f"${self.balance:.4f} USD")
         self._log("TOOLS", f"{len(tools)} available")
+        if self.max_cycles:
+            self._log("LIMIT", f"Max {self.max_cycles} cycles")
 
         for t in tools:
             self._log("TOOL", t["name"])
 
         while self.running and self.balance > 0:
+            # Check max_cycles limit
+            if self.max_cycles is not None and self.cycle >= self.max_cycles:
+                self._stop_reason = "max_cycles_reached"
+                self._log("LIMIT", f"Reached max cycles ({self.max_cycles})")
+                break
+
             self.cycle += 1
             cycle_start = datetime.now()
 
@@ -307,60 +387,181 @@ class AutonomousAgent:
 
             self._log("CYCLE", f"#{self.cycle} | ${self.balance:.4f} | ~{runway_cycles:.0f} cycles left")
 
-            # Think
-            state = AgentState(
-                balance=self.balance,
-                burn_rate=est_cost_per_cycle,
-                runway_hours=runway_hours,
-                tools=self._get_tools(),
-                recent_actions=self.recent_actions[-10:],
-                cycle=self.cycle,
-                created_resources=self.created_resources,
-            )
+            try:
+                # Think
+                state = AgentState(
+                    balance=self.balance,
+                    burn_rate=est_cost_per_cycle,
+                    runway_hours=runway_hours,
+                    tools=self._get_tools(),
+                    recent_actions=self.recent_actions[-10:],
+                    cycle=self.cycle,
+                    created_resources=self.created_resources,
+                )
 
-            decision = await self.cognition.think(state)
-            self._log("THINK", decision.reasoning[:150] if decision.reasoning else "...")
-            self._log("DO", f"{decision.action.tool} {decision.action.params}")
+                decision = await self.cognition.think(state)
+                self._log("THINK", decision.reasoning[:150] if decision.reasoning else "...")
+                self._log("DO", f"{decision.action.tool} {decision.action.params}")
 
-            # Execute
-            result = await self._execute(decision.action)
-            self._log("RESULT", str(result)[:200])
+                # Execute
+                result = await self._execute(decision.action)
+                self._log("RESULT", str(result)[:200])
 
-            # Track created resources
-            self._track_created_resource(decision.action.tool, decision.action.params, result)
+                # Reset consecutive error counter on success
+                self.consecutive_errors = 0
 
-            # Record action
-            self.recent_actions.append({
-                "cycle": self.cycle,
-                "tool": decision.action.tool,
-                "params": decision.action.params,
-                "result": result,
-                "api_cost_usd": decision.api_cost_usd,
-                "tokens": decision.token_usage.total_tokens()
-            })
+                # Track created resources
+                self._track_created_resource(decision.action.tool, decision.action.params, result)
 
-            # Calculate costs
-            cycle_duration_hours = (datetime.now() - cycle_start).total_seconds() / 3600
-            instance_cost = self.instance_cost_per_hour * cycle_duration_hours
-            api_cost = decision.api_cost_usd
-            total_cycle_cost = instance_cost + api_cost
+                # Record action
+                self.recent_actions.append({
+                    "cycle": self.cycle,
+                    "tool": decision.action.tool,
+                    "params": decision.action.params,
+                    "result": result,
+                    "api_cost_usd": decision.api_cost_usd,
+                    "tokens": decision.token_usage.total_tokens()
+                })
 
-            # Track cumulative costs
-            self.total_api_cost += api_cost
-            self.total_instance_cost += instance_cost
-            self.total_tokens_used += decision.token_usage.total_tokens()
+                # Calculate costs
+                cycle_duration_hours = (datetime.now() - cycle_start).total_seconds() / 3600
+                instance_cost = self.instance_cost_per_hour * cycle_duration_hours
+                api_cost = decision.api_cost_usd
+                total_cycle_cost = instance_cost + api_cost
 
-            # Deduct cost from balance
-            self.balance -= total_cycle_cost
+                # Track cumulative costs
+                self.total_api_cost += api_cost
+                self.total_instance_cost += instance_cost
+                self.total_tokens_used += decision.token_usage.total_tokens()
 
-            self._log("COST", f"API: ${api_cost:.6f} + Instance: ${instance_cost:.6f} = ${total_cycle_cost:.6f}")
+                # Deduct cost from balance
+                self.balance -= total_cycle_cost
+
+                self._log("COST", f"API: ${api_cost:.6f} + Instance: ${instance_cost:.6f} = ${total_cycle_cost:.6f}")
+
+            except Exception as e:
+                self.consecutive_errors += 1
+                self.total_errors += 1
+                self.last_error = str(e)
+                error_tb = traceback.format_exc()
+
+                self._log("ERROR", f"Cycle {self.cycle} failed ({self.consecutive_errors}/{self.max_consecutive_errors}): {e}")
+
+                # Record the error as an action so the agent can see what happened
+                self.recent_actions.append({
+                    "cycle": self.cycle,
+                    "tool": "error",
+                    "params": {},
+                    "result": {
+                        "status": "error",
+                        "message": str(e),
+                        "traceback": error_tb[-500:],
+                    },
+                    "api_cost_usd": 0.0,
+                    "tokens": 0
+                })
+
+                # Check consecutive error limit
+                if self.consecutive_errors >= self.max_consecutive_errors:
+                    self._stop_reason = "max_errors_reached"
+                    self._log("DEATH", f"Too many consecutive errors ({self.consecutive_errors}). Shutting down.")
+                    break
+
+                # Exponential backoff on errors
+                backoff = min(60, self.cycle_interval * (2 ** self.consecutive_errors))
+                self._log("RETRY", f"Waiting {backoff:.1f}s before retry...")
+                await asyncio.sleep(backoff)
+                continue
+
+            if not self.running:
+                break
 
             await asyncio.sleep(self.cycle_interval)
 
+        # Determine stop reason if not already set
+        if self._stop_reason is None:
+            if self.balance <= 0:
+                self._stop_reason = "out_of_funds"
+            elif not self.running:
+                self._stop_reason = "stopped"
+            else:
+                self._stop_reason = "unknown"
+
         total_runtime_hours = (datetime.now() - cycle_start_time).total_seconds() / 3600
-        self._log("END", f"Balance: ${self.balance:.4f}")
-        self._log("SUMMARY", f"Ran {self.cycle} cycles in {total_runtime_hours:.2f}h | API: ${self.total_api_cost:.4f} | Tokens: {self.total_tokens_used}")
+        self._log("END", f"Balance: ${self.balance:.4f} | Reason: {self._stop_reason}")
+        self._log("SUMMARY", f"Ran {self.cycle} cycles in {total_runtime_hours:.2f}h | API: ${self.total_api_cost:.4f} | Tokens: {self.total_tokens_used} | Errors: {self.total_errors}")
+
+        # Run shutdown callbacks
+        await self._run_shutdown_callbacks()
         self._mark_stopped()
+
+        return {
+            "reason": self._stop_reason,
+            "cycles": self.cycle,
+            "balance": self.balance,
+            "total_api_cost": self.total_api_cost,
+            "total_errors": self.total_errors,
+            "runtime_hours": total_runtime_hours,
+        }
+
+    async def run_once(self) -> Dict:
+        """Execute a single think-act cycle and return the result.
+
+        Useful for testing, task-oriented execution, or external orchestration.
+
+        Returns:
+            Dict with cycle result including decision, result, and cost info.
+        """
+        self.cycle += 1
+        cycle_start = datetime.now()
+
+        avg_cycle_hours = self.cycle_interval / 3600
+        est_cost_per_cycle = 0.01 + (self.instance_cost_per_hour * avg_cycle_hours)
+        runway_cycles = self.balance / est_cost_per_cycle if est_cost_per_cycle > 0 else float('inf')
+        runway_hours = runway_cycles * (self.cycle_interval / 3600)
+
+        state = AgentState(
+            balance=self.balance,
+            burn_rate=est_cost_per_cycle,
+            runway_hours=runway_hours,
+            tools=self._get_tools(),
+            recent_actions=self.recent_actions[-10:],
+            cycle=self.cycle,
+            created_resources=self.created_resources,
+        )
+
+        decision = await self.cognition.think(state)
+        result = await self._execute(decision.action)
+
+        # Track costs
+        cycle_duration_hours = (datetime.now() - cycle_start).total_seconds() / 3600
+        instance_cost = self.instance_cost_per_hour * cycle_duration_hours
+        api_cost = decision.api_cost_usd
+        total_cycle_cost = instance_cost + api_cost
+
+        self.total_api_cost += api_cost
+        self.total_instance_cost += instance_cost
+        self.total_tokens_used += decision.token_usage.total_tokens()
+        self.balance -= total_cycle_cost
+
+        self.recent_actions.append({
+            "cycle": self.cycle,
+            "tool": decision.action.tool,
+            "params": decision.action.params,
+            "result": result,
+            "api_cost_usd": api_cost,
+            "tokens": decision.token_usage.total_tokens()
+        })
+
+        return {
+            "cycle": self.cycle,
+            "tool": decision.action.tool,
+            "params": decision.action.params,
+            "result": result,
+            "reasoning": decision.reasoning,
+            "cost": total_cycle_cost,
+            "balance": self.balance,
+        }
 
     def _track_created_resource(self, tool: str, params: Dict, result: Dict):
         """Track created resources."""
@@ -473,8 +674,13 @@ class AutonomousAgent:
         except Exception:
             pass
 
-    def stop(self):
-        """Stop the agent gracefully."""
+    def stop(self, reason: str = "manual_stop"):
+        """Stop the agent gracefully.
+
+        Args:
+            reason: Why the agent is stopping (for logging/callbacks).
+        """
+        self._stop_reason = reason
         self.running = False
 
 
