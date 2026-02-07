@@ -61,6 +61,7 @@ from .skills.marketplace import MarketplaceSkill
 from .skills.feedback_loop import FeedbackLoopSkill
 from .skills.task_delegator import TaskDelegator
 from .skills.knowledge_sharing import KnowledgeSharingSkill
+from .skills.resource_watcher import ResourceWatcherSkill
 from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
 
@@ -126,6 +127,7 @@ class AutonomousAgent:
         FeedbackLoopSkill,
         TaskDelegator,
         KnowledgeSharingSkill,
+        ResourceWatcherSkill,
     ]
 
     def __init__(
@@ -250,6 +252,7 @@ class AutonomousAgent:
         self._outcome_tracker = None
         # Performance tracker reference (set during skill init)
         self._performance_tracker = None
+        self._resource_watcher = None
         # Tool resolver for fuzzy matching (lazy-initialized)
         self._tool_resolver = None
 
@@ -348,6 +351,13 @@ class AutonomousAgent:
                 if skill_class == KnowledgeSharingSkill and skill:
                     skill.set_agent_id(f"{self.name}_{self.ticker}")
 
+                # Wire up resource watcher skill with agent hooks
+                if skill_class == ResourceWatcherSkill and skill:
+                    skill.set_agent_hooks(
+                        get_balance=lambda: self.balance,
+                        get_model=lambda: self.cognition.llm_model,
+                    )
+                    self._resource_watcher = skill
                 # Store reference to performance tracker for auto-recording
                 if skill_class == PerformanceTracker and skill:
                     self._performance_tracker = skill
@@ -516,6 +526,16 @@ class AutonomousAgent:
             if self._performance_tracker:
                 perf_context = self._performance_tracker.get_context_summary()
 
+            # Get budget context from resource watcher
+            budget_context = ''
+            if self._resource_watcher:
+                try:
+                    budget_context = self._resource_watcher.get_budget_context()
+                except Exception:
+                    pass
+            if budget_context:
+                perf_context = (perf_context + ' ' + budget_context).strip()
+
             state = AgentState(
                 balance=self.balance,
                 burn_rate=est_cost_per_cycle,
@@ -585,6 +605,22 @@ class AutonomousAgent:
                     cost_usd=decision.api_cost_usd,
                     error=str(result.get('message', ''))[:200] if not exec_success else '',
                 )
+
+            # Auto-record resource consumption for budget monitoring
+            if self._resource_watcher:
+                rw_skill_id = skill_id or decision.action.tool
+                rw_action = action_name
+                try:
+                    await self._resource_watcher.execute('record', {
+                        'skill_id': rw_skill_id,
+                        'action': rw_action,
+                        'cost': decision.api_cost_usd,
+                        'tokens': decision.token_usage.total_tokens(),
+                        'duration_ms': exec_time * 1000,
+                        'model': self.cognition.llm_model,
+                    })
+                except Exception:
+                    pass
 
             # Record action
             self.recent_actions.append({
