@@ -1,0 +1,55 @@
+{
+  "insights": [
+    {
+      "text": "AVOID or FIX: Skills with low success rates: shell",
+      "category": "auto",
+      "timestamp": "2026-02-06T21:52:04.440680"
+    },
+    {
+      "text": "CRITICAL: More actions are failing than succeeding. Simplify approach - do fewer things but do them right.",
+      "category": "auto",
+      "timestamp": "2026-02-06T21:52:04.440900"
+    },
+    {
+      "text": "Before each action, verify parameters are correct and prerequisites are met.",
+      "category": "auto",
+      "timestamp": "2026-02-06T21:52:04.441021"
+    },
+    {
+      "text": "ANTI-LOOP: If an action fails twice in a row, switch to a completely different approach.",
+      "category": "auto",
+      "timestamp": "2026-02-06T21:52:04.441121"
+    },
+    {
+      "text": "Before repeating an action, check if the prerequisites have changed.",
+      "category": "auto",
+      "timestamp": "2026-02-06T21:52:04.441220"
+    },
+    {
+      "text": "CIRCUIT BREAKER: After 3 consecutive failures, pause and re-plan from scratch.",
+      "category": "auto",
+      "timestamp": "2026-02-06T21:52:04.441320"
+    },
+    {
+      "text": "Prefer actions that accomplish multiple goals at once.",
+      "category": "auto",
+      "timestamp": "2026-02-06T21:52:04.441422"
+    },
+    {
+      "text": "Batch related operations together to reduce per-action overhead.",
+      "category": "cost",
+      "timestamp": "2026-02-06T21:52:04.442326"
+    },
+    {
+      "text": "Plan before acting - think first, then execute with fewer wasted cycles.",
+      "category": "cost",
+      "timestamp": "2026-02-06T21:52:04.442467"
+    },
+    {
+      "text": "Test insight",
+      "category": "efficiency",
+      "timestamp": "2026-02-06T21:52:04.443436"
+    }
+  ],
+  "updated": "2026-02-06T21:52:04.443475"
+}

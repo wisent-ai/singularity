@@ -44,6 +44,7 @@ from .skills.steering import SteeringSkill
 from .skills.memory import MemorySkill
 from .skills.orchestrator import OrchestratorSkill
 from .skills.crypto import CryptoSkill
+from .skills.strategy import StrategySkill
 
 
 class AutonomousAgent:
@@ -195,6 +196,7 @@ class AutonomousAgent:
             MemorySkill,
             OrchestratorSkill,
             CryptoSkill,
+            StrategySkill,
         ]
 
         for skill_class in skill_classes:
@@ -251,6 +253,15 @@ class AutonomousAgent:
                     skill.set_parent_agent(
                         agent=self,
                         agent_factory=lambda **kwargs: AutonomousAgent(**kwargs),
+                    )
+
+                # Wire up strategy skill with agent internals
+                if skill_class == StrategySkill and skill:
+                    skill.set_agent_hooks(
+                        get_actions=lambda: self.recent_actions,
+                        get_prompt=self.cognition.get_system_prompt,
+                        append_prompt=self.cognition.append_to_prompt,
+                        get_balance=lambda: self.balance,
                     )
 
                 if skill and skill.check_credentials():
