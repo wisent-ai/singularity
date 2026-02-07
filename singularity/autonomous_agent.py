@@ -27,6 +27,7 @@ from typing import Dict, List, Optional
 ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
+from .execution_tracker import ExecutionTracker
 from .skills.base import SkillRegistry
 from .skills.content import ContentCreationSkill
 from .skills.twitter import TwitterSkill
@@ -143,6 +144,9 @@ class AutonomousAgent:
         self.skills = SkillRegistry()
         self._init_skills()
 
+        # Execution intelligence
+        self.execution_tracker = ExecutionTracker()
+
         # State
         self.recent_actions: List[Dict] = []
         self.cycle = 0
@@ -258,7 +262,7 @@ class AutonomousAgent:
                 else:
                     self.skills.uninstall(skill_class(credentials).manifest.skill_id)
             except Exception as e:
-                pass  # Skip skills that fail to load
+                self._log("SKILL_ERR", f"Failed to load {skill_class.__name__}: {e}")
 
     def _get_tools(self) -> List[Dict]:
         """Get tools from installed skills."""
@@ -308,6 +312,9 @@ class AutonomousAgent:
             self._log("CYCLE", f"#{self.cycle} | ${self.balance:.4f} | ~{runway_cycles:.0f} cycles left")
 
             # Think
+            # Build execution context for LLM awareness
+            exec_context = self.execution_tracker.get_prompt_context()
+
             state = AgentState(
                 balance=self.balance,
                 burn_rate=est_cost_per_cycle,
@@ -316,6 +323,7 @@ class AutonomousAgent:
                 recent_actions=self.recent_actions[-10:],
                 cycle=self.cycle,
                 created_resources=self.created_resources,
+                execution_context=exec_context,
             )
 
             decision = await self.cognition.think(state)
@@ -377,12 +385,24 @@ class AutonomousAgent:
             self.created_resources['files'] = self.created_resources['files'][-20:]
 
     async def _execute(self, action: Action) -> Dict:
-        """Execute an action via skills."""
+        """Execute an action via skills with fuzzy matching and tracking."""
         tool = action.tool
         params = action.params
 
         if tool == "wait":
             return {"status": "waited"}
+
+        # Get available tool names for matching
+        available_tools = [t["name"] for t in self._get_tools()]
+
+        # Fuzzy match: auto-correct tool name if not found
+        original_tool = tool
+        if tool not in available_tools and ":" in tool:
+            corrected = self.execution_tracker.find_closest_tool(tool, available_tools)
+            if corrected and corrected != tool:
+                self._log("AUTOCORRECT", f"'{tool}' -> '{corrected}'")
+                tool = corrected
+                self.execution_tracker.corrections_made += 1
 
         # Parse skill:action format
         if ":" in tool:
@@ -394,15 +414,25 @@ class AutonomousAgent:
             if skill:
                 try:
                     result = await skill.execute(action_name, params)
+                    status = "success" if result.success else "failed"
+                    self.execution_tracker.record(tool, status, result.message if not result.success else "")
                     return {
-                        "status": "success" if result.success else "failed",
+                        "status": status,
                         "data": result.data,
                         "message": result.message
                     }
                 except Exception as e:
-                    return {"status": "error", "message": str(e)}
+                    error_msg = str(e)
+                    self.execution_tracker.record(tool, "error", error_msg)
+                    return {"status": "error", "message": f"{tool}: {error_msg}"}
 
-        return {"status": "error", "message": f"Unknown tool: {tool}"}
+        # Tool not found - provide helpful suggestions
+        suggestions = self.execution_tracker.suggest_tools(original_tool, available_tools)
+        error_msg = f"Unknown tool: {original_tool}"
+        if suggestions:
+            error_msg += f". Did you mean: {', '.join(suggestions)}?"
+        self.execution_tracker.record(original_tool, "error", "tool not found")
+        return {"status": "error", "message": error_msg}
 
     def _kill_for_tampering(self):
         """

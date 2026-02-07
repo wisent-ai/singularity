@@ -152,6 +152,7 @@ class AgentState:
     cycle: int = 0
     project_context: str = ""
     created_resources: Dict[str, Any] = field(default_factory=dict)
+    execution_context: str = ""
 
 
 @dataclass
@@ -597,6 +598,8 @@ Available tools:
 {recent_text}
 
 {state.project_context}
+
+{state.execution_context}
 
 What action should you take? Respond with JSON: {{"tool": "skill:action", "params": {{}}, "reasoning": "why"}}"""
 
