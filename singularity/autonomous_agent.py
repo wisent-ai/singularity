@@ -26,24 +26,32 @@ from typing import Dict, List, Optional
 
 ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
+import importlib
+
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
 from .skills.base import SkillRegistry
-from .skills.content import ContentCreationSkill
-from .skills.twitter import TwitterSkill
-from .skills.github import GitHubSkill
-from .skills.namecheap import NamecheapSkill
-from .skills.email import EmailSkill
-from .skills.browser import BrowserSkill
-from .skills.vercel import VercelSkill
-from .skills.filesystem import FilesystemSkill
-from .skills.shell import ShellSkill
-from .skills.mcp_client import MCPClientSkill
-from .skills.request import RequestSkill
-from .skills.self_modify import SelfModifySkill
-from .skills.steering import SteeringSkill
-from .skills.memory import MemorySkill
-from .skills.orchestrator import OrchestratorSkill
-from .skills.crypto import CryptoSkill
+
+# Skill registry: (module_path, class_name) pairs for lazy loading.
+# Skills are imported at runtime, so missing dependencies for one skill
+# won't prevent the agent from starting.
+SKILL_MODULES = [
+    ("singularity.skills.content", "ContentCreationSkill"),
+    ("singularity.skills.twitter", "TwitterSkill"),
+    ("singularity.skills.github", "GitHubSkill"),
+    ("singularity.skills.namecheap", "NamecheapSkill"),
+    ("singularity.skills.email", "EmailSkill"),
+    ("singularity.skills.browser", "BrowserSkill"),
+    ("singularity.skills.vercel", "VercelSkill"),
+    ("singularity.skills.filesystem", "FilesystemSkill"),
+    ("singularity.skills.shell", "ShellSkill"),
+    ("singularity.skills.mcp_client", "MCPClientSkill"),
+    ("singularity.skills.request", "RequestSkill"),
+    ("singularity.skills.self_modify", "SelfModifySkill"),
+    ("singularity.skills.steering", "SteeringSkill"),
+    ("singularity.skills.memory", "MemorySkill"),
+    ("singularity.skills.orchestrator", "OrchestratorSkill"),
+    ("singularity.skills.crypto", "CryptoSkill"),
+]
 
 
 class AutonomousAgent:
@@ -159,8 +167,25 @@ class AutonomousAgent:
         # Steering skill reference (set during skill init)
         self._steering_skill = None
 
+    def _load_skill_class(self, module_path: str, class_name: str):
+        """Lazily import a skill class. Returns the class or None if import fails."""
+        try:
+            module = importlib.import_module(module_path)
+            return getattr(module, class_name)
+        except ImportError as e:
+            self._log("SKILL", f"- {class_name}: missing dependency ({e})")
+            return None
+        except Exception as e:
+            self._log("SKILL", f"- {class_name}: import error ({e})")
+            return None
+
     def _init_skills(self):
-        """Install skills that have credentials configured."""
+        """Install skills that have credentials configured.
+
+        Skills are lazily imported at runtime, so a missing dependency for one
+        skill (e.g., seleniumbase for BrowserSkill) won't prevent the agent
+        from starting. Skills that fail to import are logged and skipped.
+        """
         credentials = {
             "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
             "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", ""),
@@ -178,87 +203,91 @@ class AutonomousAgent:
         }
         self.skills.set_credentials(credentials)
 
-        skill_classes = [
-            ContentCreationSkill,
-            TwitterSkill,
-            GitHubSkill,
-            NamecheapSkill,
-            EmailSkill,
-            BrowserSkill,
-            VercelSkill,
-            FilesystemSkill,
-            ShellSkill,
-            MCPClientSkill,
-            RequestSkill,
-            SelfModifySkill,
-            SteeringSkill,
-            MemorySkill,
-            OrchestratorSkill,
-            CryptoSkill,
-        ]
+        # Wiring hooks by class name - maps skill class names to their
+        # post-install configuration functions
+        def _wire_content(skill):
+            skill.set_llm(
+                self.cognition.llm,
+                self.cognition.llm_type,
+                self.cognition.llm_model
+            )
 
-        for skill_class in skill_classes:
+        def _wire_self_modify(skill):
+            skill.set_cognition_hooks(
+                get_prompt=self.cognition.get_system_prompt,
+                set_prompt=self.cognition.set_system_prompt,
+                append_prompt=self.cognition.append_to_prompt,
+                get_available_models=self.cognition.get_available_models,
+                get_current_model=self.cognition.get_current_model,
+                switch_model=self.cognition.switch_model,
+                record_example=self.cognition.record_training_example,
+                get_examples=self.cognition.get_training_examples,
+                clear_examples=self.cognition.clear_training_examples,
+                export_training=self.cognition.export_training_data,
+                start_finetune=self.cognition.start_finetune,
+                check_finetune=self.cognition.check_finetune_status,
+                use_finetuned=self.cognition.use_finetuned_model,
+                kill_agent=self._kill_for_tampering,
+            )
+
+        def _wire_steering(skill):
+            skill.set_model_hooks(
+                get_model=self.cognition.get_model,
+                get_tokenizer=self.cognition.get_tokenizer,
+                is_local_model=self.cognition.is_local_model,
+            )
+            self._steering_skill = skill
+
+        def _wire_memory(skill):
+            skill.set_agent_context(
+                agent_name=self.name.lower().replace(" ", "_"),
+                dataset_prefix="singularity",
+            )
+
+        def _wire_orchestrator(skill):
+            skill.set_parent_agent(
+                agent=self,
+                agent_factory=lambda **kwargs: AutonomousAgent(**kwargs),
+            )
+
+        wiring_hooks = {
+            "ContentCreationSkill": _wire_content,
+            "SelfModifySkill": _wire_self_modify,
+            "SteeringSkill": _wire_steering,
+            "MemorySkill": _wire_memory,
+            "OrchestratorSkill": _wire_orchestrator,
+        }
+
+        # Load and install skills with lazy imports
+        loaded_count = 0
+        skipped_count = 0
+
+        for module_path, class_name in SKILL_MODULES:
+            skill_class = self._load_skill_class(module_path, class_name)
+            if skill_class is None:
+                skipped_count += 1
+                continue
+
             try:
                 self.skills.install(skill_class)
                 skill = self.skills.get(skill_class(credentials).manifest.skill_id)
 
-                # Inject LLM into content skill
-                if skill_class == ContentCreationSkill and skill:
-                    skill.set_llm(
-                        self.cognition.llm,
-                        self.cognition.llm_type,
-                        self.cognition.llm_model
-                    )
-
-                # Wire up self-modification skill to cognition engine
-                if skill_class == SelfModifySkill and skill:
-                    skill.set_cognition_hooks(
-                        get_prompt=self.cognition.get_system_prompt,
-                        set_prompt=self.cognition.set_system_prompt,
-                        append_prompt=self.cognition.append_to_prompt,
-                        get_available_models=self.cognition.get_available_models,
-                        get_current_model=self.cognition.get_current_model,
-                        switch_model=self.cognition.switch_model,
-                        record_example=self.cognition.record_training_example,
-                        get_examples=self.cognition.get_training_examples,
-                        clear_examples=self.cognition.clear_training_examples,
-                        export_training=self.cognition.export_training_data,
-                        start_finetune=self.cognition.start_finetune,
-                        check_finetune=self.cognition.check_finetune_status,
-                        use_finetuned=self.cognition.use_finetuned_model,
-                        kill_agent=self._kill_for_tampering,
-                    )
-
-                # Wire up steering skill to model access
-                if skill_class == SteeringSkill and skill:
-                    skill.set_model_hooks(
-                        get_model=self.cognition.get_model,
-                        get_tokenizer=self.cognition.get_tokenizer,
-                        is_local_model=self.cognition.is_local_model,
-                    )
-                    # Store reference for steering during generation
-                    self._steering_skill = skill
-
-                # Wire up memory skill with agent context
-                if skill_class == MemorySkill and skill:
-                    skill.set_agent_context(
-                        agent_name=self.name.lower().replace(" ", "_"),
-                        dataset_prefix="singularity",
-                    )
-
-                # Wire up orchestrator skill with agent factory
-                if skill_class == OrchestratorSkill and skill:
-                    skill.set_parent_agent(
-                        agent=self,
-                        agent_factory=lambda **kwargs: AutonomousAgent(**kwargs),
-                    )
+                # Apply wiring hooks if this skill needs post-install config
+                wire_fn = wiring_hooks.get(class_name)
+                if wire_fn and skill:
+                    wire_fn(skill)
 
                 if skill and skill.check_credentials():
                     self._log("SKILL", f"+ {skill.manifest.name}")
+                    loaded_count += 1
                 else:
                     self.skills.uninstall(skill_class(credentials).manifest.skill_id)
+                    skipped_count += 1
             except Exception as e:
-                pass  # Skip skills that fail to load
+                self._log("SKILL", f"- {class_name}: setup error ({e})")
+                skipped_count += 1
+
+        self._log("SKILL", f"Loaded {loaded_count} skills, skipped {skipped_count}")
 
     def _get_tools(self) -> List[Dict]:
         """Get tools from installed skills."""
