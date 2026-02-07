@@ -44,6 +44,7 @@ from .skills.steering import SteeringSkill
 from .skills.memory import MemorySkill
 from .skills.orchestrator import OrchestratorSkill
 from .skills.crypto import CryptoSkill
+from .skills.spawn_strategy import SpawnStrategySkill
 
 
 class AutonomousAgent:
@@ -195,6 +196,7 @@ class AutonomousAgent:
             MemorySkill,
             OrchestratorSkill,
             CryptoSkill,
+            SpawnStrategySkill,
         ]
 
         for skill_class in skill_classes:
@@ -252,6 +254,10 @@ class AutonomousAgent:
                         agent=self,
                         agent_factory=lambda **kwargs: AutonomousAgent(**kwargs),
                     )
+
+                # Wire up spawn strategy skill with parent agent
+                if skill_class == SpawnStrategySkill and skill:
+                    skill.set_parent_agent(agent=self)
 
                 if skill and skill.check_credentials():
                     self._log("SKILL", f"+ {skill.manifest.name}")
