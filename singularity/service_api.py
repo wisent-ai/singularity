@@ -507,6 +507,76 @@ def create_app(agent=None, api_keys: Optional[List[str]] = None,
             data["agent"] = agent.metrics.summary()
         return data
 
+    # --- Webhook Endpoints ---
+    # These allow external systems to trigger agent actions via HTTP POST.
+    # Webhooks are registered through the WebhookSkill and exposed here.
+
+    @app.post("/webhooks/{endpoint_name}")
+    async def receive_webhook(
+        endpoint_name: str,
+        body: Dict[str, Any] = None,
+        x_webhook_signature: Optional[str] = Header(None),
+        x_hub_signature_256: Optional[str] = Header(None),
+    ):
+        """
+        Receive an inbound webhook from an external system.
+
+        External systems POST to /webhooks/<endpoint_name> with a JSON payload.
+        The agent validates the signature, applies filters, transforms the payload,
+        and routes it to the configured target skill action.
+
+        Supports GitHub-style (X-Hub-Signature-256) and custom (X-Webhook-Signature) headers.
+        """
+        # Try to get WebhookSkill from the agent
+        webhook_skill = None
+        if agent and hasattr(agent, 'skills'):
+            webhook_skill = agent.skills.get("webhook")
+
+        if not webhook_skill:
+            raise HTTPException(
+                status_code=503,
+                detail="Webhook processing not available (WebhookSkill not loaded)"
+            )
+
+        # Use whichever signature header is present
+        signature = x_webhook_signature or x_hub_signature_256
+
+        result = await webhook_skill.execute("receive", {
+            "endpoint_name": endpoint_name,
+            "payload": body or {},
+            "headers": {"X-Webhook-Signature": signature or ""},
+            "signature": signature,
+        })
+
+        if not result.success:
+            status_code = 400
+            if "not found" in result.message.lower():
+                status_code = 404
+            elif "rate limit" in result.message.lower():
+                status_code = 429
+            elif "signature" in result.message.lower():
+                status_code = 403
+            raise HTTPException(status_code=status_code, detail=result.message)
+
+        return {
+            "status": "accepted",
+            "delivery_id": result.data.get("delivery_id"),
+            "message": result.message,
+        }
+
+    @app.get("/webhooks")
+    async def list_webhooks(api_key: str = Depends(check_auth)):
+        """List all registered webhook endpoints."""
+        webhook_skill = None
+        if agent and hasattr(agent, 'skills'):
+            webhook_skill = agent.skills.get("webhook")
+
+        if not webhook_skill:
+            return {"endpoints": [], "message": "WebhookSkill not loaded"}
+
+        result = await webhook_skill.execute("list_endpoints", {})
+        return result.data
+
     return app
 
 
