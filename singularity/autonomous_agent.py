@@ -28,6 +28,7 @@ ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
 from .skills.base import SkillRegistry
+from .execution_guard import ExecutionGuard
 from .skills.content import ContentCreationSkill
 from .skills.twitter import TwitterSkill
 from .skills.github import GitHubSkill
@@ -142,6 +143,18 @@ class AutonomousAgent:
         # Skills registry
         self.skills = SkillRegistry()
         self._init_skills()
+
+        # Execution guard for safe skill execution
+        self.execution_guard = ExecutionGuard(
+            default_timeout=30.0,
+            max_output_size=50_000,
+            skill_timeouts={
+                "browser": 60.0,       # Browser actions can be slow
+                "shell": 120.0,        # Shell commands may run long
+                "request": 30.0,       # HTTP requests
+                "mcp_client": 60.0,    # MCP calls
+            },
+        )
 
         # State
         self.recent_actions: List[Dict] = []
@@ -377,7 +390,7 @@ class AutonomousAgent:
             self.created_resources['files'] = self.created_resources['files'][-20:]
 
     async def _execute(self, action: Action) -> Dict:
-        """Execute an action via skills."""
+        """Execute an action via skills with timeout and error handling."""
         tool = action.tool
         params = action.params
 
@@ -392,17 +405,18 @@ class AutonomousAgent:
 
             skill = self.skills.get(skill_id)
             if skill:
-                try:
-                    result = await skill.execute(action_name, params)
-                    return {
-                        "status": "success" if result.success else "failed",
-                        "data": result.data,
-                        "message": result.message
-                    }
-                except Exception as e:
-                    return {"status": "error", "message": str(e)}
+                result = await self.execution_guard.execute(skill, action_name, params)
+                return result.to_dict()
 
         return {"status": "error", "message": f"Unknown tool: {tool}"}
+
+    def get_execution_stats(self) -> Dict:
+        """Get execution statistics from the guard."""
+        return self.execution_guard.get_stats()
+
+    def get_execution_summary(self) -> str:
+        """Get human-readable execution summary."""
+        return self.execution_guard.summary()
 
     def _kill_for_tampering(self):
         """
