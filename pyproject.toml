@@ -63,6 +63,7 @@ vertex = ["google-cloud-aiplatform>=1.38.0"]
 steering = ["wisent>=0.1.0", "torch>=2.0.0", "transformers>=4.36.0"]
 memory = ["cognee>=0.1.0"]
 crypto = ["web3>=6.0.0", "eth-account>=0.10.0"]
+api = ["fastapi>=0.100.0", "uvicorn>=0.23.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
