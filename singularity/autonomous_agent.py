@@ -44,6 +44,7 @@ from .skills.steering import SteeringSkill
 from .skills.memory import MemorySkill
 from .skills.orchestrator import OrchestratorSkill
 from .skills.crypto import CryptoSkill
+from .skill_health import SkillHealthMonitor
 
 
 class AutonomousAgent:
@@ -158,6 +159,9 @@ class AutonomousAgent:
 
         # Steering skill reference (set during skill init)
         self._steering_skill = None
+
+        # Skill health monitoring for failure-aware prompts
+        self._health_monitor = SkillHealthMonitor()
 
     def _init_skills(self):
         """Install skills that have credentials configured."""
@@ -308,6 +312,9 @@ class AutonomousAgent:
             self._log("CYCLE", f"#{self.cycle} | ${self.balance:.4f} | ~{runway_cycles:.0f} cycles left")
 
             # Think
+            # Generate failure-awareness context from recent actions
+            health_context = self._health_monitor.generate_context(self.recent_actions)
+
             state = AgentState(
                 balance=self.balance,
                 burn_rate=est_cost_per_cycle,
@@ -316,6 +323,7 @@ class AutonomousAgent:
                 recent_actions=self.recent_actions[-10:],
                 cycle=self.cycle,
                 created_resources=self.created_resources,
+                project_context=health_context,
             )
 
             decision = await self.cognition.think(state)
