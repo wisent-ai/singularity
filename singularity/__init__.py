@@ -12,6 +12,7 @@ from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
 from .skills.base import Skill, SkillRegistry, SkillManifest, SkillAction, SkillResult
 from .tool_resolver import ToolResolver
 from .event_bus import EventBus, Event, EventPriority
+from .service_api import ServiceAPI, TaskStore, TaskStatus, create_app
 
 __all__ = [
     "AutonomousAgent",
@@ -29,4 +30,8 @@ __all__ = [
     "EventBus",
     "Event",
     "EventPriority",
+    "ServiceAPI",
+    "TaskStore",
+    "TaskStatus",
+    "create_app",
 ]
