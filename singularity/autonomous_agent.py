@@ -53,6 +53,7 @@ from .skills.scheduler import SchedulerSkill
 from .skills.strategy import StrategySkill
 from .skills.replication import ReplicationSkill
 from .skills.performance import PerformanceTracker
+from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
 
 
@@ -234,6 +235,8 @@ class AutonomousAgent:
         # Tool resolver for fuzzy matching (lazy-initialized)
         self._tool_resolver = None
 
+        # Adaptive executor for smart retry, circuit breakers, and cost guards
+        self._adaptive_executor = AdaptiveExecutor(balance=starting_balance)
     def _init_skills(self):
         """Install skills that have credentials configured."""
         credentials = {
@@ -565,7 +568,7 @@ class AutonomousAgent:
 
             # Deduct cost from balance
             self.balance -= total_cycle_cost
-
+            self._adaptive_executor.update_balance(self.balance)
             self._log("COST", f"API: ${api_cost:.6f} + Instance: ${instance_cost:.6f} = ${total_cycle_cost:.6f}")
 
             await asyncio.sleep(self.cycle_interval)
@@ -634,18 +637,49 @@ class AutonomousAgent:
 
             skill = self.skills.get(skill_id)
             if skill:
+                # Get adaptive execution advice (circuit breaker, retry config, cost guard)
+                advice = self._adaptive_executor.get_advice(
+                    skill_id, action_name,
+                    estimated_cost=self._get_action_cost_estimate(skill_id, action_name),
+                )
+                if advice.cost_warning:
+                    self._log("COST-WARN", advice.cost_warning)
+
+                if not advice.should_execute:
+                    self._log("CIRCUIT", advice.reason)
+                    return {"status": "blocked", "message": advice.reason}
+
                 try:
                     result = await skill.execute(action_name, params)
-                    return {
+                    outcome = {
                         "status": "success" if result.success else "failed",
                         "data": result.data,
                         "message": result.message
                     }
+                    # Record outcome for adaptive learning
+                    self._adaptive_executor.record_outcome(
+                        skill_id, action_name,
+                        success=result.success,
+                        error=result.message if not result.success else "",
+                    )
+                    return outcome
                 except Exception as e:
+                    self._adaptive_executor.record_outcome(
+                        skill_id, action_name,
+                        success=False, error=str(e),
+                    )
                     return {"status": "error", "message": str(e)}
 
         return {"status": "error", "message": f"Unknown tool: {tool}"}
 
+    def _get_action_cost_estimate(self, skill_id: str, action_name: str) -> float:
+        """Estimate cost for an action from skill manifest."""
+        skill = self.skills.get(skill_id)
+        if skill and hasattr(skill, "manifest"):
+            for act in skill.manifest.actions:
+                if act.name == action_name:
+                    return act.estimated_cost
+        return 0.0
     def _get_agent_state(self) -> Dict:
         """Get current agent state as a read-only dict for SkillContext."""
         avg_cycle_hours = self.cycle_interval / 3600
