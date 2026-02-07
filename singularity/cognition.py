@@ -578,13 +578,23 @@ class CognitionEngine:
             for t in state.tools
         ])
 
-        # Format recent actions
+        # Format recent actions with rich result feedback
         recent_text = ""
         if state.recent_actions:
-            recent_text = "\nRecent actions:\n" + "\n".join([
-                f"- {a['tool']}: {a.get('result', {}).get('status', 'unknown')}"
-                for a in state.recent_actions[-5:]
-            ])
+            try:
+                from .result_feedback import format_recent_actions
+                recent_text = format_recent_actions(
+                    state.recent_actions,
+                    max_actions=5,
+                    max_total_len=2000,
+                    max_per_result=400,
+                )
+            except ImportError:
+                # Fallback to simple format
+                recent_text = "\nRecent actions:\n" + "\n".join([
+                    f"- {a['tool']}: {a.get('result', {}).get('status', 'unknown')}"
+                    for a in state.recent_actions[-5:]
+                ])
 
         user_prompt = f"""Current state:
 - Balance: ${state.balance:.4f}
