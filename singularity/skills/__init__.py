@@ -28,6 +28,7 @@ from .planner import PlannerSkill
 from .scheduler import SchedulerSkill
 from .strategy import StrategySkill
 from .goal_manager import GoalManagerSkill
+from .task_delegator import TaskDelegator
 
 __all__ = [
     # Base
@@ -59,4 +60,5 @@ __all__ = [
     "SchedulerSkill",
     "StrategySkill",
     "GoalManagerSkill",
+    "TaskDelegator",
 ]
