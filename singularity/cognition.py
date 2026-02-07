@@ -578,13 +578,11 @@ class CognitionEngine:
             for t in state.tools
         ])
 
-        # Format recent actions
+        # Format recent actions with intelligent summarization
+        from .action_summarizer import summarize_actions
         recent_text = ""
         if state.recent_actions:
-            recent_text = "\nRecent actions:\n" + "\n".join([
-                f"- {a['tool']}: {a.get('result', {}).get('status', 'unknown')}"
-                for a in state.recent_actions[-5:]
-            ])
+            recent_text = "\n" + summarize_actions(state.recent_actions)
 
         user_prompt = f"""Current state:
 - Balance: ${state.balance:.4f}
