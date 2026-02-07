@@ -27,6 +27,7 @@ from typing import Dict, List, Optional
 ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
+from .context import ContextManager, StaticProvider, CallableProvider
 from .skills.base import SkillRegistry
 from .skills.content import ContentCreationSkill
 from .skills.twitter import TwitterSkill
@@ -138,6 +139,9 @@ class AutonomousAgent:
             system_prompt=system_prompt,
             system_prompt_file=system_prompt_file,
         )
+
+        # Context manager for unified LLM context injection
+        self.context_manager = ContextManager(max_chars=4000)
 
         # Skills registry
         self.skills = SkillRegistry()
@@ -316,6 +320,7 @@ class AutonomousAgent:
                 recent_actions=self.recent_actions[-10:],
                 cycle=self.cycle,
                 created_resources=self.created_resources,
+                project_context=self.context_manager.get_merged_context(),
             )
 
             decision = await self.cognition.think(state)
