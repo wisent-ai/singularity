@@ -22,6 +22,7 @@ from .steering import SteeringSkill
 from .memory import MemorySkill
 from .orchestrator import OrchestratorSkill
 from .crypto import CryptoSkill
+from .agent_meta import AgentMetaSkill
 
 __all__ = [
     # Base
@@ -47,4 +48,5 @@ __all__ = [
     "MemorySkill",
     "OrchestratorSkill",
     "CryptoSkill",
+    "AgentMetaSkill",
 ]
