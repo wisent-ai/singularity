@@ -27,6 +27,7 @@ from typing import Dict, List, Optional
 ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
+from .loop_detector import LoopDetector
 from .skills.base import SkillRegistry
 from .skills.content import ContentCreationSkill
 from .skills.twitter import TwitterSkill
@@ -147,6 +148,7 @@ class AutonomousAgent:
         self.recent_actions: List[Dict] = []
         self.cycle = 0
         self.running = False
+        self.loop_detector = LoopDetector()
 
         # Track created resources
         self.created_resources: Dict[str, List] = {
@@ -307,6 +309,14 @@ class AutonomousAgent:
 
             self._log("CYCLE", f"#{self.cycle} | ${self.balance:.4f} | ~{runway_cycles:.0f} cycles left")
 
+            # Check for loop patterns and inject warnings
+            loop_context = ""
+            if self.recent_actions:
+                alerts = self.loop_detector.analyze(self.recent_actions)
+                if alerts:
+                    loop_context = self.loop_detector.format_warnings(alerts)
+                    self._log("LOOP", f"Detected {len(alerts)} pattern(s): {', '.join(a.pattern_type for a in alerts)}")
+
             # Think
             state = AgentState(
                 balance=self.balance,
@@ -316,6 +326,7 @@ class AutonomousAgent:
                 recent_actions=self.recent_actions[-10:],
                 cycle=self.cycle,
                 created_resources=self.created_resources,
+                project_context=loop_context,
             )
 
             decision = await self.cognition.think(state)
