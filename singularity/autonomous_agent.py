@@ -57,6 +57,7 @@ from .skills.performance import PerformanceTracker
 from .skills.self_eval import SelfEvalSkill
 from .skills.goal_manager import GoalManagerSkill
 from .skills.marketplace import MarketplaceSkill
+from .skills.task_delegator import TaskDelegator
 from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
 
@@ -118,6 +119,7 @@ class AutonomousAgent:
         SelfEvalSkill,
         GoalManagerSkill,
         MarketplaceSkill,
+        TaskDelegator,
     ]
 
     def __init__(
