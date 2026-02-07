@@ -572,11 +572,25 @@ class CognitionEngine:
         # Build the prompt
         system_prompt = self.get_system_prompt()
 
-        # Format tools
-        tools_text = "\n".join([
-            f"- {t['name']}: {t['description']}"
-            for t in state.tools
-        ])
+        # Format tools with parameter schemas
+        tools_lines = []
+        for t in state.tools:
+            line = f"- {t['name']}: {t['description']}"
+            params = t.get('parameters', {})
+            if params:
+                param_parts = []
+                for pname, pinfo in params.items():
+                    if isinstance(pinfo, dict):
+                        desc = pinfo.get('description', pinfo.get('type', ''))
+                        required = pinfo.get('required', True)
+                        suffix = '' if required else ', optional'
+                        param_parts.append(f"{pname} ({desc}{suffix})")
+                    else:
+                        # Simple string description
+                        param_parts.append(f"{pname} ({pinfo})")
+                line += f"\n  Params: {', '.join(param_parts)}"
+            tools_lines.append(line)
+        tools_text = "\n".join(tools_lines)
 
         # Format recent actions
         recent_text = ""
