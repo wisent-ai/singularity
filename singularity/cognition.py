@@ -246,6 +246,8 @@ class CognitionEngine:
         agent_specialty: str = "",
         system_prompt: Optional[str] = None,
         system_prompt_file: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.2,
         # Legacy parameter names for compatibility
         worker_system_prompt: str = "",
         worker_system_prompt_file: str = "",
@@ -256,6 +258,8 @@ class CognitionEngine:
         self.agent_type = agent_type
         self.agent_specialty = agent_specialty or agent_type
         self.llm_model = llm_model
+        self.max_tokens = max_tokens
+        self.temperature = temperature
 
         # Store credentials
         self._anthropic_api_key = anthropic_api_key
@@ -607,7 +611,7 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         if self.llm_type == "anthropic":
             response = await self.llm.messages.create(
                 model=self.llm_model,
-                max_tokens=500,
+                max_tokens=self.max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}]
             )
@@ -620,7 +624,7 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         elif self.llm_type == "vertex":
             response = self.llm.messages.create(
                 model=self.llm_model,
-                max_tokens=500,
+                max_tokens=self.max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}]
             )
@@ -635,7 +639,7 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             response = await asyncio.to_thread(
                 model.generate_content,
                 user_prompt,
-                generation_config=GenerationConfig(max_output_tokens=500, temperature=0.2)
+                generation_config=GenerationConfig(max_output_tokens=self.max_tokens, temperature=self.temperature)
             )
             response_text = response.text
             if hasattr(response, 'usage_metadata'):
@@ -647,7 +651,8 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         elif self.llm_type == "openai":
             response = await self.llm.chat.completions.create(
                 model=self.llm_model,
-                max_tokens=500,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -662,7 +667,10 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
 
         elif self.llm_type == "vllm":
             full_prompt = f"{system_prompt}\n\nUser: {user_prompt}\n\nAssistant:"
-            outputs = self.llm.generate([full_prompt], self.sampling_params)
+            sampling = SamplingParams(
+                temperature=self.temperature, top_p=0.9, max_tokens=self.max_tokens
+            )
+            outputs = self.llm.generate([full_prompt], sampling)
             response_text = outputs[0].outputs[0].text
             token_usage = TokenUsage(
                 input_tokens=len(full_prompt.split()),
@@ -679,7 +687,7 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             ).to(self.llm.device)
 
             with torch.no_grad():
-                outputs = self.llm.generate(**inputs, max_new_tokens=500, temperature=0.2, do_sample=True)
+                outputs = self.llm.generate(**inputs, max_new_tokens=self.max_tokens, temperature=self.temperature, do_sample=True)
 
             response_text = self.tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
             token_usage = TokenUsage(
@@ -708,8 +716,17 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         )
 
     def _parse_action(self, response: str) -> Action:
-        """Parse LLM response into an Action."""
-        # Try to extract JSON from response
+        """Parse LLM response into an Action.
+
+        Uses brace-matching to handle nested JSON (e.g. params with dicts/lists).
+        Falls back to simple regex if brace matching fails.
+        """
+        # Strategy 1: Find balanced JSON object containing "tool"
+        action = self._extract_json_with_tool(response)
+        if action:
+            return action
+
+        # Strategy 2: Simple regex for flat JSON (no nested braces)
         json_match = re.search(r'\{[^{}]*"tool"[^{}]*\}', response, re.DOTALL)
         if json_match:
             try:
@@ -722,9 +739,54 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             except json.JSONDecodeError:
                 pass
 
-        # Fallback - look for tool name
+        # Strategy 3: Look for tool name pattern
         tool_match = re.search(r'(\w+:\w+)', response)
         if tool_match:
             return Action(tool=tool_match.group(1), params={}, reasoning=response[:200])
 
         return Action(tool="wait", params={}, reasoning="Could not parse response")
+
+    def _extract_json_with_tool(self, text: str) -> Optional[Action]:
+        """Extract a JSON object containing 'tool' key using brace matching.
+
+        Handles nested JSON in params like:
+        {"tool": "fs:write", "params": {"path": "a.py", "content": "x = {}"}}
+        """
+        # Find all positions where a { starts a potential JSON object
+        for i, ch in enumerate(text):
+            if ch != '{':
+                continue
+
+            # Check if this could contain "tool" by scanning ahead
+            depth = 0
+            end = -1
+            for j in range(i, len(text)):
+                if text[j] == '{':
+                    depth += 1
+                elif text[j] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end = j
+                        break
+
+            if end == -1:
+                continue
+
+            candidate = text[i:end + 1]
+
+            # Quick check: does it contain "tool"?
+            if '"tool"' not in candidate:
+                continue
+
+            try:
+                data = json.loads(candidate)
+                if isinstance(data, dict) and "tool" in data:
+                    return Action(
+                        tool=data.get("tool", "wait"),
+                        params=data.get("params", {}),
+                        reasoning=data.get("reasoning", "")
+                    )
+            except (json.JSONDecodeError, ValueError):
+                continue
+
+        return None
