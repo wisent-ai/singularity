@@ -27,6 +27,7 @@ from typing import Dict, List, Optional
 ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
+from .insights import ActionInsights
 from .skills.base import SkillRegistry
 from .skills.content import ContentCreationSkill
 from .skills.twitter import TwitterSkill
@@ -307,6 +308,10 @@ class AutonomousAgent:
 
             self._log("CYCLE", f"#{self.cycle} | ${self.balance:.4f} | ~{runway_cycles:.0f} cycles left")
 
+            # Compute performance insights from action history
+            insights = ActionInsights(self.recent_actions)
+            insights_text = insights.format_for_prompt()
+
             # Think
             state = AgentState(
                 balance=self.balance,
@@ -316,6 +321,7 @@ class AutonomousAgent:
                 recent_actions=self.recent_actions[-10:],
                 cycle=self.cycle,
                 created_resources=self.created_resources,
+                project_context=insights_text,
             )
 
             decision = await self.cognition.think(state)
