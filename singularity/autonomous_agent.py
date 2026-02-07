@@ -623,7 +623,7 @@ class AutonomousAgent:
 
 
 async def main():
-    """Example usage."""
+    """Run the agent with configuration from environment variables."""
     agent = AutonomousAgent(
         name=os.environ.get("AGENT_NAME", "MyAgent"),
         ticker=os.environ.get("AGENT_TICKER", "AGENT"),
@@ -635,5 +635,10 @@ async def main():
     await agent.run()
 
 
-if __name__ == "__main__":
+def entry_point():
+    """Sync entry point for console_scripts and Docker."""
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    entry_point()

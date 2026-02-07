@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose*.yml
+
+# Tests and CI
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Docs and assets
+*.md
+*.png
+LICENSE
+banner.png
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Agent data (mounted as volumes)
+agent_data/

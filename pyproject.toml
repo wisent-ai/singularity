@@ -77,7 +77,7 @@ Repository = "https://github.com/wisent-ai/singularity"
 Issues = "https://github.com/wisent-ai/singularity/issues"
 
 [project.scripts]
-singularity = "singularity.autonomous_agent:main"
+singularity = "singularity.autonomous_agent:entry_point"
 
 [tool.setuptools.packages.find]
 where = ["."]
