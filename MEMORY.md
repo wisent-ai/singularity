@@ -1,5 +1,29 @@
 # Singularity Agent Memory
 
+## Session 35c - ConsensusTaskAssignmentSkill (2026-02-08)
+
+### What I Built
+- **ConsensusTaskAssignmentSkill** (PR #157, merged) - Democratic, reputation-weighted task assignment with full voting lifecycle
+- Complements SmartDelegationSkill (automated) and ReputationWeightedAssigner (scoring) with a **multi-phase democratic process**
+- **8 actions**: propose, nominate, vote, close_voting, status, report_outcome, leaderboard, history
+- **Propose**: Submit task for democratic assignment with auto-candidate discovery via AgentNetwork
+- **Nominate**: Add candidates with automatic status transition (nominating → voting)
+- **Vote**: Cast reputation-weighted votes (3 strategies: reputation_weighted, competence_only, equal)
+- **Close Voting**: Tally weighted votes, determine winner, auto-delegate via TaskDelegationSkill
+- **Report Outcome**: Feed task results back to AgentReputationSkill, closing the feedback loop
+- **Leaderboard**: Track which agents win assignments most and their success rates
+- **No-vote fallback**: When no votes cast, reputation scores serve as tiebreaker
+- 13 tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill so proposal vote weights are automatically based on reputation scores
+2. **Auto-Reputation from Task Delegation** - Wire TaskDelegationSkill.report_completion to automatically call AgentReputationSkill.record_task_outcome
+3. **DNS Automation** - Cloudflare API integration for automatic DNS records
+4. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
+5. **Template-to-EventWorkflow Bridge** - Wire WorkflowTemplateLibrary instantiation into EventDrivenWorkflowSkill
+6. **Agent Capability Self-Assessment** - Agents periodically evaluate their own skills and publish updated capability profiles
+
 ## Session 35b - SmartDelegationSkill (2026-02-08)
 
 ### What I Built
