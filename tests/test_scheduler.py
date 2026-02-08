@@ -263,7 +263,7 @@ async def test_manifest(scheduler):
     m = scheduler.manifest
     assert m.skill_id == "scheduler"
     assert m.category == "autonomy"
-    assert len(m.actions) == 8
+    assert len(m.actions) == 10
 
 
 @pytest.mark.asyncio
