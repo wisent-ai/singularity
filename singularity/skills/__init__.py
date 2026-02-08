@@ -45,6 +45,7 @@ from .fleet_health_manager import FleetHealthManagerSkill
 from .revenue_catalog import RevenueServiceCatalogSkill
 from .service_catalog import ServiceCatalogSkill
 from .agent_checkpoint import AgentCheckpointSkill
+from .dashboard_observability_bridge import DashboardObservabilityBridgeSkill
 
 __all__ = [
     # Base
@@ -93,4 +94,5 @@ __all__ = [
     "RevenueServiceCatalogSkill",
     "ServiceCatalogSkill",
     "AgentCheckpointSkill",
+    "DashboardObservabilityBridgeSkill",
 ]
