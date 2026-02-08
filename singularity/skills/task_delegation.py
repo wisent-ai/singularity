@@ -789,18 +789,82 @@ class TaskDelegationSkill(Skill):
 
         self._save(state)
 
+        # Auto-update agent reputation based on task outcome
+        reputation_updated = await self._auto_update_reputation(delegation, new_status)
+
+        msg = (
+            f"Delegation '{delegation['task_name']}' reported as {new_status}. "
+            f"Budget spent: ${delegation['budget_spent']:.2f}, "
+            f"reclaimed: ${unspent:.2f}"
+        )
+        if reputation_updated:
+            msg += f" (reputation updated for agent '{delegation['agent_id']}')"
+
         return SkillResult(
             success=True,
-            message=f"Delegation '{delegation['task_name']}' reported as {new_status}. "
-                    f"Budget spent: ${delegation['budget_spent']:.2f}, "
-                    f"reclaimed: ${unspent:.2f}",
+            message=msg,
             data={
                 "delegation_id": delegation_id,
                 "status": new_status,
                 "budget_spent": delegation["budget_spent"],
                 "budget_reclaimed": unspent,
+                "reputation_updated": reputation_updated,
             },
         )
+
+    async def _auto_update_reputation(self, delegation: Dict, status: str) -> bool:
+        """
+        Automatically update agent reputation when a delegation completes.
+        
+        Bridges TaskDelegationSkill -> AgentReputationSkill by calling
+        record_task_outcome with computed metrics from the delegation.
+        
+        Returns True if reputation was successfully updated.
+        """
+        if not self.context:
+            return False
+
+        agent_id = delegation.get("agent_id", "")
+        if not agent_id:
+            return False
+
+        # Compute budget efficiency: 0.0 = used all budget, 1.0 = used nothing
+        budget_allocated = delegation.get("budget", 1.0)
+        budget_spent = delegation.get("budget_spent", 0.0)
+        if budget_allocated > 0:
+            budget_efficiency = max(0.0, min(1.0, 1.0 - (budget_spent / budget_allocated)))
+        else:
+            budget_efficiency = 0.5
+
+        # Compute on_time: check if completed before timeout
+        on_time = True
+        created_at = delegation.get("created_at")
+        completed_at = delegation.get("completed_at")
+        timeout_minutes = delegation.get("timeout_minutes", DEFAULT_TIMEOUT_MINUTES)
+        if created_at and completed_at:
+            try:
+                created = datetime.fromisoformat(created_at)
+                completed = datetime.fromisoformat(completed_at)
+                elapsed_minutes = (completed - created).total_seconds() / 60.0
+                on_time = elapsed_minutes <= timeout_minutes
+            except (ValueError, TypeError):
+                on_time = True  # Default to on-time if we can't parse
+
+        try:
+            result = await self.context.call_skill(
+                "agent_reputation", "record_task_outcome",
+                {
+                    "agent_id": agent_id,
+                    "success": status == "completed",
+                    "budget_efficiency": round(budget_efficiency, 3),
+                    "on_time": on_time,
+                    "task_name": delegation.get("task_name", "unknown"),
+                }
+            )
+            return result.success
+        except Exception:
+            # Reputation update is best-effort; don't break delegation
+            return False
 
     async def _send_to_agent(self, delegation: Dict) -> bool:
         """Try to send delegation to an agent via RPC."""
