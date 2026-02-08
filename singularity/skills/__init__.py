@@ -46,6 +46,7 @@ from .revenue_catalog import RevenueServiceCatalogSkill
 from .service_catalog import ServiceCatalogSkill
 from .agent_checkpoint import AgentCheckpointSkill
 from .workflow_analytics_bridge import WorkflowAnalyticsBridgeSkill
+from .checkpoint_comparison import CheckpointComparisonAnalyticsSkill
 
 __all__ = [
     # Base
@@ -95,4 +96,5 @@ __all__ = [
     "ServiceCatalogSkill",
     "AgentCheckpointSkill",
     "WorkflowAnalyticsBridgeSkill",
+    "CheckpointComparisonAnalyticsSkill",
 ]
