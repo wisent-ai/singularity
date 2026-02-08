@@ -695,14 +695,17 @@ PerformanceOptimizerSkill,
             # Track created resources
             self._track_created_resource(decision.action.tool, decision.action.params, result)
 
+            # Parse skill_id and action_name from tool string for use by
+            # performance_tracker, error_recovery, and resource_watcher below
+            skill_id, action_name = '', ''
+            if ':' in decision.action.tool:
+                parts = decision.action.tool.split(':', 1)
+                skill_id, action_name = parts[0], parts[1]
+            else:
+                skill_id = decision.action.tool
+
             # Auto-record performance for cross-session analytics
             if self._performance_tracker:
-                skill_id, action_name = '', ''
-                if ':' in decision.action.tool:
-                    parts = decision.action.tool.split(':', 1)
-                    skill_id, action_name = parts[0], parts[1]
-                else:
-                    skill_id = decision.action.tool
                 self._performance_tracker.record_outcome(
                     skill_id=skill_id,
                     action=action_name,
