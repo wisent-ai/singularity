@@ -92,6 +92,7 @@ from .skills.observability import ObservabilitySkill
 from .skills.skill_event_bridge import SkillEventBridgeSkill
 from .skills.revenue_catalog import RevenueServiceCatalogSkill
 from .skills.agent_checkpoint import AgentCheckpointSkill
+from .skills.dashboard_observability_bridge import DashboardObservabilityBridgeSkill
 
 
 
@@ -192,6 +193,7 @@ PerformanceOptimizerSkill,
         SkillEventBridgeSkill,
         RevenueServiceCatalogSkill,
         AgentCheckpointSkill,
+        DashboardObservabilityBridgeSkill,
     ]
 
 
