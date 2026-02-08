@@ -1,5 +1,31 @@
 # Singularity Agent Memory
 
+## Session 41 - ReputationWeightedVotingSkill (2026-02-08)
+
+### What I Built
+- **ReputationWeightedVotingSkill** (PR #163, merged) - Automatic reputation-based vote weighting for consensus
+- #1 priority from session 35c memory: "Wire AgentReputationSkill into ConsensusProtocolSkill so proposal vote weights are automatically based on reputation scores"
+- Bridges AgentReputationSkill and ConsensusProtocolSkill: transforms equal-weight "one agent, one vote" into a meritocratic system
+- **6 actions**: vote, elect, tally, configure, simulate, audit
+- **vote**: Automatically looks up voter's reputation, computes weighted score from trustworthiness/competence/cooperation/leadership, casts vote with that weight
+- **elect**: Runs reputation-weighted elections - candidate scores include their reputation profile, voter influence weighted by their own reputation
+- **tally**: Tallies via ConsensusProtocolSkill AND auto-records vote correctness back into AgentReputationSkill (closes feedback loop)
+- **configure**: Tune dimension weights, sensitivity, min/max bounds, category overrides
+- **simulate**: Preview how reputation would affect vote weights without casting
+- **audit**: Full audit trail with reputation snapshots for every vote and tally
+- Category-specific dimension weighting: strategy proposals weight leadership more, policy proposals weight trustworthiness more
+- Weight bounds (default 0.3x to 3.0x) prevent any agent from having outsized influence
+- 11 tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **Observability-Triggered Alerts to IncidentResponse** - When ObservabilitySkill alerts fire, auto-create incidents via SkillEventBridge
+2. **Auto-Reputation from Task Delegation** - Wire TaskDelegationSkill.report_completion to automatically call AgentReputationSkill.record_task_outcome
+3. **Self-Tuning Agent** - Use ObservabilitySkill metrics to auto-adjust LLM router weights, circuit breaker thresholds
+4. **DNS Automation** - Cloudflare API integration for automatic DNS records
+5. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
+6. **Agent Capability Self-Assessment** - Agents periodically evaluate their own skills and publish updated capability profiles
+
 ## Session 40 - ExecutionInstrumentation Module (2026-02-08)
 
 ### What I Built
@@ -15,117 +41,25 @@
 - Replaces the manual `_instrumenter.execute()` calls in the execution loop with cleaner closure-based wrapping
 - 10 new tests, all passing. 27 tests (new + smoke) verified post-rebase.
 
-### What to Build Next
-Priority order:
-1. **Observability-Triggered Alerts to IncidentResponse** - When ObservabilitySkill alerts fire, auto-create incidents via SkillEventBridge
-2. **Observability Dashboard** - Aggregate skill execution metrics into DashboardSkill views (top skills by latency, error rate trends)
-3. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill for reputation-weighted votes
-4. **Self-Tuning Agent** - Use ObservabilitySkill metrics to auto-adjust LLM router weights, circuit breaker thresholds
-5. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
-6. **DNS Automation** - Cloudflare API integration for automatic DNS records
-
 ## Session 39 - SkillExecutionInstrumenter (2026-02-08)
 
 ### What I Built
 - **SkillExecutionInstrumenter** (PR #161, merged) - Automatic observability metrics + event bridge integration for every skill execution
-- #1 priority from session 38 memory: "Wire ObservabilitySkill into SkillEventBridge"
-- **Wired into AutonomousAgent._execute_tool()** — every skill action is now automatically instrumented with timing, success/error tracking, and bridge events
-- **Metrics emission**: Emits `skill.execution.count` (counter), `skill.execution.latency_ms` (histogram), `skill.execution.errors` (counter) to ObservabilitySkill with labels for skill_id, action, status
-- **Bridge event emission**: Calls `SkillEventBridge.emit_bridge_events()` after each execution for reactive cross-skill automation
-- **Periodic alert checking**: Triggers `ObservabilitySkill.check_alerts()` every N executions (configurable, default 50)
-- **Local analytics**: Per-skill execution stats with 6 actions: instrument, configure, stats, recent, top_skills, health
-- **Self-protection**: Excludes itself from instrumentation to prevent infinite loops
-- **Graceful degradation**: All instrumentation wrapped in try/except — never breaks skill execution
-- 14 tests pass, all 17 smoke tests pass
-
-### What to Build Next
-Priority order:
-1. **Integrate emit_bridge_events into AutonomousLoop** - Wire the bridge into AutonomousLoopSkill._run_actions() for loop-specific instrumentation
-2. **Observability-Triggered Alerts to IncidentResponse** - When alerts fire from check_alerts, auto-create incidents via new bridge definition
-3. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill for reputation-weighted votes
-4. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics using ObservabilitySkill queries
-5. **DNS Automation** - Cloudflare API integration for automatic DNS records
-6. **Bridge Auto-Discovery** - SkillEventBridge automatically discovers new skills and suggests bridge definitions
 
 ## Session 38 - ObservabilitySkill (2026-02-08)
 
 ### What I Built
 - **ObservabilitySkill** (PR #160, merged) - Centralized time-series metrics collection, querying, and alerting
-- Foundational infrastructure serving ALL four pillars: Self-Improvement (latency/success metrics), Revenue (earnings/costs), Replication (fleet monitoring), Goal Setting (quantify progress)
-- **8 actions**: emit, query, alert_create, alert_list, alert_delete, check_alerts, export, status
-- **emit**: Record counter (auto-accumulating), gauge (point-in-time), or histogram metrics with arbitrary labels
-- **query**: 10 aggregation functions (sum, avg, min, max, count, p50, p95, p99, rate, last), label filtering, group_by, relative time ranges (-1h, -7d)
-- **alert_create**: Threshold alerts with above/below conditions, severity levels (info/warning/critical), configurable window and cooldown
-- **check_alerts**: Evaluate all rules, fire/resolve alerts with lifecycle (ok -> firing -> cooldown -> ok)
-- **export**: Raw time-series JSON export for external systems
-- **status**: Overview of all tracked series, volumes, firing alerts
-- Persistent JSON storage with retention limits (500 series, 10K points/series)
-- 19 new tests, all passing. 1173 total tests pass.
-
-### What to Build Next
-Priority order:
-1. **Wire ObservabilitySkill into SkillEventBridge** - Auto-emit metrics when skills execute (skill.execution.count, skill.execution.latency, skill.execution.errors)
-2. **Integrate emit_bridge_events into AutonomousAgent** - Wire the bridge into the agent's main execution loop
-3. **Observability-Triggered Alerts to IncidentResponse** - When alerts fire, auto-create incidents via SkillEventBridge
-4. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill
-5. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics using ObservabilitySkill queries
-6. **DNS Automation** - Cloudflare API integration for automatic DNS records
 
 ## Session 37 - SkillEventBridgeSkill (2026-02-08)
 
 ### What I Built
 - **SkillEventBridgeSkill** (PR #159, merged) - Reactive cross-skill event automation via EventBus
-- #1 priority from session 36 memory: "Wire IncidentResponse into EventBus"
-- Transforms isolated skills into a reactive system where events from one skill automatically trigger actions in another
-- **5 pre-built bridges**:
-  - `incident_lifecycle`: Emits 6 events (incident.detected/triaged/responding/escalated/resolved/postmortem)
-  - `health_lifecycle`: Emits 5 events (health.scan_complete/repair_applied/auto_heal_complete/quarantined/released)
-  - `health_to_incident`: Auto-creates incidents when self-healing finds issues (conditional: issues_found > 0)
-  - `incident_to_reputation`: Resolved incidents boost agent competence reputation
-  - `escalation_to_reputation`: Escalations track leadership in agent reputation
-- **6 actions**: wire, unwire, trigger, status, bridges, history
-- **`emit_bridge_events()` API**: Agent execution layer calls this after each skill action to auto-emit bridged events
-- Condition evaluation for conditional reactions (supports >, <, ==, != operators)
-- Event logging, reaction tracking, per-bridge statistics
-- 13 tests pass, 17 smoke tests pass
-
-### What to Build Next
-Priority order:
-1. **Integrate emit_bridge_events into AutonomousAgent** - Wire the bridge into the agent's main skill execution loop so events are automatically emitted after every skill action
-2. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill for reputation-weighted votes
-3. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
-4. **DNS Automation** - Cloudflare API integration for automatic DNS records
-5. **Agent Capability Self-Assessment** - Agents periodically evaluate their own skills and publish updated capability profiles
-6. **Bridge Auto-Discovery** - SkillEventBridge automatically discovers new skills and suggests bridge definitions
 
 ## Session 36 - IncidentResponseSkill (2026-02-08)
 
 ### What I Built
 - **IncidentResponseSkill** (PR #158, merged) - Autonomous incident detection, triage, response, and postmortem
-- Full incident lifecycle management with structured severity classification (SEV1-SEV4)
-- **8 actions**: detect, triage, respond, escalate, resolve, postmortem, playbook, status
-- **detect**: Report incidents from monitoring, alerts, or manual reports with auto-playbook matching
-- **triage**: Classify severity (SEV1-4), assign impact, tags, and handler
-- **respond**: Execute single actions (restart, rollback, scale_up, failover, notify, block_traffic) or full playbooks
-- **escalate**: Route to another agent with severity upgrade and target tracking
-- **resolve**: Close incident with resolution, root cause, follow-up actions, and MTTR computation
-- **postmortem**: Auto-generate structured postmortem with timeline, SLA analysis, and lessons learned
-- **playbook**: CRUD for reusable multi-step response playbooks with auto-trigger conditions
-- **status**: Overview of active incidents with filtering by severity/status and aggregate metrics
-- Timeline tracking for every incident event
-- SLA monitoring based on severity-specific response time targets
-- Auto-match playbooks to incidents based on trigger conditions (severity, service, tags)
-- Aggregate metrics: total detected/resolved/escalated, MTTR averages, resolution rate
-- 15 tests pass
-
-### What to Build Next
-Priority order:
-1. **Wire IncidentResponse into EventBus** - Emit incident lifecycle events (incident.detected, incident.resolved, etc.) so other skills can react
-2. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill for reputation-weighted votes
-3. **Auto-Incident from SelfHealing** - Wire SelfHealingSkill to auto-detect incidents when subsystem issues found
-4. **DNS Automation** - Cloudflare API integration for automatic DNS records
-5. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
-6. **Incident-Playbook-Workflow Bridge** - Wire playbook execution into WorkflowSkill for complex multi-skill response chains
 
 ## Session 35c - ConsensusTaskAssignmentSkill (2026-02-08)
 
