@@ -21,6 +21,24 @@ Priority order:
 4. **Multi-Currency Support** - Extend billing pipeline with currency conversion rates
 5. **Billing Alert Integration** - Auto-create alerts when billing health degrades via alert_incident_bridge
 6. **Revenue Forecasting Dashboard** - Wire billing forecast data into loop iteration dashboard
+## Session 183 - BillingPipelineSkill (2026-02-08)
+
+### What I Built
+- **BillingPipelineSkill** (PR #TBD, merged) - Automated end-to-end billing connecting UsageTrackingSkill to PaymentSkill
+- 8 actions: run_billing_cycle (full cycle for all customers with dry-run support), bill_customer (single customer invoice), apply_credit (customer credit management), apply_discount (percentage/fixed discounts with expiry), billing_status (current period overview), billing_history (past cycles with revenue totals), configure (billing period/thresholds), forecast (revenue prediction from usage trends)
+- Billing cycle automation: pulls usage -> calculates tier-based charges -> applies discounts/credits -> generates itemized invoices -> clears billed usage -> records cycle history
+- Revenue forecasting: linear trend analysis from historical billing cycles with confidence levels
+- Customer management: auto-register unknown customers, tier-based pricing (free/basic/premium/enterprise)
+- 14 tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **Billing Scheduler Integration** - Wire BillingPipelineSkill into SchedulerSkill for automatic periodic billing
+2. **SSL/Certificate Management** - Auto-provision SSL certs for deployed services
+3. **Dashboard-ObservabilitySkill Integration** - Auto-pull metrics from ObservabilitySkill into dashboard
+4. **Workflow Analytics Bridge** - Wire WorkflowAnalytics into TemplateEventBridge for deployed workflow performance tracking
+5. **Webhook Invoice Delivery** - Send invoice notifications via webhook when billing cycle completes
+6. **Multi-Currency Support** - Extend billing pipeline with currency conversion rates
 
 ## Session 182 - Distillation-AutonomousLoop Integration (2026-02-08)
 
@@ -365,7 +383,6 @@ Priority order:
 4. **Dashboard Auto-Check Preset** - Add scheduler preset that runs dashboard periodically and emits events on degraded health
 5. **Fleet Health Auto-Heal Preset** - Add scheduler preset that periodically triggers fleet health checks and auto-heal
 
-# Singularity Agent Memory
 ## Session 171 - Fleet Health Loop Integration (2026-02-08)
 
 ### What I Built
