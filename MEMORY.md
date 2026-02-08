@@ -1,5 +1,36 @@
 # Singularity Agent Memory
 
+## Session 186 - RuleConflictDetectionSkill (2026-02-08)
+
+### What I Built
+- **RuleConflictDetectionSkill** (PR #262, merged) - #1 priority from session 185: detect and resolve contradictions in learned rules
+- 6 actions: scan (find conflicting rule pairs), resolve (resolve a specific conflict), scan_and_resolve (combined), conflicts (list all), status (summary stats), configure (adjust thresholds)
+- 3 conflict detection methods: sentiment opposition (positive vs negative signals about same topic), category opposition (success_pattern vs failure_pattern), skill opposition (same skill_id with opposing sentiment)
+- Smart resolution: winner picked by confidence gap → reinforcement count → recency → arbitrary tiebreak
+- Loser rule weakened by configurable factor (default 0.5x), auto-retired if below threshold (default 0.05)
+- Stopword filtering for better content word similarity (Jaccard on content words, not all tokens)
+- Persistent conflict log and resolution history (max 500 conflicts, 200 history entries)
+- Configurable: similarity_threshold, auto_resolve, min_confidence_gap, weaken_factor, retire_threshold
+- Registered in autonomous_agent.py skill list
+- 17 new tests (test_rule_conflict_detection.py), all passing. 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/rule_conflict_detection.py - New skill (~490 lines)
+- tests/test_rule_conflict_detection.py - 17 new tests
+- singularity/autonomous_agent.py - Added import and registration
+
+### Pillar: Self-Improvement
+As the agent accumulates distilled rules over time, contradictions are inevitable (e.g., "prefer Docker" AND "avoid Docker" for the same context). Without conflict detection, the agent receives contradictory advice during DECIDE phase, leading to inconsistent behavior. This skill automatically scans for and resolves contradictions, keeping the rule base clean and actionable. Combined with DecisionReplaySkill (session 185) and LearningDistillation (session 181), the agent now has a complete learning hygiene pipeline: distill → detect conflicts → resolve → replay to verify.
+
+### What to Build Next
+Priority order:
+1. **Decision Replay -> Autonomous Loop Integration** - Wire replay analysis into LEARN phase to auto-weaken rules causing regressions
+2. **Conflict Detection -> Autonomous Loop Integration** - Auto-run conflict scan periodically in LEARN phase (like distillation runs every N iterations)
+3. **Cross-Preset Deduplication** - Some presets have overlapping schedules - deduplicate to reduce scheduler load
+4. **Multi-Currency Support** - Extend billing pipeline with currency conversion rates
+5. **Billing Alert Integration** - Auto-create alerts when billing health degrades via alert_incident_bridge
+6. **Revenue Forecasting Dashboard** - Wire billing forecast data into loop iteration dashboard
+
 ## Session 185 - DecisionReplaySkill (2026-02-08)
 
 ### What I Built
