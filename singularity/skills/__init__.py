@@ -37,6 +37,7 @@ from .self_testing import SelfTestingSkill
 from .cost_optimizer import CostOptimizerSkill
 from .skill_marketplace_hub import SkillMarketplaceHub
 from .self_tuning import SelfTuningSkill
+from .self_assessment import SelfAssessmentSkill
 
 __all__ = [
     # Base
@@ -77,4 +78,5 @@ __all__ = [
     "CostOptimizerSkill",
     "SkillMarketplaceHub",
     "SelfTuningSkill",
+    "SelfAssessmentSkill",
 ]
