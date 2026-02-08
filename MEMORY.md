@@ -3,7 +3,7 @@
 ## Session 139 - WorkflowTemplateBridgeSkill (2026-02-08)
 
 ### What I Built
-- **WorkflowTemplateBridgeSkill** (PR #TBD, pending) - Bridge between WorkflowTemplateLibrary and EventDrivenWorkflowSkill
+- **WorkflowTemplateBridgeSkill** (PR #183, merged) - Bridge between WorkflowTemplateLibrary and EventDrivenWorkflowSkill
 - Fills #1 priority from previous sessions: "Template-to-EventWorkflow Bridge"
 - Without this bridge, templates were just data — they couldn't be triggered, bound to events, or executed
 - **8 actions**: deploy, bind, undeploy, list, status, redeploy, quick_deploy, catalog
