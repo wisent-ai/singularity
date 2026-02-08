@@ -1,5 +1,35 @@
 # Singularity Agent Memory
 
+## Session 151 - AutoPlaybookGenerationSkill (2026-02-08)
+
+### What I Built
+- **AutoPlaybookGenerationSkill** (PR #TBD, pending) - Automatically generate playbooks from clusters of similar reflections
+- #1 priority from Session 150: "Auto-Playbook Generation"
+- AgentReflectionSkill stores reflections and playbooks, and ReflectionEventBridgeSkill auto-reflects on failures, but nobody clusters reflections or auto-generates playbooks from patterns
+- This skill closes the self-improvement flywheel: reflections accumulate → clusters form → playbooks auto-generated → future tasks use playbooks → better outcomes
+- 7 actions: scan, generate, auto_generate, wire, unwire, configure, status
+- scan: Clusters reflections by tag overlap (Jaccard similarity ≥ 0.3) and task keyword similarity (shared words ratio ≥ 0.3) using Union-Find single-linkage clustering
+- generate: Extracts playbook components from a cluster — common task pattern, steps (from successful actions ordered by frequency), pitfalls (from failed analysis/improvements), prerequisites (from common tags and prereq hints), expected outcome (most representative success), tags (union + auto_generated marker)
+- auto_generate: Combines scan + generate, filters by success rate threshold, respects max_generate limit
+- wire: Subscribes to reflection.created events, triggers scan + auto_generate after every N reflections
+- unwire: Removes EventBus subscription
+- configure: Update clustering thresholds, auto-generation settings
+- status: View clusters, generated playbooks, wire state, config, stats
+- Auto-playbook naming from most common task keywords
+- Deterministic cluster IDs from reflection ID hashes
+- Storage limits: 200 clusters, 500 generated playbook history entries
+- Self-Improvement pillar: automated knowledge distillation from experience
+- 111 tests in 13 test classes, passes in 0.55s
+
+### What to Build Next
+Priority order:
+1. **Function Marketplace Discovery Events** - Emit events when new functions are published/imported for reactive behavior
+2. **Playbook-Pipeline Integration** - Convert playbooks into PipelineExecutor pipelines for automatic execution
+3. **Cross-Agent Playbook Sharing** - Share effective playbooks between agent replicas via FunctionMarketplace
+4. **Reflection-Driven Goal Setting** - Use pattern analysis to recommend new goals based on identified weaknesses
+5. **Adaptive Skill Loading** - Use reflection patterns to dynamically load/unload skills based on task types
+6. **Agent Specialization Advisor** - Analyze what functions an agent should build based on marketplace gaps
+
 ## Session 150 - ReflectionEventBridgeSkill (2026-02-08)
 
 ### What I Built
