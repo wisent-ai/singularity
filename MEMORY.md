@@ -1,5 +1,18 @@
 # Singularity Agent Memory
 
+## Session 134 - Auto-Reputation Wiring (2026-02-07)
+
+### What I Built
+- **Auto-Reputation Wiring** - Wired TaskDelegationSkill.report_completion to automatically call AgentReputationSkill.record_task_outcome
+- Complements Session 43's TaskReputationBridgeSkill (batch sync) with inline auto-update on every report_completion
+- When a delegated task completes or fails, reputation is automatically updated without manual intervention
+- **Budget efficiency computed**: 1.0 - (budget_spent / budget_allocated), so agents that are cost-efficient get higher scores
+- **On-time computed**: Checks elapsed time vs timeout_minutes to determine timeliness
+- **Graceful degradation**: Works without context, without reputation skill, without agent_id
+- **Best-effort**: Reputation errors never break the delegation flow
+- Returns `reputation_updated: true/false` in the result data for visibility
+- 6 new tests, 19 existing tests still passing
+
 ## Session 43 - TaskReputationBridgeSkill (2026-02-08)
 
 ### What I Built
@@ -23,10 +36,10 @@
 Priority order:
 1. **Self-Tuning Agent** - Use ObservabilitySkill metrics to auto-adjust LLM router weights, circuit breaker thresholds
 2. **SchedulerSkill -> AlertIncidentBridge** - Schedule periodic alert polling so the bridge runs automatically without manual triggers
-3. **SchedulerSkill -> TaskReputationBridge** - Schedule periodic sync so reputation updates happen automatically
-4. **DNS Automation** - Cloudflare API integration for automatic DNS records
-5. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
-6. **Agent Capability Self-Assessment** - Agents periodically evaluate their own skills and publish updated capability profiles
+3. **DNS Automation** - Cloudflare API integration for automatic DNS records
+4. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
+5. **Agent Capability Self-Assessment** - Agents periodically evaluate their own skills and publish updated capability profiles
+6. **Template-to-EventWorkflow Bridge** - Wire WorkflowTemplateLibrary instantiation into EventDrivenWorkflowSkill
 
 ## Session 42 - AlertIncidentBridgeSkill (2026-02-08)
 
