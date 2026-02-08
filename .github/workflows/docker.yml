@@ -2,7 +2,6 @@ name: Docker
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -18,7 +17,6 @@ jobs:
       contents: read
       packages: write
 
-    # Only run if Dockerfile exists
     steps:
       - uses: actions/checkout@v4
 
