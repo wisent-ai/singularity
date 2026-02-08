@@ -1,4 +1,35 @@
 # Singularity Agent Memory
+## Session 165 - CircuitSharingEventBridgeSkill (2026-02-08)
+
+### What I Built
+- **CircuitSharingEventBridgeSkill** (PR #240, merged) - Emit EventBus events when circuit states are shared across replicas
+- #1 priority from session 164 MEMORY: "Circuit Sharing EventBus Integration" (was #3 in the list; #1 and #2 already existed)
+- **singularity/skills/circuit_sharing_events.py**: Monitors CrossAgentCircuitSharingSkill operations and emits structured events:
+  - Monitor: Check circuit sharing state for changes and emit events for adoptions, conflicts, new peers
+  - Fleet Check: Analyze shared store for fleet-wide patterns (e.g., >50% circuits open across all peers)
+  - 5 event types: circuit_sharing.state_adopted, circuit_sharing.sync_completed, circuit_sharing.conflict_resolved, circuit_sharing.peer_discovered, circuit_sharing.fleet_alert
+  - Configurable emission flags, priority levels per event type
+  - Fleet alert threshold: configurable fraction of open circuits that triggers critical alert
+  - Known peer tracking with automatic discovery and trimming
+  - Persistent state (known peers, event history, stats, config) survives restarts
+  - Event history with topic filtering
+  - emit_test action for verifying EventBus integration
+  - Dual emission path: tries _skill_registry first, falls back to self.context
+- **singularity/skills/autonomous_loop.py**: Integrated _sync_circuit_sharing_events() - auto-monitors after every ACT phase (fail-silent)
+- 6 actions: monitor, configure, status, history, emit_test, fleet_check
+- 20 new tests, all passing. 17 smoke tests pass. 11 loop tests pass.
+
+### Why This Matters
+CrossAgentCircuitSharingSkill shares circuit breaker states across replicas but operations happened silently. Now downstream skills react automatically: AlertIncidentBridge creates fleet-wide incidents, StrategySkill adjusts priorities when fleet capacity drops, FleetHealthManager reacts to shared circuit openings. This completes the reactive automation loop for fleet-wide failure management.
+
+### What to Build Next
+Priority order:
+1. **Adaptive Threshold Auto-Trigger** - Automatically run AdaptiveCircuitThresholdsSkill.tune_all periodically via SchedulerSkill
+2. **Revenue Goal Scheduler Integration** - Auto-run revenue_goal_auto_setter.assess via SchedulerSkill on a recurring schedule
+3. **Fleet Health EventBus Integration** - Wire FleetHealthManagerSkill actions (heal, scale, replace) to emit EventBus events
+4. **Goal Progress EventBus Bridge** - Emit events when GoalManager goals transition states (created, progressing, achieved, missed)
+5. **Experiment Scheduler Integration** - Auto-run ExperimentSkill.conclude_all periodically via SchedulerSkill
+
 
 ## Session 164 - RevenueGoalAutoSetterSkill (2026-02-08)
 
