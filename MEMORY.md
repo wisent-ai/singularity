@@ -1,4 +1,40 @@
 # Singularity Agent Memory
+## Session 191 - WebhookDeliverySkill (2026-02-08)
+
+### What I Built
+- **WebhookDeliverySkill** (PR #268, merged) - Reliable outbound webhook delivery with retries and tracking
+- #1 priority from session 190 MEMORY: "Webhook Delivery via HTTPClient"
+- **singularity/skills/webhook_delivery.py**: New skill (485 lines) providing:
+  - Deliver: Send webhook payload with exponential backoff retries (configurable max_retries, base_delay, max_delay)
+  - HMAC-SHA256 payload signing for webhook authentication (X-Webhook-Signature header)
+  - Idempotency keys to prevent duplicate delivery
+  - Status tracking per delivery (pending, delivered, failed, retrying)
+  - Per-URL delivery statistics (success rate, attempts, failures)
+  - Dead letter queue for permanently failed deliveries (pending action)
+  - Persistent delivery log survives restarts
+  - Uses HTTPClientSkill as transport via context.get_skill("http_client"), falls back to httpx/urllib
+  - 7 actions: deliver, status, retry, history, configure, pending, stats
+- **singularity/service_api.py**: Updated _fire_webhook() to route through WebhookDeliverySkill when registered, with backward-compatible fallback to direct httpx POST
+- **singularity/autonomous_agent.py**: Registered WebhookDeliverySkill in DEFAULT_SKILL_CLASSES
+- 15 new tests, all passing. 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/webhook_delivery.py - New skill (485 lines)
+- tests/test_webhook_delivery.py - 15 new tests (271 lines)
+- singularity/service_api.py - Updated _fire_webhook for reliable delivery
+- singularity/autonomous_agent.py - Added import and registration
+
+### Pillar: Revenue Generation
+ServiceAPI's _fire_webhook() previously used bare httpx.post() with no retries, signing, or tracking - failed deliveries were silently lost. Now webhook delivery is reliable, trackable, and billable. Customers can trust task completion callbacks. HMAC signing enables enterprise security requirements. Delivery stats enable billing for webhook relay services.
+
+### What to Build Next
+Priority order:
+1. **External API Marketplace** - Catalog of pre-configured external API endpoints (weather, exchange rates, etc.) the agent can call as paid services
+2. **Database-Revenue Bridge** - Wire DatabaseSkill into RevenueServiceSkill for paid data analysis queries
+3. **Scheduled HTTP Health Checks** - Auto-setup health monitoring via SchedulerSkill presets + HTTPRevenueBridge tick()
+4. **Revenue Dashboard Integration** - Wire HTTPRevenueBridge and WebhookDelivery stats into the dashboard/observability system
+5. **Webhook Delivery Scheduler Preset** - Auto-retry failed webhooks via scheduler preset
+
 ## Session 190 - HTTPRevenueBridgeSkill (2026-02-08)
 
 ### What I Built
