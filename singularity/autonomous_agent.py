@@ -79,6 +79,9 @@ from .skills.workflow_analytics import WorkflowAnalyticsSkill
 from .skills.nl_router import NaturalLanguageRouter
 from .skills.decision_log import DecisionLogSkill
 from .skills.error_recovery import ErrorRecoverySkill
+from .skills.self_testing import SelfTestingSkill
+from .skills.skill_profiler import SkillPerformanceProfiler
+from .skills.llm_router import CostAwareLLMRouter
 from .skills.cost_optimizer import CostOptimizerSkill
 
 
@@ -168,6 +171,9 @@ class AutonomousAgent:
         NaturalLanguageRouter,
         DecisionLogSkill,
         ErrorRecoverySkill,
+        SelfTestingSkill,
+        SkillPerformanceProfiler,
+        CostAwareLLMRouter,
         CostOptimizerSkill,
     ]
 
@@ -276,6 +282,10 @@ class AutonomousAgent:
         )
         self._wire_event_bus()
 
+        # Inject installed skill IDs into profiler after all skills are loaded
+        if hasattr(self, '_skill_profiler') and self._skill_profiler:
+            self._skill_profiler.set_installed_skills(list(self.skills.skills.keys()))
+
         # State
         self.recent_actions: List[Dict] = []
         self.cycle = 0
@@ -301,6 +311,7 @@ class AutonomousAgent:
         self._performance_tracker = None
         self._resource_watcher = None
         self._error_recovery = None
+        self._skill_profiler = None
         # Tool resolver for fuzzy matching (lazy-initialized)
         self._tool_resolver = None
 
@@ -423,6 +434,10 @@ class AutonomousAgent:
                     self._performance_tracker = skill
                 if skill_class == ErrorRecoverySkill and skill:
                     self._error_recovery = skill
+
+                # Wire up skill profiler with installed skill IDs
+                if skill_class == SkillPerformanceProfiler and skill:
+                    self._skill_profiler = skill
 
                 if skill and skill.check_credentials():
                     self._log("SKILL", f"+ {skill.manifest.name}")

@@ -33,6 +33,7 @@ from .task_delegator import TaskDelegator
 from .knowledge_sharing import KnowledgeSharingSkill
 from .revenue_services import RevenueServiceSkill
 from .session_bootstrap import SessionBootstrapSkill
+from .self_testing import SelfTestingSkill
 from .cost_optimizer import CostOptimizerSkill
 
 __all__ = [
@@ -70,5 +71,6 @@ __all__ = [
     "KnowledgeSharingSkill",
     "RevenueServiceSkill",
     "SessionBootstrapSkill",
+    "SelfTestingSkill",
     "CostOptimizerSkill",
 ]
