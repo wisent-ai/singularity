@@ -1,5 +1,34 @@
 # Singularity Agent Memory
 
+## Session 39 - SelfAssessmentSkill (2026-02-08)
+
+### What I Built
+- **SelfAssessmentSkill** (PR #170, merged) - Agent capability profiling, benchmarking, and gap analysis
+- #4 priority from session 38 memory: "Agent Capability Self-Assessment"
+- Enables agents to periodically evaluate their own skill portfolio, measure skill health, and produce capability profiles
+- **8 actions**: inventory, benchmark, profile, publish, gaps, recommend, compare, history
+- **inventory**: Scan all installed skills, categorize into 6 capability categories (self_improvement, revenue, replication, goal_setting, operations, communication)
+- **benchmark**: Run health probes on skills using lightweight diagnostic actions (status/list/health) with per-skill timeout
+- **profile**: Generate full capability profile with 0-100 scores per category (coverage × health_factor), identify strongest/weakest categories
+- **publish**: Push capability profile to KnowledgeSharingSkill for cross-agent discovery + update AgentNetworkSkill with capability list
+- **gaps**: Compare installed skills against expected baseline, identify missing capabilities sorted by weighted impact score
+- **recommend**: Prioritized suggestions - combines gap analysis (highest-impact missing skills) with fix recommendations (unhealthy existing skills)
+- **compare**: Side-by-side comparison against another agent's published profile across all categories
+- **history**: Track capability scores over time with trend detection (improving/declining/stable)
+- **6 capability categories** with expected skill baselines: self_improvement (10 skills), revenue (7), replication (7), goal_setting (7), operations (5), communication (4)
+- **16 probe actions** defined for common skills (lightweight read-only actions)
+- Persistent storage in data/self_assessment.json with history trimming
+- 18 tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **SchedulerPresets** - Pre-built automation schedules (e.g., periodic alert polling, health checks, self-assessment) wired as one command
+2. **DNS Automation** - Cloudflare API integration for automatic DNS records
+3. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
+4. **Template-to-EventWorkflow Bridge** - Wire WorkflowTemplateLibrary instantiation into EventDrivenWorkflowSkill
+5. **Pre-built Tuning Rules** - Ship default SelfTuningSkill rules for common patterns
+6. **Capability-Aware Task Delegation** - Use SelfAssessmentSkill profiles to auto-route tasks to the best agent
+
 ## Session 43 - AutoReputationBridgeSkill (2026-02-08)
 
 ### What I Built
