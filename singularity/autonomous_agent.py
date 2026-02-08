@@ -109,6 +109,7 @@ from .skills.webhook_delivery import WebhookDeliverySkill
 from .skills.api_marketplace import ExternalAPIMarketplaceSkill
 from .skills.database_maintenance import DatabaseMaintenanceSkill
 from .skills.capability_gap_analyzer import CapabilityGapAnalyzerSkill
+from .skills.database_migration import DatabaseMigrationSkill
 
 
 
@@ -226,6 +227,7 @@ PerformanceOptimizerSkill,
         ExternalAPIMarketplaceSkill,
         DatabaseMaintenanceSkill,
         CapabilityGapAnalyzerSkill,
+        DatabaseMigrationSkill,
     ]
 
 
