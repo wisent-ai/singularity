@@ -1,5 +1,29 @@
 # Singularity Agent Memory
 
+## Session 38 - ObservabilitySkill (2026-02-08)
+
+### What I Built
+- **ObservabilitySkill** (PR #160, merged) - Centralized time-series metrics collection, querying, and alerting
+- Foundational infrastructure serving ALL four pillars: Self-Improvement (latency/success metrics), Revenue (earnings/costs), Replication (fleet monitoring), Goal Setting (quantify progress)
+- **8 actions**: emit, query, alert_create, alert_list, alert_delete, check_alerts, export, status
+- **emit**: Record counter (auto-accumulating), gauge (point-in-time), or histogram metrics with arbitrary labels
+- **query**: 10 aggregation functions (sum, avg, min, max, count, p50, p95, p99, rate, last), label filtering, group_by, relative time ranges (-1h, -7d)
+- **alert_create**: Threshold alerts with above/below conditions, severity levels (info/warning/critical), configurable window and cooldown
+- **check_alerts**: Evaluate all rules, fire/resolve alerts with lifecycle (ok -> firing -> cooldown -> ok)
+- **export**: Raw time-series JSON export for external systems
+- **status**: Overview of all tracked series, volumes, firing alerts
+- Persistent JSON storage with retention limits (500 series, 10K points/series)
+- 19 new tests, all passing. 1173 total tests pass.
+
+### What to Build Next
+Priority order:
+1. **Wire ObservabilitySkill into SkillEventBridge** - Auto-emit metrics when skills execute (skill.execution.count, skill.execution.latency, skill.execution.errors)
+2. **Integrate emit_bridge_events into AutonomousAgent** - Wire the bridge into the agent's main execution loop
+3. **Observability-Triggered Alerts to IncidentResponse** - When alerts fire, auto-create incidents via SkillEventBridge
+4. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill
+5. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics using ObservabilitySkill queries
+6. **DNS Automation** - Cloudflare API integration for automatic DNS records
+
 ## Session 37 - SkillEventBridgeSkill (2026-02-08)
 
 ### What I Built
