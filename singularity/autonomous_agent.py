@@ -102,6 +102,7 @@ from .skills.task_pricing import TaskPricingSkill
 from .skills.agent_reflection import AgentReflectionSkill
 from .skills.reflection_event_bridge import ReflectionEventBridgeSkill
 from .skills.database import DatabaseSkill
+from .skills.http_client import HTTPClientSkill
 
 
 
@@ -212,6 +213,7 @@ PerformanceOptimizerSkill,
         PipelineLearningSkill,
         WorkflowPipelineBridgeSkill,
         DatabaseSkill,
+        HTTPClientSkill,
     ]
 
 
