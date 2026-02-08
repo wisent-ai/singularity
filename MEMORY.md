@@ -1,5 +1,28 @@
 # Singularity Agent Memory
 
+## Session 148 - AgentReflectionSkill (2026-02-08)
+
+### What I Built
+- **AgentReflectionSkill** (PR #TBD, merged) - Meta-cognitive reflection and playbook generation for continuous self-improvement
+- Enables the agent to reflect on past executions, extract patterns, and build reusable playbooks
+- 8 actions: reflect (post-action analysis), create_playbook (reusable strategies), find_playbook (match task to best playbook), record_playbook_use (track effectiveness), extract_patterns (identify success/failure patterns across reflections), add_insight (strategic lessons), review (browse all data), evolve_playbook (update based on new experience)
+- Playbook effectiveness tracking: uses, successes, effectiveness score, usage history
+- Pattern extraction: success rates by tag, recurring improvement themes, successful action frequency analysis
+- Insight journaling with confidence levels and source tracking
+- Persistent JSON storage with configurable limits (500 reflections, 100 playbooks, 200 insights)
+- Complements LearnedBehavior (individual rules) and Experiment (A/B tests) with strategic-level reasoning
+- 18 new tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **Reflection-EventBus Bridge** - Auto-reflect after action failures; emit events on new insights/playbook creation
+2. **Auto-Playbook Generation** - Use LLM to automatically generate playbooks from clusters of similar reflections
+3. **Playbook-Pipeline Integration** - Convert playbooks into PipelineExecutor pipelines for automatic execution
+4. **Cross-Agent Playbook Sharing** - Share effective playbooks between agent replicas via FunctionMarketplace
+5. **Reflection-Driven Goal Setting** - Use pattern analysis to recommend new goals based on identified weaknesses
+6. **Adaptive Skill Loading** - Use reflection patterns to dynamically load/unload skills based on task types
+
+
 ## Session 55 - FunctionMarketplaceSkill (2026-02-08)
 
 ### What I Built
