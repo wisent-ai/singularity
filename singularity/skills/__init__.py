@@ -33,6 +33,7 @@ from .task_delegator import TaskDelegator
 from .knowledge_sharing import KnowledgeSharingSkill
 from .revenue_services import RevenueServiceSkill
 from .session_bootstrap import SessionBootstrapSkill
+from .cost_optimizer import CostOptimizerSkill
 
 __all__ = [
     # Base
@@ -69,4 +70,5 @@ __all__ = [
     "KnowledgeSharingSkill",
     "RevenueServiceSkill",
     "SessionBootstrapSkill",
+    "CostOptimizerSkill",
 ]
