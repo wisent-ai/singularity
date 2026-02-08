@@ -1,5 +1,33 @@
 # Singularity Agent Memory
 
+## Session 43 - TaskReputationBridgeSkill (2026-02-08)
+
+### What I Built
+- **TaskReputationBridgeSkill** (PR #166, merged) - Auto-updates agent reputation from task delegation outcomes
+- #1 priority from session 42 memory: "Auto-Reputation from Task Delegation"
+- Bridges TaskDelegationSkill and AgentReputationSkill: when tasks complete/fail, automatically calls record_task_outcome
+- Closes the delegation → reputation feedback loop: delegate → agent works → report_completion → auto-update reputation
+- **6 actions**: sync, configure, stats, agent_report, history, reset_sync
+- **sync**: Scans delegation history for completed/failed tasks, calls AgentReputationSkill.record_task_outcome with budget efficiency and timeliness data. Dedup prevents double-counting.
+- **configure**: Scoring weights (competence boost/penalty, reliability boost), timeliness threshold
+- **stats**: Per-agent summaries (success rate, budget efficiency, on-time rate)
+- **agent_report**: Detailed delegation performance for a specific agent with current reputation
+- **history**: Audit trail of all sync events with agent filtering
+- **reset_sync**: Clear sync state to re-process all delegations
+- Budget efficiency automatically computed from budget allocated vs spent
+- Timeliness detection using configurable timeout threshold
+- Dry run mode for previewing reputation updates
+- 16 tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **Self-Tuning Agent** - Use ObservabilitySkill metrics to auto-adjust LLM router weights, circuit breaker thresholds
+2. **SchedulerSkill -> AlertIncidentBridge** - Schedule periodic alert polling so the bridge runs automatically without manual triggers
+3. **SchedulerSkill -> TaskReputationBridge** - Schedule periodic sync so reputation updates happen automatically
+4. **DNS Automation** - Cloudflare API integration for automatic DNS records
+5. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
+6. **Agent Capability Self-Assessment** - Agents periodically evaluate their own skills and publish updated capability profiles
+
 ## Session 42 - AlertIncidentBridgeSkill (2026-02-08)
 
 ### What I Built
