@@ -1,4 +1,36 @@
 # Singularity Agent Memory
+## Session 196 - DatabaseMigrationSkill (2026-02-08)
+
+### What I Built
+- **DatabaseMigrationSkill** (PR #273, merged) - Schema versioning and migration management for SQLite databases (#1 priority from session 195 MEMORY)
+- 8 actions: create (versioned migration with up/down SQL), apply (upgrade with backup + auto-restore on failure), rollback (downgrade N steps or to target version), status (current version + pending migrations), validate (dry-run syntax check + checksum verification), history (audit trail), generate (auto-diff current vs desired schema), squash (combine sequential migrations)
+- Timestamp-based version ordering with unique version enforcement
+- Automatic database backup before apply/rollback, restored on failure
+- _migrations tracking table inside each database for applied versions
+- Checksum verification to detect tampered migrations
+- Dry-run mode for previewing changes without executing
+- Schema diff generation: compares current schema against desired, produces up/down SQL
+- Migration squashing: combine multiple unapplied migrations into one
+- Persistent JSON state for migration definitions, audit history, and stats
+- Registered in autonomous_agent.py DEFAULT_SKILL_CLASSES
+- 11 new tests, all passing
+
+### Files Changed
+- singularity/skills/database_migration.py - New skill (842 lines)
+- tests/test_database_migration.py - 11 new tests (213 lines)
+- singularity/autonomous_agent.py - Added import and registration
+
+### Pillar: Self-Improvement (primary), Revenue (supporting)
+The agent's databases evolve as new skills store data. Without migration management, schema changes require manual intervention or data loss. This enables autonomous schema evolution — the agent plans, validates, and applies its own database changes safely with rollback. Also enables offering schema migration as a paid service via DatabaseRevenueBridgeSkill.
+
+### What to Build Next
+Priority order:
+1. **Cross-Database Join** - Query across multiple databases with virtual tables
+2. **Revenue Dashboard Integration** - Wire DatabaseRevenueBridge + HTTPRevenueBridge stats into ObservabilitySkill
+3. **Natural Language Data Queries** - Wire NaturalLanguageRouter into DatabaseRevenueBridge for plain-English SQL
+4. **Migration-Scheduler Bridge** - Auto-schedule recurring migrations + maintenance via SchedulerPresetsSkill
+5. **Maintenance-Scheduler Bridge** - Auto-register maintenance schedules on agent startup via SchedulerPresetsSkill
+
 ## Session 195 - DatabaseMaintenanceSkill (2026-02-08)
 
 ### What I Built
