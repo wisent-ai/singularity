@@ -93,6 +93,7 @@ from .skills.skill_event_bridge import SkillEventBridgeSkill
 from .skills.revenue_catalog import RevenueServiceCatalogSkill
 from .skills.agent_checkpoint import AgentCheckpointSkill
 from .skills.dashboard_observability_bridge import DashboardObservabilityBridgeSkill
+from .skills.task_pricing import TaskPricingSkill
 
 
 
@@ -194,6 +195,7 @@ PerformanceOptimizerSkill,
         RevenueServiceCatalogSkill,
         AgentCheckpointSkill,
         DashboardObservabilityBridgeSkill,
+        TaskPricingSkill,
     ]
 
 
