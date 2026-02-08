@@ -48,6 +48,7 @@ from .agent_checkpoint import AgentCheckpointSkill
 from .workflow_analytics_bridge import WorkflowAnalyticsBridgeSkill
 from .checkpoint_comparison import CheckpointComparisonAnalyticsSkill
 from .revenue_analytics_dashboard import RevenueAnalyticsDashboardSkill
+from .skill_quality_gate import SkillQualityGateSkill
 from .ssl_service_hosting_bridge import SSLServiceHostingBridgeSkill
 
 __all__ = [
@@ -100,5 +101,6 @@ __all__ = [
     "WorkflowAnalyticsBridgeSkill",
     "CheckpointComparisonAnalyticsSkill",
     "RevenueAnalyticsDashboardSkill",
+    "SkillQualityGateSkill",
     "SSLServiceHostingBridgeSkill",
 ]
