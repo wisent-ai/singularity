@@ -485,7 +485,7 @@ def create_app(agent=None, api_keys: Optional[List[str]] = None,
                     detail = "API key revoked"
                 elif reason == "insufficient_scope":
                     status_code = 403
-                    detail = f"Insufficient scope: requires {access.get("required", "unknown")}"
+                    detail = f"Insufficient scope: requires {access.get('required', 'unknown')}"
                 elif reason == "missing_key":
                     status_code = 401
                     detail = "API key required"
