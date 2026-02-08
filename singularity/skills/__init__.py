@@ -51,6 +51,7 @@ from .revenue_analytics_dashboard import RevenueAnalyticsDashboardSkill
 from .ssl_service_hosting_bridge import SSLServiceHostingBridgeSkill
 from .serverless_service_hosting_bridge import ServerlessServiceHostingBridgeSkill
 from .pipeline_planner import PipelinePlannerSkill
+from .workflow_pipeline_bridge import WorkflowPipelineBridgeSkill
 
 __all__ = [
     # Base
@@ -106,4 +107,5 @@ __all__ = [
     "ServerlessServiceHostingBridgeSkill",
     "AgentReflectionSkill",
     "PipelinePlannerSkill",
+    "WorkflowPipelineBridgeSkill",
 ]
