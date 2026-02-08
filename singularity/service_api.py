@@ -577,6 +577,252 @@ def create_app(agent=None, api_keys: Optional[List[str]] = None,
         result = await webhook_skill.execute("list_endpoints", {})
         return result.data
 
+    # --- Natural Language Task Routing ---
+    # These endpoints let external users submit tasks in plain English
+    # without knowing internal skill IDs. The NaturalLanguageRouter
+    # matches the description to the best skill+action.
+
+    class NLQuery(BaseModel):
+        query: str = Field(..., description="Natural language task description")
+        params: Dict[str, Any] = Field(default_factory=dict, description="Additional parameters")
+        top_k: int = Field(default=5, description="Number of matches to return")
+
+    @app.post("/ask")
+    async def ask_natural_language(body: NLQuery, api_key: str = Depends(check_auth)):
+        """
+        Submit a task in natural language. The router finds the best skill
+        and executes it, returning the result.
+        
+        Example: POST /ask {"query": "scan this code for security issues", "params": {"code": "..."}}
+        """
+        nl_router = None
+        if agent and hasattr(agent, 'skills'):
+            nl_router = agent.skills.get("nl_router")
+
+        if not nl_router:
+            raise HTTPException(
+                status_code=503,
+                detail="Natural language routing not available (NaturalLanguageRouter not loaded)"
+            )
+
+        result = await nl_router.execute("route_and_execute", {
+            "query": body.query,
+            "params": body.params,
+        })
+
+        return {
+            "success": result.success,
+            "message": result.message,
+            "data": result.data,
+        }
+
+    @app.post("/ask/match")
+    async def ask_match_only(body: NLQuery, api_key: str = Depends(check_auth)):
+        """
+        Find matching skills for a natural language query without executing.
+        Useful for previewing what would happen before committing.
+        """
+        nl_router = None
+        if agent and hasattr(agent, 'skills'):
+            nl_router = agent.skills.get("nl_router")
+
+        if not nl_router:
+            raise HTTPException(
+                status_code=503,
+                detail="Natural language routing not available"
+            )
+
+        result = await nl_router.execute("route", {
+            "query": body.query,
+            "top_k": body.top_k,
+        })
+
+        return {
+            "success": result.success,
+            "message": result.message,
+            "matches": result.data.get("matches", []),
+        }
+
+
+    # --- Agent-to-Agent Messaging API ---
+    # These endpoints enable direct communication between agents.
+    # Implements feature request #125: Agent-to-agent messaging API.
+
+    class SendMessageBody(BaseModel):
+        from_instance_id: str = Field(..., description="Sender's agent instance ID")
+        to_instance_id: str = Field(..., description="Recipient's agent instance ID")
+        content: str = Field(..., description="Message content")
+        type: str = Field(default="direct", description="Message type: direct, service_request, broadcast")
+        metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional metadata")
+        conversation_id: Optional[str] = Field(None, description="Conversation thread ID")
+
+    class ServiceRequestBody(BaseModel):
+        from_instance_id: str = Field(..., description="Requester's agent instance ID")
+        to_instance_id: str = Field(..., description="Provider's agent instance ID")
+        service_name: str = Field(..., description="Name of the service requested")
+        request_params: Dict[str, Any] = Field(default_factory=dict, description="Service parameters")
+        offer_amount: float = Field(default=0.0, description="Amount offered (WISENT tokens)")
+
+    class ReplyBody(BaseModel):
+        from_instance_id: str = Field(..., description="Sender's agent instance ID")
+        message_id: str = Field(..., description="ID of message being replied to")
+        content: str = Field(..., description="Reply content")
+
+    def _get_messaging_skill():
+        """Get the MessagingSkill instance, creating a standalone one if no agent."""
+        if agent and hasattr(agent, 'skills'):
+            skill = agent.skills.get("messaging")
+            if skill:
+                return skill
+        # Create standalone skill for when no agent is configured
+        from singularity.skills.messaging import MessagingSkill
+        return MessagingSkill()
+
+    @app.post("/api/messages")
+    async def send_message(body: SendMessageBody):
+        """Send a message to another agent by instance_id."""
+        skill = _get_messaging_skill()
+        result = await skill.execute("send", {
+            "from_instance_id": body.from_instance_id,
+            "to_instance_id": body.to_instance_id,
+            "content": body.content,
+            "message_type": body.type,
+            "metadata": body.metadata,
+            "conversation_id": body.conversation_id or "",
+        })
+        if not result.success:
+            raise HTTPException(status_code=400, detail=result.message)
+        return {
+            "status": "sent",
+            "message_id": result.data.get("message_id"),
+            "conversation_id": result.data.get("conversation_id"),
+        }
+
+    @app.get("/api/messages/{instance_id}")
+    async def read_messages(
+        instance_id: str,
+        from_instance_id: Optional[str] = None,
+        message_type: Optional[str] = None,
+        unread_only: bool = False,
+        limit: int = 50,
+        conversation_id: Optional[str] = None,
+    ):
+        """Read messages for an agent. Supports filtering by sender, type, conversation."""
+        skill = _get_messaging_skill()
+        params = {"instance_id": instance_id, "limit": limit, "unread_only": unread_only}
+        if from_instance_id:
+            params["from_instance_id"] = from_instance_id
+        if message_type:
+            params["message_type"] = message_type
+        if conversation_id:
+            params["conversation_id"] = conversation_id
+
+        result = await skill.execute("read_inbox", params)
+        return {
+            "messages": result.data.get("messages", []),
+            "count": result.data.get("count", 0),
+            "total_in_inbox": result.data.get("total_in_inbox", 0),
+        }
+
+    @app.post("/api/messages/broadcast")
+    async def broadcast_message(body: SendMessageBody):
+        """Broadcast a message to all registered agents."""
+        skill = _get_messaging_skill()
+        result = await skill.execute("broadcast", {
+            "from_instance_id": body.from_instance_id,
+            "content": body.content,
+            "metadata": body.metadata,
+        })
+        if not result.success:
+            raise HTTPException(status_code=400, detail=result.message)
+        return {
+            "status": "broadcast_sent",
+            "sent_count": result.data.get("sent_count", 0),
+            "conversation_id": result.data.get("conversation_id"),
+        }
+
+    @app.post("/api/messages/service-request")
+    async def service_request(body: ServiceRequestBody):
+        """Send a structured service request to another agent."""
+        skill = _get_messaging_skill()
+        result = await skill.execute("service_request", {
+            "from_instance_id": body.from_instance_id,
+            "to_instance_id": body.to_instance_id,
+            "service_name": body.service_name,
+            "request_params": body.request_params,
+            "offer_amount": body.offer_amount,
+        })
+        if not result.success:
+            raise HTTPException(status_code=400, detail=result.message)
+        return {
+            "status": "request_sent",
+            "request_id": result.data.get("request_id"),
+            "message_id": result.data.get("message_id"),
+            "conversation_id": result.data.get("conversation_id"),
+        }
+
+    @app.post("/api/messages/reply")
+    async def reply_to_message(body: ReplyBody):
+        """Reply to a specific message, creating a conversation thread."""
+        skill = _get_messaging_skill()
+        result = await skill.execute("reply", {
+            "from_instance_id": body.from_instance_id,
+            "message_id": body.message_id,
+            "content": body.content,
+        })
+        if not result.success:
+            raise HTTPException(status_code=400, detail=result.message)
+        return {
+            "status": "reply_sent",
+            "message_id": result.data.get("message_id"),
+            "conversation_id": result.data.get("conversation_id"),
+        }
+
+    @app.get("/api/conversations/{conversation_id}")
+    async def get_conversation(conversation_id: str):
+        """Get all messages in a conversation thread."""
+        skill = _get_messaging_skill()
+        result = await skill.execute("get_conversation", {
+            "conversation_id": conversation_id,
+        })
+        return {
+            "conversation_id": conversation_id,
+            "metadata": result.data.get("metadata", {}),
+            "messages": result.data.get("messages", []),
+            "count": result.data.get("count", 0),
+        }
+
+    @app.post("/api/messages/{message_id}/read")
+    async def mark_message_read(message_id: str, reader_instance_id: str):
+        """Mark a message as read (generates a read receipt)."""
+        skill = _get_messaging_skill()
+        result = await skill.execute("mark_read", {
+            "message_id": message_id,
+            "reader_instance_id": reader_instance_id,
+        })
+        if not result.success:
+            raise HTTPException(status_code=404, detail=result.message)
+        return {"status": "read", "message_id": message_id}
+
+    @app.delete("/api/messages/{instance_id}/{message_id}")
+    async def delete_message(instance_id: str, message_id: str):
+        """Delete a message from an agent's inbox."""
+        skill = _get_messaging_skill()
+        result = await skill.execute("delete_message", {
+            "instance_id": instance_id,
+            "message_id": message_id,
+        })
+        if not result.success:
+            raise HTTPException(status_code=404, detail=result.message)
+        return {"status": "deleted", "message_id": message_id}
+
+    @app.get("/api/messages/stats")
+    async def messaging_stats():
+        """Get messaging statistics."""
+        skill = _get_messaging_skill()
+        result = await skill.execute("get_stats", {})
+        return result.data
+
     return app
 
 
