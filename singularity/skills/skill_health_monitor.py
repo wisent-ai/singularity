@@ -80,7 +80,7 @@ class SkillHealthMonitorSkill(Skill):
         return SkillManifest(
             skill_id="skill_health_monitor",
             name="Skill Health Monitor",
-            version="1.0.0",
+            version="1.0.1",
             category="meta",
             description="Autonomous health monitoring for all registered skills — detects broken, degraded, and unhealthy capabilities",
             actions=self.get_actions(),
