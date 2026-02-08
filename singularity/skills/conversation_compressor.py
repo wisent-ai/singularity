@@ -22,6 +22,7 @@ The agent can now reason over much longer sessions without losing track
 of what it decided, what worked, and what failed.
 """
 
+import asyncio
 import json
 import re
 from datetime import datetime
@@ -40,6 +41,45 @@ DEFAULT_MAX_TOKENS = 8000  # Target max tokens for conversation history
 DEFAULT_PRESERVE_RECENT = 6  # Keep last N message pairs verbatim
 DEFAULT_MAX_KEY_FACTS = 50  # Max key facts to retain
 MAX_COMPRESSIONS_HISTORY = 100
+
+# LLM compression prompts
+SUMMARIZE_SYSTEM_PROMPT = """You are a conversation summarizer for an autonomous AI agent.
+Your job is to compress old conversation turns into a concise, information-dense summary.
+
+RULES:
+- Preserve ALL decisions made, actions taken, and their outcomes
+- Preserve ALL numerical values (costs, balances, counts, IDs)
+- Preserve ALL error messages and their resolutions
+- Preserve goal/plan changes and rationale
+- Remove small talk, repetition, and verbose explanations
+- Use bullet points for clarity
+- Keep the summary under 500 words
+- Write in past tense, third person ("The agent decided...", "User requested...")"""
+
+SUMMARIZE_USER_TEMPLATE = """Summarize the following conversation turns into a concise summary.
+Preserve all important decisions, actions, outcomes, and context.
+
+CONVERSATION TURNS:
+{conversation}
+
+CONCISE SUMMARY:"""
+
+EXTRACT_FACTS_SYSTEM_PROMPT = """You are a fact extractor for an autonomous AI agent.
+Extract the most important facts, decisions, and outcomes from conversation history.
+
+RULES:
+- Extract concrete facts, not opinions or speculation
+- Each fact should be a single, self-contained statement
+- Prioritize: decisions made, actions completed, errors encountered, goals set
+- Include numerical values when present (costs, balances, IDs)
+- Maximum 15 facts
+- Format: one fact per line, no bullets or numbering"""
+
+EXTRACT_FACTS_USER_TEMPLATE = """Extract the key facts from these conversation turns:
+
+{conversation}
+
+KEY FACTS (one per line):""" 
 
 
 class ConversationCompressorSkill(Skill):
@@ -70,7 +110,27 @@ class ConversationCompressorSkill(Skill):
         self._max_tokens = DEFAULT_MAX_TOKENS
         self._preserve_recent = DEFAULT_PRESERVE_RECENT
         self._max_key_facts = DEFAULT_MAX_KEY_FACTS
+        self._cognition_engine = None  # Set via set_cognition_engine() for LLM compression
+        self._llm_compression_enabled = True  # Use LLM when available, fallback to regex
         self._ensure_data()
+
+    def set_cognition_engine(self, engine) -> None:
+        """Set the cognition engine for LLM-powered compression.
+
+        When set, compress operations will use the LLM to generate
+        high-quality summaries instead of regex-based truncation.
+        The engine is used to call the LLM with summarization prompts.
+        """
+        self._cognition_engine = engine
+
+    def has_llm(self) -> bool:
+        """Check if LLM-powered compression is available."""
+        return (
+            self._cognition_engine is not None
+            and self._llm_compression_enabled
+            and getattr(self._cognition_engine, 'llm', None) is not None
+            and getattr(self._cognition_engine, 'llm_type', 'none') != 'none'
+        )
 
     def _ensure_data(self):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -212,11 +272,209 @@ class ConversationCompressorSkill(Skill):
 
         return "\n".join(parts)
 
+    @staticmethod
+    def _format_messages_for_llm(messages: List[Dict[str, str]]) -> str:
+        """Format messages into a readable conversation transcript for the LLM."""
+        parts = []
+        for msg in messages:
+            role = msg.get("role", "unknown").upper()
+            content = msg.get("content", "")
+            # Cap each message at 1000 chars to avoid overwhelming the summarizer
+            if len(content) > 1000:
+                content = content[:997] + "..."
+            parts.append(f"[{role}]: {content}")
+        return "\n\n".join(parts)
+
+    async def llm_compress_messages(self, messages: List[Dict[str, str]]) -> str:
+        """Use the LLM to create a high-quality summary of old conversation turns.
+
+        Falls back to regex-based compression if LLM call fails.
+        """
+        if not self.has_llm() or not messages:
+            return self.compress_messages(messages)
+
+        conversation_text = self._format_messages_for_llm(messages)
+        user_prompt = SUMMARIZE_USER_TEMPLATE.format(conversation=conversation_text)
+
+        try:
+            text, usage, provider, model = await self._cognition_engine._call_with_fallback(
+                SUMMARIZE_SYSTEM_PROMPT, user_prompt
+            )
+            if text and len(text.strip()) > 20:
+                return text.strip()
+            # LLM returned empty/trivial response, fall back
+            return self.compress_messages(messages)
+        except Exception as e:
+            print(f"[COMPRESSOR] LLM compression failed ({e}), falling back to regex")
+            return self.compress_messages(messages)
+
+    async def llm_extract_facts(self, messages: List[Dict[str, str]]) -> List[str]:
+        """Use the LLM to extract key facts from conversation turns.
+
+        Falls back to regex-based extraction if LLM call fails.
+        """
+        if not self.has_llm() or not messages:
+            return self.extract_key_information(messages)
+
+        conversation_text = self._format_messages_for_llm(messages)
+        user_prompt = EXTRACT_FACTS_USER_TEMPLATE.format(conversation=conversation_text)
+
+        try:
+            text, usage, provider, model = await self._cognition_engine._call_with_fallback(
+                EXTRACT_FACTS_SYSTEM_PROMPT, user_prompt
+            )
+            if text and len(text.strip()) > 10:
+                # Parse one fact per line
+                facts = []
+                for line in text.strip().split("\n"):
+                    line = line.strip()
+                    # Remove bullet points, numbering
+                    line = re.sub(r"^[\-\*\d]+[\.\)\s]+", "", line).strip()
+                    if line and len(line) > 10:
+                        facts.append(line)
+                if facts:
+                    return facts[:15]  # Cap at 15 facts
+            # LLM returned empty/trivial, fall back
+            return self.extract_key_information(messages)
+        except Exception as e:
+            print(f"[COMPRESSOR] LLM fact extraction failed ({e}), falling back to regex")
+            return self.extract_key_information(messages)
+
+    async def async_auto_compress_if_needed(self, messages: List[Dict[str, str]]) -> Dict:
+        """Async version of auto_compress_if_needed that uses LLM when available.
+
+        This is the primary method called from the cognition engine.
+        Uses LLM-powered summarization for higher quality compression
+        when a cognition engine is available, falling back to regex-based
+        compression otherwise.
+
+        Returns dict with:
+        - compressed: bool
+        - messages: list - remaining messages after compression
+        - context_preamble: str - compressed context to inject
+        - tokens_saved: int
+        - llm_powered: bool - whether LLM was used for compression
+        """
+        state = self._load()
+        settings = state.get("settings", {})
+        max_tokens = settings.get("max_tokens", DEFAULT_MAX_TOKENS)
+        preserve_recent = settings.get("preserve_recent", DEFAULT_PRESERVE_RECENT)
+
+        total_tokens = self.estimate_message_tokens(messages)
+
+        if total_tokens <= max_tokens:
+            return {
+                "compressed": False,
+                "messages": messages,
+                "context_preamble": "",
+                "tokens_saved": 0,
+                "llm_powered": False,
+            }
+
+        # Need to compress - split messages
+        preserve_msgs = min(preserve_recent * 2, len(messages))
+        old_messages = messages[:len(messages) - preserve_msgs] if preserve_msgs < len(messages) else []
+        recent_messages = messages[len(messages) - preserve_msgs:] if preserve_msgs > 0 else messages
+
+        if not old_messages:
+            return {
+                "compressed": False,
+                "messages": messages,
+                "context_preamble": "",
+                "tokens_saved": 0,
+                "llm_powered": False,
+            }
+
+        # Use LLM or regex for fact extraction and summarization
+        used_llm = self.has_llm()
+
+        if used_llm:
+            new_facts = await self.llm_extract_facts(old_messages)
+            compressed_summary = await self.llm_compress_messages(old_messages)
+        else:
+            new_facts = self.extract_key_information(old_messages)
+            compressed_summary = self.compress_messages(old_messages)
+
+        # Store extracted facts (dedup)
+        existing = set(f.get("text", "") for f in state.get("key_facts", []))
+        added = 0
+        for fact in new_facts:
+            if fact not in existing:
+                state.setdefault("key_facts", []).append({
+                    "text": fact,
+                    "added_at": datetime.now().isoformat(),
+                    "source": "llm_auto_compress" if used_llm else "auto_compress",
+                })
+                existing.add(fact)
+                added += 1
+
+        max_facts = settings.get("max_key_facts", DEFAULT_MAX_KEY_FACTS)
+        if len(state.get("key_facts", [])) > max_facts:
+            state["key_facts"] = state["key_facts"][-max_facts:]
+
+        # Build context preamble
+        preamble_parts = []
+        if state.get("key_facts"):
+            fact_lines = [f"- {f.get('text', '')}" for f in state["key_facts"][-15:]]
+            preamble_parts.append("## Key Context (compressed from earlier)\n" + "\n".join(fact_lines))
+        if compressed_summary:
+            preamble_parts.append("## Earlier Conversation Summary\n" + compressed_summary)
+
+        context_preamble = "\n\n".join(preamble_parts) if preamble_parts else ""
+
+        # Calculate savings
+        original_tokens = self.estimate_message_tokens(old_messages)
+        preamble_tokens = self.estimate_tokens(context_preamble)
+        tokens_saved = original_tokens - preamble_tokens
+
+        # Store compression record
+        state.setdefault("compressed_summaries", []).append({
+            "summary": compressed_summary[:500],  # Cap stored summary
+            "messages_compressed": len(old_messages),
+            "original_tokens": original_tokens,
+            "compressed_tokens": preamble_tokens,
+            "llm_powered": used_llm,
+            "timestamp": datetime.now().isoformat(),
+        })
+        if len(state["compressed_summaries"]) > 10:
+            state["compressed_summaries"] = state["compressed_summaries"][-10:]
+
+        state.setdefault("compressions", []).append({
+            "timestamp": datetime.now().isoformat(),
+            "messages_compressed": len(old_messages),
+            "tokens_saved": tokens_saved,
+            "facts_extracted": added,
+            "llm_powered": used_llm,
+            "auto": True,
+        })
+        if len(state["compressions"]) > MAX_COMPRESSIONS_HISTORY:
+            state["compressions"] = state["compressions"][-MAX_COMPRESSIONS_HISTORY:]
+
+        stats = state.get("stats", {})
+        stats["total_compressions"] = stats.get("total_compressions", 0) + 1
+        stats["tokens_saved"] = stats.get("tokens_saved", 0) + tokens_saved
+        stats["facts_extracted"] = stats.get("facts_extracted", 0) + added
+        stats["messages_compressed"] = stats.get("messages_compressed", 0) + len(old_messages)
+        stats["llm_compressions"] = stats.get("llm_compressions", 0) + (1 if used_llm else 0)
+        stats["regex_compressions"] = stats.get("regex_compressions", 0) + (0 if used_llm else 1)
+        state["stats"] = stats
+
+        self._save(state)
+
+        return {
+            "compressed": True,
+            "messages": recent_messages,
+            "context_preamble": context_preamble,
+            "tokens_saved": tokens_saved,
+            "llm_powered": used_llm,
+        }
+
+
     def manifest(self) -> SkillManifest:
         return SkillManifest(
             skill_id="conversation_compressor",
             name="ConversationCompressor",
-            version="1.0.0",
+            version="2.0.0",
             category="meta",
             description="Intelligent context window management - compresses conversation history while preserving key facts and decisions",
             actions=self.get_actions(),
@@ -235,6 +493,14 @@ class ConversationCompressorSkill(Skill):
             SkillAction(
                 name="compress",
                 description="Compress old conversation turns, preserving recent ones verbatim",
+                parameters={
+                    "messages": {"type": "list", "required": True, "description": "Conversation history messages"},
+                    "preserve_recent": {"type": "int", "required": False, "description": "Number of recent message pairs to keep verbatim"},
+                },
+            ),
+            SkillAction(
+                name="llm_compress",
+                description="Compress conversation turns using LLM for higher quality (requires cognition engine)",
                 parameters={
                     "messages": {"type": "list", "required": True, "description": "Conversation history messages"},
                     "preserve_recent": {"type": "int", "required": False, "description": "Number of recent message pairs to keep verbatim"},
@@ -300,6 +566,8 @@ class ConversationCompressorSkill(Skill):
                 return self._analyze(params)
             elif action == "compress":
                 return self._compress(params)
+            elif action == "llm_compress":
+                return await self._llm_compress(params)
             elif action == "extract_facts":
                 return self._extract_facts(params)
             elif action == "add_fact":
@@ -479,6 +747,36 @@ class ConversationCompressorSkill(Skill):
             },
         )
 
+    async def _llm_compress(self, params: Dict) -> SkillResult:
+        """Compress conversation turns using LLM for higher quality summaries."""
+        messages = params.get("messages", [])
+        if not messages:
+            return SkillResult(success=False, message="No messages provided")
+
+        if not self.has_llm():
+            return SkillResult(
+                success=False,
+                message="LLM compression requires a cognition engine. "
+                        "Use the regular 'compress' action instead, or set "
+                        "a cognition engine via set_cognition_engine().",
+                data={"llm_available": False},
+            )
+
+        result = await self.async_auto_compress_if_needed(messages)
+        if result.get("compressed"):
+            return SkillResult(
+                success=True,
+                message=f"LLM-compressed {len(messages) - len(result['messages'])} messages. "
+                        f"Saved ~{result.get('tokens_saved', 0)} tokens. "
+                        f"LLM-powered: {result.get('llm_powered', False)}.",
+                data=result,
+            )
+        return SkillResult(
+            success=True,
+            message="No compression needed - within token budget.",
+            data=result,
+        )
+
     def _extract_facts(self, params: Dict) -> SkillResult:
         """Extract key facts from conversation messages."""
         messages = params.get("messages", [])
@@ -639,12 +937,17 @@ class ConversationCompressorSkill(Skill):
             message=f"Compressions: {stats.get('total_compressions', 0)} | "
                     f"Tokens saved: {stats.get('tokens_saved', 0)} | "
                     f"Facts: {len(facts)} | "
-                    f"Messages compressed: {stats.get('messages_compressed', 0)}",
+                    f"Messages compressed: {stats.get('messages_compressed', 0)} | "
+                    f"LLM: {stats.get('llm_compressions', 0)} | "
+                    f"Regex: {stats.get('regex_compressions', 0)}",
             data={
                 "stats": stats,
                 "settings": settings,
                 "key_facts_count": len(facts),
                 "summaries_count": len(summaries),
+                "llm_available": self.has_llm(),
+                "llm_compressions": stats.get("llm_compressions", 0),
+                "regex_compressions": stats.get("regex_compressions", 0),
                 "created_at": state.get("created_at"),
                 "last_updated": state.get("last_updated"),
             },

@@ -494,18 +494,30 @@ class CognitionEngine:
         messages.append({"role": "user", "content": user_prompt})
         return messages
 
-    def _record_exchange(self, user_prompt: str, assistant_response: str) -> None:
-        """Record a conversation exchange in history."""
+    async def _record_exchange(self, user_prompt: str, assistant_response: str) -> None:
+        """Record a conversation exchange in history.
+
+        Uses async LLM-powered compression when available for higher quality
+        context preservation. Falls back to sync regex compression, then simple trim.
+        """
         self._conversation_history.append({"role": "user", "content": user_prompt})
         self._conversation_history.append({"role": "assistant", "content": assistant_response})
         # Auto-compress if compressor is available, otherwise simple trim
         if self._conversation_compressor:
-            result = self._conversation_compressor.auto_compress_if_needed(
-                self._conversation_history
-            )
+            # Try async LLM-powered compression first
+            if hasattr(self._conversation_compressor, 'async_auto_compress_if_needed'):
+                result = await self._conversation_compressor.async_auto_compress_if_needed(
+                    self._conversation_history
+                )
+            else:
+                result = self._conversation_compressor.auto_compress_if_needed(
+                    self._conversation_history
+                )
             if result.get("compressed"):
                 self._conversation_history = result["messages"]
                 self._compressed_context_preamble = result.get("context_preamble", "")
+                if result.get("llm_powered"):
+                    print(f"[COGNITION] LLM-powered compression saved ~{result.get('tokens_saved', 0)} tokens")
         else:
             # Fallback: simple trim to max history
             max_messages = self._max_history_turns * 2
@@ -1007,7 +1019,7 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             )
 
         # Record exchange in conversation memory
-        self._record_exchange(user_prompt, response_text)
+        await self._record_exchange(user_prompt, response_text)
 
         # Parse response
         action = self._parse_action(response_text)

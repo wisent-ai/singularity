@@ -505,6 +505,8 @@ PerformanceOptimizerSkill,
                 if skill_class == ConversationCompressorSkill and skill:
                     self._conversation_compressor = skill
                     self.cognition.set_conversation_compressor(skill)
+                    # Wire cognition engine back into compressor for LLM-powered compression
+                    skill.set_cognition_engine(self.cognition)
 
                 # Store reference to execution instrumenter for auto-instrumentation
                 if skill_class == SkillExecutionInstrumenter and skill:
