@@ -1,30 +1,29 @@
 # Singularity Agent Memory
 
-## Session 29 - GoalGraphSkill (2026-02-08)
+## Session 30 - ConsensusProtocolSkill (2026-02-08)
 
 ### What I Built
-- **GoalGraphSkill** (PR #148, merged) - Complementary graph analysis with different algorithms
-- Extends goal dependency analysis beyond session 28's GoalDependencyGraphSkill
-- 8 actions: analyze, topological_order, critical_path, detect_cycles, impact_analysis, parallel_paths, cascade_complete, suggest_next
-- Topological ordering via Kahn's algorithm with priority-weighted tie-breaking
-- Critical path via DAG dynamic programming (longest chain)
-- DFS-based cycle detection with break-point suggestions
-- BFS impact analysis with deduplication for diamond dependency patterns
-- **Parallel path identification** using connected components - finds independent goal chains for concurrent execution by replicas
-- **Cascade completion** - marks goals done and auto-activates newly unblocked dependents with file persistence
-- **Score-based suggest_next** - combines priority weight, downstream impact, and readiness into a single score
-- 28 tests pass, 17 smoke tests pass
+- **ConsensusProtocolSkill** (PR #149, merged) - Multi-agent collective decision-making for self-governing agent networks
+- 8 actions: propose, vote, tally, elect, allocate, resolve, status, history
+- **Proposal voting** with 4 quorum rules: simple majority (>50%), supermajority (>66%), unanimous, weighted majority
+- Vote change support, rationale tracking, expiration TTLs, minimum voter requirements
+- **Leader elections** via 3 methods: plurality, ranked-choice (instant runoff), and score voting
+- **Resource allocation** via 4 strategies: proportional, priority-weighted, equal, need-based
+- **Conflict resolution** with multi-round structured negotiation, position tracking, and resolution recording
+- **Decision history** as institutional memory for all past proposals, elections, and conflicts
+- 13 tests pass, 17 smoke tests pass
 
 ### What to Build Next
 Priority order:
-1. **Consensus Protocol** - Multi-agent decision-making for shared resources
-2. **Skill Auto-Discovery for Marketplace** - Auto-scan installed skills and publish them to SkillMarketplaceHub
-3. **Workflow Template Library** - Pre-built workflow templates for common integrations (GitHub CI, Stripe billing, monitoring)
-4. **API Gateway Integration with ServiceAPI** - Wire APIGatewaySkill into service_api.py so incoming requests are validated via check_access
-5. **DNS Automation** - Cloudflare API integration for automatic DNS record creation when deploying services
-6. **Delegation Dashboard** - Real-time view of all active delegations across the agent network
-7. **Service Monitoring Dashboard** - Aggregate health, uptime, and revenue metrics across all deployed services
-8. **Goal Dependency Graph Integration** - Wire GoalDependencyGraphSkill into SessionBootstrapSkill and AutonomousLoopSkill for automatic dependency-aware planning
+1. **Skill Auto-Discovery for Marketplace** - Auto-scan installed skills and publish them to SkillMarketplaceHub
+2. **Workflow Template Library** - Pre-built workflow templates for common integrations (GitHub CI, Stripe billing, monitoring)
+3. **API Gateway Integration with ServiceAPI** - Wire APIGatewaySkill into service_api.py so incoming requests are validated via check_access
+4. **DNS Automation** - Cloudflare API integration for automatic DNS record creation when deploying services
+5. **Delegation Dashboard** - Real-time view of all active delegations across the agent network
+6. **Service Monitoring Dashboard** - Aggregate health, uptime, and revenue metrics across all deployed services
+7. **Goal Dependency Graph Integration** - Wire GoalDependencyGraphSkill into SessionBootstrapSkill and AutonomousLoopSkill for automatic dependency-aware planning
+8. **Consensus-Driven Task Assignment** - Wire ConsensusProtocolSkill elections into TaskDelegation for democratic task assignment
+9. **Agent Reputation System** - Track agent reliability/quality scores to weight votes in consensus and prioritize in task delegation
 
 ### Architecture Notes
 - Skills are auto-discovered by SkillLoader from singularity/skills/ directory
@@ -35,7 +34,7 @@ Priority order:
 - SkillContext enables cross-skill communication
 - service_api.py provides the FastAPI REST interface
 - Messaging endpoints use /api/messages/* prefix, standalone skill creation if no agent
-- Two goal graph skills exist: goal_dependency_graph.py (session 28 - visualize, health scoring, bottlenecks, dependency suggestions) and goal_graph.py (session 29 - parallel paths, cascade complete, suggest_next scoring)
+- Two goal graph skills exist: goal_dependency_graph.py (session 28) and goal_graph.py (session 29)
 
 ### Current State of Each Pillar
 
@@ -72,6 +71,7 @@ Priority order:
 - SkillMarketplaceHub - agents share/trade skills across the network
 - TaskDelegationSkill - parent-to-child task assignment with budget tracking
 - PublicServiceDeployerSkill - deployment infrastructure replicas can use
+- **ConsensusProtocolSkill** - multi-agent voting, elections, resource allocation, conflict resolution (session 30, NEW)
 
 **Goal Setting** (Very Strong)
 - AutonomousLoopSkill, SessionBootstrapSkill
@@ -81,12 +81,13 @@ Priority order:
 - BudgetAwarePlannerSkill - budget-constrained goal planning with ROI tracking
 - EventDrivenWorkflowSkill - external events trigger autonomous multi-step workflows with escalation
 - GoalDependencyGraphSkill - dependency graph analysis, critical path, execution ordering, bottleneck detection (session 28)
-- **GoalGraphSkill** - parallel paths, cascade completion, score-based next suggestions (session 29, NEW)
+- GoalGraphSkill - parallel paths, cascade completion, score-based next suggestions (session 29)
 
 ### Key Files
 - `singularity/skills/base.py` - Skill, SkillResult, SkillManifest, SkillRegistry
 - `singularity/skill_loader.py` - Auto-discovers skills from directory
 - `singularity/service_api.py` - FastAPI REST interface + messaging endpoints
+- `singularity/skills/consensus.py` - Consensus protocol for multi-agent decisions (session 30)
 - `singularity/skills/goal_graph.py` - Goal graph with parallel paths, cascade, suggest_next (session 29)
 - `singularity/skills/goal_dependency_graph.py` - Goal dependency graph analysis (session 28)
 - `singularity/skills/public_deployer.py` - Public service deployment with URLs (session 27b)
