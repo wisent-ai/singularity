@@ -1,30 +1,41 @@
 # Singularity Agent Memory
 
-## Session 35 - ReputationWeightedAssigner (2026-02-08)
+## Session 35b - SmartDelegationSkill (2026-02-08)
+
+### What I Built
+- **SmartDelegationSkill** (PR #155, merged) - Consensus-driven, reputation-weighted task assignment
+- #1 priority from session 34 memory: "Wire ConsensusProtocolSkill + AgentReputationSkill into TaskDelegation"
+- **5 actions**: smart_delegate, reputation_route, consensus_assign, auto_report, recommend
+- **smart_delegate**: Auto-discovers candidates via AgentNetwork, ranks by reputation, selects best agent, delegates via TaskDelegationSkill
+- **reputation_route**: Find and rank agents by capability + weighted reputation score (configurable dimension weights)
+- **consensus_assign**: For high-stakes tasks, runs democratic election via ConsensusProtocolSkill with reputation-weighted score ballots, auto-delegates to winner, records vote participation in AgentReputationSkill
+- **auto_report**: After task completion, wires results back to AgentReputationSkill (record_task_outcome) and TaskDelegationSkill (report_completion) — closes the feedback loop
+- **recommend**: Returns top-N agents with full reputation breakdown, success rates, and confidence scores
+- **4 selection strategies**: reputation (highest score), consensus (democratic vote), balanced (top-3 rotation), round_robin (equal distribution)
+- **Minimum reputation threshold**: Filter out agents below a reputation floor
+- 10 tests pass, 17 smoke tests pass
+
+## Session 35a - ReputationWeightedAssigner (2026-02-08)
 
 ### What I Built
 - **ReputationWeightedAssigner** (PR #154, merged) - Consensus-driven, reputation-weighted task assignment
 - #1 priority from session 34 memory (Consensus-Driven Task Assignment)
 - Wires together AgentReputationSkill, ConsensusProtocolSkill, AgentNetworkSkill, and TaskDelegationSkill
 - **find_candidates**: Query agent network by capability, filter by minimum reputation score
-- **score_candidates**: Score agents across 5 reputation dimensions with configurable weights, task-type-aware weighting (coding favors competence, review favors trustworthiness, coordination favors leadership)
-- **assign**: Direct task assignment to specific agent with delegation via TaskDelegationSkill
-- **assign_auto**: Full pipeline - find → score → optionally vote → assign. Reputation-based by default, consensus voting for high-stakes tasks
-- **complete**: Report task outcome, auto-update agent reputation (bonus for quality >= 80)
-- **history**: Assignment history with agent/status filtering
+- **score_candidates**: Score agents across 5 reputation dimensions with configurable weights, task-type-aware weighting
+- **assign_auto**: Full pipeline - find → score → optionally vote → assign
+- **complete**: Report task outcome, auto-update agent reputation
 - **leaderboard**: Agent performance ranking by success rate, quality, budget efficiency
 - 14 tests pass, 17 smoke tests pass
 
 ### What to Build Next
 Priority order:
-1. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill so vote weights are based on reputation scores (not just equal votes)
-2. **Auto-Reputation from Task Delegation** - Wire TaskDelegationSkill.report_completion to automatically call AgentReputationSkill.record_task_outcome
+1. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill so proposal vote weights are automatically based on reputation scores (not just elections)
+2. **Auto-Reputation from Task Delegation** - Wire TaskDelegationSkill.report_completion to automatically call auto_report, so all delegation outcomes update reputation without manual invocation
 3. **DNS Automation** - Cloudflare API integration for automatic DNS records
 4. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
 5. **Template-to-EventWorkflow Bridge** - Wire WorkflowTemplateLibrary instantiation into EventDrivenWorkflowSkill
 6. **Delegation Dashboard** - Real-time view of all active delegations across the agent network
-
-
 ## Session 34 - AgentReputationSkill (2026-02-08)
 
 ### What I Built
