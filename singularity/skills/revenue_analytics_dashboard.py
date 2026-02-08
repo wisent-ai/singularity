@@ -27,6 +27,9 @@ Data sources:
   - marketplace.json: orders, revenue_log
   - hosted_services.json: services with revenue data
   - revenue_catalog.json: products, deployments
+  - database_revenue_bridge.json: paid data analysis, schema design, reports
+  - http_revenue_bridge.json: paid HTTP proxy, webhook relay, health checks
+  - usage.json (api_marketplace): external API brokering, subscriptions
 
 Pillar: Revenue Generation (primary), Goal Setting (data-driven prioritization)
 """
@@ -52,6 +55,9 @@ SOURCE_FILES = {
     "marketplace": DATA_DIR / "marketplace.json",
     "hosted_services": DATA_DIR / "hosted_services.json",
     "revenue_catalog": DATA_DIR / "revenue_catalog.json",
+    "database_revenue_bridge": DATA_DIR / "database_revenue_bridge.json",
+    "http_revenue_bridge": DATA_DIR / "http_revenue_bridge.json",
+    "api_marketplace": DATA_DIR / "usage.json",
 }
 
 MAX_SNAPSHOTS = 200
@@ -369,6 +375,84 @@ class RevenueAnalyticsDashboardSkill(Skill):
         else:
             collected["sources_missing"].append("revenue_catalog")
 
+        # 8. DatabaseRevenueBridge
+        drb = _load_json(SOURCE_FILES["database_revenue_bridge"])
+        if drb:
+            collected["sources_available"].append("database_revenue_bridge")
+            rev_data = drb.get("revenue", {})
+            stats = drb.get("stats", {})
+            rev = rev_data.get("total", 0.0)
+            jobs = drb.get("jobs", [])
+            # Estimate cost as 10% of revenue (compute cost for DB queries)
+            cost = rev * 0.1
+            collected["by_source"]["database_revenue_bridge"] = {
+                "revenue": rev, "cost": cost, "profit": rev - cost,
+                "transactions": stats.get("total_requests", 0),
+                "successful_requests": stats.get("successful_requests", 0),
+                "failed_requests": stats.get("failed_requests", 0),
+                "success_rate": (
+                    round(stats.get("successful_requests", 0) / stats["total_requests"] * 100, 1)
+                    if stats.get("total_requests", 0) > 0 else 0
+                ),
+                "revenue_by_service": rev_data.get("by_service", {}),
+                "reports_generated": len(drb.get("reports", {})),
+                "schemas_created": len(drb.get("schemas_created", {})),
+            }
+            collected["total_revenue"] += rev
+            collected["total_cost"] += cost
+            collected["total_transactions"] += stats.get("total_requests", 0)
+            for cid in rev_data.get("by_customer", {}):
+                collected["customers"].add(cid)
+        else:
+            collected["sources_missing"].append("database_revenue_bridge")
+
+        # 9. HTTPRevenueBridge
+        hrb = _load_json(SOURCE_FILES["http_revenue_bridge"])
+        if hrb:
+            collected["sources_available"].append("http_revenue_bridge")
+            rev_data = hrb.get("revenue", {})
+            stats = hrb.get("stats", {})
+            rev = rev_data.get("total", 0.0)
+            cost = rev * 0.05  # Low cost for HTTP proxying
+            collected["by_source"]["http_revenue_bridge"] = {
+                "revenue": rev, "cost": cost, "profit": rev - cost,
+                "transactions": stats.get("total_requests", 0),
+                "successful_requests": stats.get("successful_requests", 0),
+                "failed_requests": stats.get("failed_requests", 0),
+                "success_rate": (
+                    round(stats.get("successful_requests", 0) / stats["total_requests"] * 100, 1)
+                    if stats.get("total_requests", 0) > 0 else 0
+                ),
+                "revenue_by_service": rev_data.get("by_service", {}),
+            }
+            collected["total_revenue"] += rev
+            collected["total_cost"] += cost
+            collected["total_transactions"] += stats.get("total_requests", 0)
+            for cid in rev_data.get("by_customer", {}):
+                collected["customers"].add(cid)
+        else:
+            collected["sources_missing"].append("http_revenue_bridge")
+
+        # 10. APIMarketplace
+        amp = _load_json(SOURCE_FILES["api_marketplace"])
+        if amp:
+            collected["sources_available"].append("api_marketplace")
+            rev_data = amp.get("revenue", {})
+            rev = rev_data.get("total", 0.0)
+            cost = rev * 0.15  # Higher cost for external API calls
+            collected["by_source"]["api_marketplace"] = {
+                "revenue": rev, "cost": cost, "profit": rev - cost,
+                "transactions": amp.get("total_calls", 0),
+                "revenue_by_api": rev_data.get("by_api", {}),
+            }
+            collected["total_revenue"] += rev
+            collected["total_cost"] += cost
+            collected["total_transactions"] += amp.get("total_calls", 0)
+            for cid in rev_data.get("by_customer", {}):
+                collected["customers"].add(cid)
+        else:
+            collected["sources_missing"].append("api_marketplace")
+
         # Convert set to count
         collected["customer_count"] = len(collected["customers"])
         collected["customers"] = list(collected["customers"])
@@ -548,6 +632,41 @@ class RevenueAnalyticsDashboardSkill(Skill):
                     if q.get("status") == "completed":
                         customer_details[cid]["total_revenue"] += q.get("revenue", q.get("price", 0))
                         customer_details[cid]["total_requests"] += 1
+
+        # Also from database revenue bridge
+        drb = _load_json(SOURCE_FILES["database_revenue_bridge"])
+        if drb:
+            for cid, rev in drb.get("revenue", {}).get("by_customer", {}).items():
+                if cid not in customer_details:
+                    customer_details[cid] = {
+                        "tier": "data_services", "total_revenue": 0,
+                        "total_requests": 0, "registered_at": "",
+                    }
+                customer_details[cid]["total_revenue"] += rev
+                customer_jobs = [j for j in drb.get("jobs", []) if j.get("customer_id") == cid]
+                customer_details[cid]["total_requests"] += len(customer_jobs)
+
+        # Also from HTTP revenue bridge
+        hrb = _load_json(SOURCE_FILES["http_revenue_bridge"])
+        if hrb:
+            for cid, rev in hrb.get("revenue", {}).get("by_customer", {}).items():
+                if cid not in customer_details:
+                    customer_details[cid] = {
+                        "tier": "http_services", "total_revenue": 0,
+                        "total_requests": 0, "registered_at": "",
+                    }
+                customer_details[cid]["total_revenue"] += rev
+
+        # Also from API marketplace
+        amp = _load_json(SOURCE_FILES["api_marketplace"])
+        if amp:
+            for cid, rev in amp.get("revenue", {}).get("by_customer", {}).items():
+                if cid not in customer_details:
+                    customer_details[cid] = {
+                        "tier": "api_marketplace", "total_revenue": 0,
+                        "total_requests": 0, "registered_at": "",
+                    }
+                customer_details[cid]["total_revenue"] += rev
 
         # Sort by revenue
         sorted_customers = sorted(
