@@ -78,6 +78,7 @@ from .skills.skill_analyzer import SkillDependencyAnalyzer
 from .skills.workflow_analytics import WorkflowAnalyticsSkill
 from .skills.nl_router import NaturalLanguageRouter
 from .skills.decision_log import DecisionLogSkill
+from .skills.error_recovery import ErrorRecoverySkill
 
 
 
@@ -165,6 +166,7 @@ class AutonomousAgent:
         WorkflowAnalyticsSkill,
         NaturalLanguageRouter,
         DecisionLogSkill,
+        ErrorRecoverySkill,
     ]
 
 
@@ -296,6 +298,7 @@ class AutonomousAgent:
         # Performance tracker reference (set during skill init)
         self._performance_tracker = None
         self._resource_watcher = None
+        self._error_recovery = None
         # Tool resolver for fuzzy matching (lazy-initialized)
         self._tool_resolver = None
 
@@ -416,6 +419,8 @@ class AutonomousAgent:
                 # Store reference to performance tracker for auto-recording
                 if skill_class == PerformanceTracker and skill:
                     self._performance_tracker = skill
+                if skill_class == ErrorRecoverySkill and skill:
+                    self._error_recovery = skill
 
                 if skill and skill.check_credentials():
                     self._log("SKILL", f"+ {skill.manifest.name}")
@@ -660,6 +665,19 @@ class AutonomousAgent:
                     cost_usd=decision.api_cost_usd,
                     error=str(result.get('message', ''))[:200] if not exec_success else '',
                 )
+
+            # Auto-record errors for recovery learning
+            if self._error_recovery and not exec_success:
+                err_skill_id = skill_id if skill_id else decision.action.tool
+                err_action = action_name if action_name else ''
+                try:
+                    await self._error_recovery.execute('record', {
+                        'skill_id': err_skill_id,
+                        'action': err_action,
+                        'error_message': str(result.get('message', ''))[:500],
+                    })
+                except Exception:
+                    pass
 
             # Auto-record resource consumption for budget monitoring
             if self._resource_watcher:
