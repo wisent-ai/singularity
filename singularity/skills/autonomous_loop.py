@@ -28,6 +28,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from .base import Skill, SkillResult, SkillManifest, SkillAction
+from .circuit_breaker import wire_adaptive_thresholds
 
 
 LOOP_STATE_FILE = Path(__file__).parent.parent / "data" / "autonomous_loop.json"
@@ -229,8 +230,25 @@ class AutonomousLoopSkill(Skill):
 
     # ========== Core Loop ==========
 
+    def _wire_adaptive_circuit_breaker(self):
+        """Wire AdaptiveCircuitThresholdsSkill into CircuitBreakerSkill.
+
+        Called at the start of each loop iteration to ensure per-skill
+        adaptive thresholds are used when evaluating circuits.
+        Fail-silent: does nothing if either skill is unavailable.
+        """
+        if not self.context:
+            return
+        try:
+            wire_adaptive_thresholds(self.context._registry)
+        except Exception:
+            pass  # Fail silently - wiring is optional enhancement
+
     async def _step(self, params: Dict) -> SkillResult:
         """Execute one full iteration of the autonomous loop."""
+        # Auto-wire adaptive thresholds into circuit breaker if both exist
+        self._wire_adaptive_circuit_breaker()
+
         state = self._load()
         force_assess = params.get("force_assess", False)
         iteration_id = f"iter_{uuid.uuid4().hex[:8]}"

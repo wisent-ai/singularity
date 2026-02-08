@@ -170,6 +170,7 @@ class CircuitBreakerSkill(Skill):
             ],  # Never auto-open these
         }
         self._event_log: List[Dict] = []
+        self._adaptive_source = None  # Optional AdaptiveCircuitThresholdsSkill reference
         self._load_state()
 
     def _load_state(self):
@@ -254,6 +255,39 @@ class CircuitBreakerSkill(Skill):
             f"{old_state.value} -> {new_state.value}: {reason}",
         )
 
+    def set_adaptive_source(self, adaptive_skill):
+        """
+        Connect an AdaptiveCircuitThresholdsSkill for per-skill thresholds.
+
+        When set, _evaluate_circuit() will use per-skill threshold overrides
+        from the adaptive skill instead of global defaults. This enables
+        different skills to have different failure rate thresholds, cooldown
+        periods, etc. based on their observed performance.
+
+        Args:
+            adaptive_skill: An AdaptiveCircuitThresholdsSkill instance (or None to disable).
+        """
+        self._adaptive_source = adaptive_skill
+
+    def _get_effective_config(self, skill_id: str) -> Dict:
+        """
+        Get effective thresholds for a skill, merging adaptive overrides with global config.
+
+        If an adaptive source is set and has an override for this skill, those
+        values take precedence over the global config. Keys not in the override
+        fall back to the global config.
+
+        Returns a dict with all threshold keys needed by _evaluate_circuit.
+        """
+        if self._adaptive_source is not None:
+            override = self._adaptive_source.get_override_for_skill(skill_id)
+            if override:
+                # Merge: override values take precedence, global config fills gaps
+                effective = dict(self._config)
+                effective.update(override)
+                return effective
+        return self._config
+
     def _evaluate_circuit(self, circuit: Circuit):
         """Evaluate if a circuit should change state based on current metrics."""
         now = time.time()
@@ -262,9 +296,12 @@ class CircuitBreakerSkill(Skill):
         if circuit.state in (CircuitState.FORCED_OPEN, CircuitState.FORCED_CLOSED):
             return
 
+        # Get per-skill thresholds (adaptive overrides if available, else global)
+        cfg = self._get_effective_config(circuit.skill_id)
+
         if circuit.state == CircuitState.CLOSED:
             # Check consecutive failure threshold
-            if circuit.consecutive_failures >= self._config["consecutive_failure_threshold"]:
+            if circuit.consecutive_failures >= cfg["consecutive_failure_threshold"]:
                 self._transition(
                     circuit, CircuitState.OPEN,
                     f"{circuit.consecutive_failures} consecutive failures",
@@ -272,19 +309,19 @@ class CircuitBreakerSkill(Skill):
                 return
 
             # Check failure rate threshold (only with enough data)
-            if len(circuit.window) >= self._config["min_window_size"]:
+            if len(circuit.window) >= cfg.get("min_window_size", self._config["min_window_size"]):
                 rate = circuit.failure_rate()
-                if rate >= self._config["failure_rate_threshold"]:
+                if rate >= cfg["failure_rate_threshold"]:
                     self._transition(
                         circuit, CircuitState.OPEN,
-                        f"failure rate {rate:.1%} >= {self._config['failure_rate_threshold']:.1%}",
+                        f"failure rate {rate:.1%} >= {cfg['failure_rate_threshold']:.1%}",
                     )
                     return
 
             # Check cost-per-success threshold
-            if len(circuit.window) >= self._config["min_window_size"]:
+            if len(circuit.window) >= cfg.get("min_window_size", self._config["min_window_size"]):
                 cps = circuit.cost_per_success()
-                threshold = self._config["cost_per_success_threshold"]
+                threshold = cfg["cost_per_success_threshold"]
                 if cps != float("inf") and cps > threshold:
                     self._transition(
                         circuit, CircuitState.OPEN,
@@ -295,14 +332,14 @@ class CircuitBreakerSkill(Skill):
         elif circuit.state == CircuitState.OPEN:
             # Check if cooldown has elapsed → half-open
             elapsed = now - circuit.last_state_change
-            if elapsed >= self._config["cooldown_seconds"]:
+            if elapsed >= cfg.get("cooldown_seconds", self._config.get("cooldown_seconds", 60)):
                 self._transition(circuit, CircuitState.HALF_OPEN, "cooldown elapsed")
                 circuit.half_open_test_time = now
                 circuit.consecutive_successes = 0
 
         elif circuit.state == CircuitState.HALF_OPEN:
             # Check if enough successes → close
-            if circuit.consecutive_successes >= self._config["half_open_max_tests"]:
+            if circuit.consecutive_successes >= cfg.get("half_open_max_tests", self._config.get("half_open_max_tests", 3)):
                 self._transition(
                     circuit, CircuitState.CLOSED,
                     f"{circuit.consecutive_successes} consecutive successes in half-open",
@@ -733,3 +770,27 @@ class CircuitBreakerSkill(Skill):
                 "config": self._config,
             },
         )
+
+
+
+def wire_adaptive_thresholds(registry) -> bool:
+    """
+    Wire AdaptiveCircuitThresholdsSkill into CircuitBreakerSkill.
+
+    Looks up both skills in the registry and connects them so the circuit
+    breaker uses per-skill adaptive thresholds when evaluating circuits.
+
+    Call this after all skills are registered in the registry.
+
+    Args:
+        registry: SkillRegistry instance containing both skills
+
+    Returns:
+        True if wiring succeeded, False if either skill is missing
+    """
+    cb = registry.get("circuit_breaker")
+    adaptive = registry.get("adaptive_circuit_thresholds")
+    if cb is None or adaptive is None:
+        return False
+    cb.set_adaptive_source(adaptive)
+    return True
