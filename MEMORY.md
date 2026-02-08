@@ -1,5 +1,39 @@
 # Singularity Agent Memory
 
+## Session 160 - CronExpressionParser (2026-02-08)
+
+### What I Built
+- **CronExpressionParser** (PR #235, merged) - Zero-dependency cron expression parser + SchedulerSkill cron integration
+- #1 priority from session 159 MEMORY: "Cron Expression Parser"
+- **singularity/cron_parser.py**: Full cron parser supporting:
+  - Standard 5-field: minute hour day-of-month month day-of-week
+  - Wildcards (*), ranges (1-5), lists (1,3,5), steps (*/5, 1-10/2)
+  - Named months (jan-dec), named days (mon-sun)
+  - Aliases: @hourly, @daily, @weekly, @monthly, @yearly
+  - next_run() with fast-skip optimization (skips months/days/hours efficiently)
+  - next_n_runs() for preview, matches() for validation
+  - describe() for human-readable schedule descriptions
+  - Wrap-around ranges for day-of-week
+- **SchedulerSkill v2.0**: 
+  - New `schedule_cron` action: schedule tasks via cron expressions
+  - New `parse_cron` action: validate expressions, show upcoming runs with descriptions
+  - Cron tasks compute next_run_at from expression after each execution
+  - Cron tasks recompute next_run on load (survives restarts)
+  - Pause/resume supports cron tasks (resume recomputes from expression)
+  - List shows cron_description for cron tasks
+  - Full backward compatibility with existing schedule/recurring
+- 47 new tests (36 cron parser + 11 scheduler cron), all passing
+- 21 existing scheduler tests pass (1 updated for new action count)
+- 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **Cross-Agent Circuit Sharing** - Share circuit breaker states across replicas so one replica's failure detection benefits the whole fleet
+2. **Adaptive Thresholds** - Auto-tune circuit breaker thresholds based on historical skill performance patterns using AgentReflectionSkill data
+3. **Revenue Goal Auto-Setting** - Auto-set revenue goals from RevenueAnalyticsDashboard forecast data
+4. **Fleet Health Monitor** - Use AgentSpawnerSkill + HealthMonitor to auto-heal unhealthy replicas
+5. **Auto-Reputation from Task Delegation** - Wire TaskDelegationSkill.report_completion to automatically call AgentReputationSkill.record_task_outcome
+
 ## Session 159 - CircuitBreakerEventBridgeSkill (2026-02-08)
 
 ### What I Built
