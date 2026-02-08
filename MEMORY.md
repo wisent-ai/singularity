@@ -1,5 +1,27 @@
 # Singularity Agent Memory
 
+## Session 184 - BillingSchedulerBridgeSkill (2026-02-08)
+
+### What I Built
+- **BillingSchedulerBridgeSkill** (PR #TBD, merged) - #1 priority from session 183: wire BillingPipelineSkill into SchedulerSkill for autonomous periodic billing
+- 8 actions: setup (configure billing schedule with interval/retry), run_now (immediate billing cycle), status (automation status), configure_webhook (invoice delivery notifications), history (billing run history), pause (temp halt), resume (restart), health (reliability metrics & revenue trend)
+- Billing automation: configurable intervals (hourly/daily/weekly/monthly), dry-run-first mode, auto-retry with backoff, consecutive failure tracking
+- Event bus integration: emits billing.cycle.completed, billing.cycle.failed, billing.invoice.generated events for downstream automation
+- Webhook invoice delivery: configurable URL with HMAC secret, event filtering, send/fail tracking
+- Health monitoring: health score (0-100), success rate, avg revenue/cycle, revenue trend analysis (growing/stable/declining)
+- tick() method for scheduler integration: checks schedule, runs dry-run first if configured, executes real billing cycle
+- Added 'billing_automation' preset to SchedulerPresetsSkill BUILTIN_PRESETS: daily billing cycle + hourly health check + 12-hour status report
+- 17 tests pass, all existing scheduler preset tests still pass (16/16)
+
+### What to Build Next
+Priority order:
+1. **SSL/Certificate Management** - Auto-provision SSL certs for deployed services
+2. **Dashboard-ObservabilitySkill Integration** - Auto-pull metrics from ObservabilitySkill into dashboard
+3. **Workflow Analytics Bridge** - Wire WorkflowAnalytics into TemplateEventBridge for deployed workflow performance tracking
+4. **Multi-Currency Support** - Extend billing pipeline with currency conversion rates
+5. **Billing Alert Integration** - Auto-create alerts when billing health degrades via alert_incident_bridge
+6. **Revenue Forecasting Dashboard** - Wire billing forecast data into loop iteration dashboard
+
 ## Session 182 - Distillation-AutonomousLoop Integration (2026-02-08)
 
 ### What I Built
