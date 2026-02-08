@@ -99,6 +99,7 @@ from .skills.dashboard_observability_bridge import DashboardObservabilityBridgeS
 from .skills.task_pricing import TaskPricingSkill
 from .skills.agent_reflection import AgentReflectionSkill
 from .skills.reflection_event_bridge import ReflectionEventBridgeSkill
+from .skills.database import DatabaseSkill
 
 
 
@@ -206,6 +207,7 @@ PerformanceOptimizerSkill,
         ReflectionEventBridgeSkill,
         PipelineLearningSkill,
         WorkflowPipelineBridgeSkill,
+        DatabaseSkill,
     ]
 
 
