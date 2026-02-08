@@ -460,6 +460,18 @@ class SchedulerPresetsSkill(Skill):
                     parameters={},
                     estimated_cost=0,
                 ),
+                SkillAction(
+                    name="dashboard",
+                    description="Rich operational dashboard: per-preset health, next run times, success rates, overdue tasks",
+                    parameters={
+                        "preset_id": {
+                            "type": "string",
+                            "required": False,
+                            "description": "Show details for a specific preset only. Omit for all presets.",
+                        },
+                    },
+                    estimated_cost=0,
+                ),
             ],
             required_credentials=[],
         )
@@ -477,6 +489,7 @@ class SchedulerPresetsSkill(Skill):
             "status": self._status,
             "create_custom": self._create_custom,
             "recommend": self._recommend,
+            "dashboard": self._dashboard,
         }
 
         handler = handlers.get(action)
@@ -892,6 +905,271 @@ class SchedulerPresetsSkill(Skill):
             pillar=d.get("pillar", "custom"),
             schedules=schedules,
         )
+
+
+    async def _dashboard(self, params: Dict) -> SkillResult:
+        """Rich operational dashboard with per-preset health, next runs, success rates."""
+        filter_preset = params.get("preset_id", "").strip() or None
+
+        # Read scheduler state for task details and execution history
+        scheduler_tasks, execution_history = self._read_scheduler_data()
+
+        now = time.time()
+        preset_reports = []
+        total_tasks = 0
+        total_healthy = 0
+        total_overdue = 0
+        total_disabled = 0
+        total_executions = 0
+        total_successes = 0
+
+        applied_presets = dict(self._applied)
+        if filter_preset:
+            if filter_preset not in applied_presets:
+                return SkillResult(
+                    success=False,
+                    message=f"Preset '{filter_preset}' is not applied",
+                    data={"available": list(applied_presets.keys())},
+                )
+            applied_presets = {filter_preset: applied_presets[filter_preset]}
+
+        for preset_id, info in applied_presets.items():
+            preset = self._get_preset(preset_id)
+            task_ids = info.get("task_ids", [])
+            applied_at = info.get("applied_at", "unknown")
+            multiplier = info.get("multiplier", 1.0)
+
+            # Gather per-task details from scheduler
+            task_details = []
+            preset_executions = 0
+            preset_successes = 0
+            preset_overdue = 0
+            preset_disabled = 0
+
+            for tid in task_ids:
+                task_data = scheduler_tasks.get(tid)
+                if not task_data:
+                    task_details.append({
+                        "task_id": tid,
+                        "status": "missing",
+                        "name": "unknown",
+                        "health": "missing",
+                    })
+                    continue
+
+                task_name = task_data.get("name", "unknown")
+                enabled = task_data.get("enabled", True)
+                status = task_data.get("status", "unknown")
+                next_run = task_data.get("next_run_at", 0)
+                run_count = task_data.get("run_count", 0)
+                last_run_at = task_data.get("last_run_at")
+                last_success = task_data.get("last_success")
+                interval = task_data.get("interval_seconds", 0)
+
+                # Compute next run info
+                if enabled and status == "pending" and next_run > 0:
+                    remaining = next_run - now
+                    if remaining > 0:
+                        next_run_human = self._humanize_interval(remaining)
+                        is_overdue = False
+                    else:
+                        next_run_human = f"overdue by {self._humanize_interval(abs(remaining))}"
+                        is_overdue = True
+                        preset_overdue += 1
+                else:
+                    next_run_human = "n/a"
+                    is_overdue = False
+
+                if not enabled:
+                    preset_disabled += 1
+
+                # Get execution history for this task
+                task_history = [h for h in execution_history if h.get("task_id") == tid]
+                task_exec_count = len(task_history)
+                task_success_count = sum(1 for h in task_history if h.get("success"))
+                success_rate = (task_success_count / task_exec_count * 100) if task_exec_count > 0 else None
+
+                # Compute average duration
+                durations = [h.get("duration_seconds", 0) for h in task_history if h.get("duration_seconds")]
+                avg_duration = sum(durations) / len(durations) if durations else None
+
+                preset_executions += task_exec_count
+                preset_successes += task_success_count
+
+                # Health assessment
+                health = "healthy"
+                if not enabled:
+                    health = "disabled"
+                elif status == "cancelled":
+                    health = "cancelled"
+                elif is_overdue:
+                    health = "overdue"
+                elif last_success is False:
+                    health = "last_failed"
+                elif success_rate is not None and success_rate < 50:
+                    health = "degraded"
+
+                detail = {
+                    "task_id": tid,
+                    "name": task_name,
+                    "health": health,
+                    "enabled": enabled,
+                    "status": status,
+                    "next_run_in": next_run_human,
+                    "interval": self._humanize_interval(interval) if interval else "n/a",
+                    "run_count": run_count,
+                    "last_run_at": last_run_at,
+                    "last_success": last_success,
+                    "executions_in_history": task_exec_count,
+                    "success_rate": f"{success_rate:.0f}%" if success_rate is not None else "n/a",
+                    "avg_duration_seconds": round(avg_duration, 3) if avg_duration is not None else None,
+                }
+                task_details.append(detail)
+
+            # Preset-level health
+            task_count = len(task_ids)
+            healthy_count = sum(1 for t in task_details if t["health"] == "healthy")
+            preset_success_rate = (preset_successes / preset_executions * 100) if preset_executions > 0 else None
+
+            if task_count == 0:
+                preset_health = "empty"
+            elif healthy_count == task_count:
+                preset_health = "healthy"
+            elif healthy_count == 0:
+                preset_health = "unhealthy"
+            else:
+                preset_health = "degraded"
+
+            total_tasks += task_count
+            total_healthy += healthy_count
+            total_overdue += preset_overdue
+            total_disabled += preset_disabled
+            total_executions += preset_executions
+            total_successes += preset_successes
+
+            preset_reports.append({
+                "preset_id": preset_id,
+                "name": preset.name if preset else preset_id,
+                "pillar": preset.pillar if preset else "unknown",
+                "health": preset_health,
+                "applied_at": applied_at,
+                "interval_multiplier": multiplier,
+                "task_count": task_count,
+                "healthy_tasks": healthy_count,
+                "overdue_tasks": preset_overdue,
+                "disabled_tasks": preset_disabled,
+                "total_executions": preset_executions,
+                "success_rate": f"{preset_success_rate:.0f}%" if preset_success_rate is not None else "n/a",
+                "tasks": task_details,
+            })
+
+        # Overall summary
+        overall_success_rate = (total_successes / total_executions * 100) if total_executions > 0 else None
+        if total_tasks == 0:
+            overall_health = "no_presets"
+        elif total_healthy == total_tasks:
+            overall_health = "all_healthy"
+        elif total_healthy > total_tasks * 0.5:
+            overall_health = "mostly_healthy"
+        elif total_healthy > 0:
+            overall_health = "degraded"
+        else:
+            overall_health = "unhealthy"
+
+        summary = {
+            "overall_health": overall_health,
+            "presets_applied": len(preset_reports),
+            "total_tasks": total_tasks,
+            "healthy_tasks": total_healthy,
+            "overdue_tasks": total_overdue,
+            "disabled_tasks": total_disabled,
+            "total_executions": total_executions,
+            "overall_success_rate": f"{overall_success_rate:.0f}%" if overall_success_rate is not None else "n/a",
+        }
+
+        health_icon = {
+            "all_healthy": "OK",
+            "mostly_healthy": "WARN",
+            "degraded": "DEGRADED",
+            "unhealthy": "CRITICAL",
+            "no_presets": "NONE",
+        }.get(overall_health, "UNKNOWN")
+
+        msg = (
+            f"[{health_icon}] {len(preset_reports)} presets, "
+            f"{total_tasks} tasks ({total_healthy} healthy, {total_overdue} overdue). "
+            f"Executions: {total_executions} "
+            f"(success rate: {summary['overall_success_rate']})"
+        )
+
+        return SkillResult(
+            success=True,
+            message=msg,
+            data={
+                "summary": summary,
+                "presets": preset_reports,
+            },
+        )
+
+    def _read_scheduler_data(self):
+        """Read scheduler tasks and execution history from scheduler.json and skill context."""
+        scheduler_tasks = {}
+        execution_history = []
+
+        # Try via skill context first
+        if self.context:
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # We're in an async context, can't await synchronously
+                    pass
+                else:
+                    result = loop.run_until_complete(
+                        self.context.call_skill("scheduler", "list", {"include_completed": True})
+                    )
+                    if result.success and result.data:
+                        for t in result.data.get("tasks", []):
+                            scheduler_tasks[t["id"]] = t
+            except Exception:
+                pass
+
+        # Fallback / supplement: direct file read
+        if not scheduler_tasks:
+            try:
+                scheduler_file = DATA_DIR / "scheduler.json"
+                if scheduler_file.exists():
+                    data = json.loads(scheduler_file.read_text())
+                    scheduler_tasks = data.get("tasks", {})
+            except Exception:
+                pass
+
+        # Read execution history from scheduler
+        if self.context:
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    pass
+                else:
+                    result = loop.run_until_complete(
+                        self.context.call_skill("scheduler", "history", {"limit": 500})
+                    )
+                    if result.success and result.data:
+                        execution_history = result.data.get("history", [])
+            except Exception:
+                pass
+
+        # Fallback: read history from scheduler data file
+        if not execution_history:
+            try:
+                history_file = DATA_DIR / "scheduler_history.json"
+                if history_file.exists():
+                    execution_history = json.loads(history_file.read_text())
+            except Exception:
+                pass
+
+        return scheduler_tasks, execution_history
 
     def _preset_priority(self, preset_id: str) -> int:
         """Priority ranking for recommendations (lower = higher priority)."""
