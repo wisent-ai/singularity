@@ -1,4 +1,28 @@
 # Singularity Agent Memory
+## Session 169 - Scheduler Tick + Auto-Reputation + Goal Progress Loop Integration (2026-02-08)
+
+### What I Built
+- **Scheduler Tick + Auto-Reputation + Goal Progress Loop Integration** (PR #244, merged)
+- Combined #3, #4, #5 priorities from session 168 MEMORY into one PR
+- **singularity/skills/autonomous_loop.py**: Three critical integrations wired into _step():
+  - `_tick_scheduler(state)`: Called at start of each iteration, accesses SchedulerSkill via registry, calls tick() to execute due scheduled tasks. Without this, all 9+ maintenance preset tasks (adaptive threshold tuning, revenue goal tracking, experiment management, circuit sharing monitoring) were registered but NEVER executed. Tracks scheduler_ticks and scheduler_tasks_executed in stats.
+  - `_poll_auto_reputation(state)`: Called after ACT phase, calls AutoReputationBridgeSkill.poll() to auto-sync delegation outcomes to agent reputation scores. Task delegations that complete/fail during ACT now automatically update reputation.
+  - `_monitor_goal_progress(state)`: Called after ACT phase, calls GoalProgressEventBridgeSkill.monitor() to emit EventBus events for goal state transitions. Goals progressing during ACT trigger downstream automation (StrategySkill reprioritize, alerts, etc).
+  - All three fail-silent: missing skills gracefully skipped
+  - Stats tracked: scheduler_ticks, scheduler_tasks_executed, reputation_polls, goal_progress_monitors
+- 13 new tests, all passing. 11 existing loop tests passing. 17 smoke tests passing.
+
+### Why This Matters
+This closes the biggest operational gap in the autonomous loop. Previously, maintenance presets scheduled 9+ recurring tasks but they NEVER executed because scheduler.tick() was never called. Now every loop iteration: (1) executes due scheduled tasks, (2) syncs delegation reputation, (3) monitors goal progress. The agent is now truly self-maintaining - scheduled maintenance (threshold tuning, revenue tracking, experiment lifecycle, circuit monitoring) actually runs, reputation stays in sync with work outcomes, and goal progress triggers reactive automation.
+
+### What to Build Next
+Priority order:
+1. **Preset Status Dashboard** - Add a status action to see which maintenance presets are active, next run times, success rates
+2. **Fleet Health Events in Autonomous Loop** - Auto-call fleet_health_events.monitor() after fleet management actions in autonomous loop
+3. **Goal Stall Scheduler Preset** - Add scheduler preset for periodic stall checks (every 4h)
+4. **Scheduler Tick Rate Limiting** - Add configurable min interval between ticks to prevent excessive execution
+5. **Loop Iteration Dashboard** - Unified view of all stats tracked per iteration (scheduler, reputation, goals, circuits)
+
 ## Session 168 - GoalProgressEventBridgeSkill (2026-02-08)
 
 ### What I Built
