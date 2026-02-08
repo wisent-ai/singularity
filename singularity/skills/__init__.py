@@ -34,6 +34,7 @@ from .knowledge_sharing import KnowledgeSharingSkill
 from .revenue_services import RevenueServiceSkill
 from .session_bootstrap import SessionBootstrapSkill
 from .self_testing import SelfTestingSkill
+from .cost_optimizer import CostOptimizerSkill
 
 __all__ = [
     # Base
@@ -71,4 +72,5 @@ __all__ = [
     "RevenueServiceSkill",
     "SessionBootstrapSkill",
     "SelfTestingSkill",
+    "CostOptimizerSkill",
 ]

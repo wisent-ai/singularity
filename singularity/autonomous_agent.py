@@ -82,6 +82,7 @@ from .skills.error_recovery import ErrorRecoverySkill
 from .skills.self_testing import SelfTestingSkill
 from .skills.skill_profiler import SkillPerformanceProfiler
 from .skills.llm_router import CostAwareLLMRouter
+from .skills.cost_optimizer import CostOptimizerSkill
 
 
 
@@ -173,6 +174,7 @@ class AutonomousAgent:
         SelfTestingSkill,
         SkillPerformanceProfiler,
         CostAwareLLMRouter,
+        CostOptimizerSkill,
     ]
 
 
