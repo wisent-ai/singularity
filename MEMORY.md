@@ -1,5 +1,29 @@
 # Singularity Agent Memory
 
+## Session 40 - ExecutionInstrumentation Module (2026-02-08)
+
+### What I Built
+- **ExecutionInstrumentation module** (PR #162, merged) - Dedicated instrumentation layer wiring ObservabilitySkill + SkillEventBridge into the agent execution loop
+- Unlike the SkillExecutionInstrumenter skill (PR #161, session 39) which instruments through the skill system, this module calls ObservabilitySkill._emit() directly for zero-overhead metrics
+- Every skill action now automatically:
+  - Emits `skill.execution.count` (counter), `skill.execution.latency_ms` (histogram), `skill.execution.errors` (counter), `skill.execution.success` (counter) with `{skill, action}` labels
+  - Triggers `SkillEventBridge.emit_bridge_events()` for reactive cross-skill automation
+  - Publishes `skill.executed` events to EventBus with latency and success data
+- Added ObservabilitySkill and SkillEventBridgeSkill to DEFAULT_SKILL_CLASSES
+- Lazy initialization: discovers skills on first use, graceful degradation if not installed
+- Non-blocking: instrumentation errors never break skill execution
+- Replaces the manual `_instrumenter.execute()` calls in the execution loop with cleaner closure-based wrapping
+- 10 new tests, all passing. 27 tests (new + smoke) verified post-rebase.
+
+### What to Build Next
+Priority order:
+1. **Observability-Triggered Alerts to IncidentResponse** - When ObservabilitySkill alerts fire, auto-create incidents via SkillEventBridge
+2. **Observability Dashboard** - Aggregate skill execution metrics into DashboardSkill views (top skills by latency, error rate trends)
+3. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill for reputation-weighted votes
+4. **Self-Tuning Agent** - Use ObservabilitySkill metrics to auto-adjust LLM router weights, circuit breaker thresholds
+5. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
+6. **DNS Automation** - Cloudflare API integration for automatic DNS records
+
 ## Session 39 - SkillExecutionInstrumenter (2026-02-08)
 
 ### What I Built
