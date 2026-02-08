@@ -382,7 +382,6 @@ class RevenueAnalyticsDashboardSkill(Skill):
             rev_data = drb.get("revenue", {})
             stats = drb.get("stats", {})
             rev = rev_data.get("total", 0.0)
-            jobs = drb.get("jobs", [])
             # Estimate cost as 10% of revenue (compute cost for DB queries)
             cost = rev * 0.1
             collected["by_source"]["database_revenue_bridge"] = {
