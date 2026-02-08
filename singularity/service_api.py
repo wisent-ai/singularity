@@ -577,6 +577,73 @@ def create_app(agent=None, api_keys: Optional[List[str]] = None,
         result = await webhook_skill.execute("list_endpoints", {})
         return result.data
 
+    # --- Natural Language Task Routing ---
+    # These endpoints let external users submit tasks in plain English
+    # without knowing internal skill IDs. The NaturalLanguageRouter
+    # matches the description to the best skill+action.
+
+    class NLQuery(BaseModel):
+        query: str = Field(..., description="Natural language task description")
+        params: Dict[str, Any] = Field(default_factory=dict, description="Additional parameters")
+        top_k: int = Field(default=5, description="Number of matches to return")
+
+    @app.post("/ask")
+    async def ask_natural_language(body: NLQuery, api_key: str = Depends(check_auth)):
+        """
+        Submit a task in natural language. The router finds the best skill
+        and executes it, returning the result.
+        
+        Example: POST /ask {"query": "scan this code for security issues", "params": {"code": "..."}}
+        """
+        nl_router = None
+        if agent and hasattr(agent, 'skills'):
+            nl_router = agent.skills.get("nl_router")
+
+        if not nl_router:
+            raise HTTPException(
+                status_code=503,
+                detail="Natural language routing not available (NaturalLanguageRouter not loaded)"
+            )
+
+        result = await nl_router.execute("route_and_execute", {
+            "query": body.query,
+            "params": body.params,
+        })
+
+        return {
+            "success": result.success,
+            "message": result.message,
+            "data": result.data,
+        }
+
+    @app.post("/ask/match")
+    async def ask_match_only(body: NLQuery, api_key: str = Depends(check_auth)):
+        """
+        Find matching skills for a natural language query without executing.
+        Useful for previewing what would happen before committing.
+        """
+        nl_router = None
+        if agent and hasattr(agent, 'skills'):
+            nl_router = agent.skills.get("nl_router")
+
+        if not nl_router:
+            raise HTTPException(
+                status_code=503,
+                detail="Natural language routing not available"
+            )
+
+        result = await nl_router.execute("route", {
+            "query": body.query,
+            "top_k": body.top_k,
+        })
+
+        return {
+            "success": result.success,
+            "message": result.message,
+            "matches": result.data.get("matches", []),
+        }
+
+
     return app
 
 
