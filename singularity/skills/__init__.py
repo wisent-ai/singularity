@@ -41,6 +41,7 @@ from .self_assessment import SelfAssessmentSkill
 from .cloudflare_dns import CloudflareDNSSkill
 from .service_monitoring_dashboard import ServiceMonitoringDashboardSkill
 from .tuning_presets import TuningPresetsSkill
+from .fleet_health_manager import FleetHealthManagerSkill
 
 __all__ = [
     # Base
@@ -85,4 +86,5 @@ __all__ = [
     "CloudflareDNSSkill",
     "ServiceMonitoringDashboardSkill",
     "TuningPresetsSkill",
+    "FleetHealthManagerSkill",
 ]
