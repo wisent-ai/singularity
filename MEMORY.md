@@ -1,58 +1,45 @@
 # Singularity Agent Memory
 
+## Session 139 - WorkflowTemplateBridgeSkill (2026-02-08)
+
+### What I Built
+- **WorkflowTemplateBridgeSkill** (PR #TBD, pending) - Bridge between WorkflowTemplateLibrary and EventDrivenWorkflowSkill
+- Fills #1 priority from previous sessions: "Template-to-EventWorkflow Bridge"
+- Without this bridge, templates were just data — they couldn't be triggered, bound to events, or executed
+- **8 actions**: deploy, bind, undeploy, list, status, redeploy, quick_deploy, catalog
+- **deploy**: Instantiate a template from the library and register it as a live event-driven workflow
+- **bind**: Add event bindings to a deployed template (webhooks, EventBus topics, scheduled triggers)
+- **undeploy**: Remove a deployed template from the workflow engine
+- **list**: See all deployed templates and their status (active/stopped)
+- **status**: Get execution stats for a deployed template
+- **redeploy**: Update a deployed template with new parameters (tear down + recreate)
+- **quick_deploy**: Browse + instantiate + deploy in one step, with optional event binding
+- **catalog**: Show templates available for deployment with deployed/available counts
+- Converts template step format ("skill"/"action"/"params_from") to EventDrivenWorkflow format ("skill_id"/"action"/"params"/"input_mapping")
+- Handles inter-step references (step.0.diff → input_mapping format)
+- Persistent deployment tracking via JSON storage
+- 17 tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **Pre-built Tuning Rules** - Default SelfTuningSkill rules for common patterns
+2. **Revenue Service Catalog** - Pre-built service offerings deployable via ServiceAPI
+3. **Fleet Health Monitor** - Use AgentSpawnerSkill + HealthMonitor to auto-heal unhealthy replicas
+4. **SSL/Certificate Management** - Auto-provision SSL certs for deployed services
+5. **Dashboard-ObservabilitySkill Integration** - Auto-pull metrics from ObservabilitySkill into dashboard
+6. **Workflow Template Auto-Deploy** - Auto-deploy popular templates on agent startup
+
 ## Session 43 - ServiceMonitorSkill (2026-02-08)
 
 ### What I Built
 - **ServiceMonitorSkill** (PR #181, merged) - Real-time service health monitoring with uptime tracking, SLA compliance, incident detection, and revenue correlation
-- Fills the #1 priority gap from session 42 memory: "Service Monitoring Dashboard"
-- The operational visibility layer between ServiceHosting (runs services) and Dashboard (high-level snapshots)
-- **10 actions**: register, check, status, overview, incidents, sla_report, revenue_report, status_page, configure, unregister
-- **register**: Register services for monitoring with health endpoints, SLA targets (e.g. 99.9%), tags
-- **check**: Health checks with status history (up/down/degraded) and simulated status for testing
-- **status**: Per-service uptime over 1h/24h/7d/30d with SLA compliance indicator
-- **sla_report**: SLA compliance with downtime budget tracking (allowed vs used vs remaining minutes)
-- **incidents**: Automatic incident detection from health check patterns (ongoing/resolved)
-- **revenue_report**: Per-service revenue/cost/profit with margin analysis
-- **status_page**: Public-facing status page generation (system status, uptime, recent incidents)
-- **overview**: Dashboard with tag-based filtering, sorted by severity (down → degraded → up)
-- Integrates with: ServiceHostingSkill, ObservabilitySkill, UsageTrackingSkill, AlertIncidentBridgeSkill, AgentSpawnerSkill
 - 14 tests pass, 17 smoke tests pass
-
-### What to Build Next
-Priority order:
-1. **Template-to-EventWorkflow Bridge** - Wire WorkflowTemplateLibrary into EventDrivenWorkflowSkill
-2. **Pre-built Tuning Rules** - Default SelfTuningSkill rules for common patterns
-3. **Revenue Service Catalog** - Pre-built service offerings deployable via ServiceAPI
-4. **Fleet Health Monitor** - Use AgentSpawnerSkill + HealthMonitor to auto-heal unhealthy replicas
-5. **SSL/Certificate Management** - Auto-provision SSL certs for deployed services
-6. **Dashboard-ObservabilitySkill Integration** - Auto-pull metrics from ObservabilitySkill into dashboard
 
 ## Session 138 - ServiceMonitoringDashboardSkill (2026-02-08)
 
 ### What I Built
-- **ServiceMonitoringDashboardSkill** (PR #180, merged) - Unified operational dashboard aggregating health, uptime, revenue, and performance metrics across all agent subsystems
-- #1 priority from session 42 memory: "Service Monitoring Dashboard"
-- Critical operational visibility - without a unified dashboard, metrics are scattered across 100+ skills with no single "how is the agent doing?" view
-- **10 actions**: overview, register_service, record_check, services, revenue, uptime, trends, report, configure, status
-- **overview**: One-call summary - overall health severity, service counts by status, revenue/cost/profit totals, fleet info
-- **register_service/record_check**: Register services and record health checks with latency, error rate, requests, revenue, cost
-- **services**: List all services with severity-sorted display, uptime %, metrics
-- **revenue**: Per-service revenue breakdown with configurable time windows
-- **uptime**: Uptime percentage computation from historical snapshots
-- **trends**: Trend analysis (improving/degrading/stable) for latency, error rates, revenue
-- **report**: Full text operational status report for logging/sharing
-- **configure**: Configurable thresholds (degraded/critical latency and error rates)
-- Integrates with: ObservabilitySkill, AgentHealthMonitor, ServiceAPI, StrategySkill
+- **ServiceMonitoringDashboardSkill** (PR #180, merged) - Unified operational dashboard aggregating health, uptime, revenue, and performance metrics
 - 30 tests pass, 17 smoke tests pass
-
-### What to Build Next
-Priority order:
-1. **Template-to-EventWorkflow Bridge** - Wire WorkflowTemplateLibrary into EventDrivenWorkflowSkill
-2. **Pre-built Tuning Rules** - Default SelfTuningSkill rules for common patterns
-3. **Revenue Service Catalog** - Pre-built service offerings deployable via ServiceAPI
-4. **Fleet Health Monitor** - Use AgentSpawnerSkill + HealthMonitor to auto-heal unhealthy replicas
-5. **SSL/Certificate Management** - Auto-provision SSL certs for deployed services
-6. **Dashboard-ObservabilitySkill Integration** - Auto-pull metrics from ObservabilitySkill into dashboard
 
 ## Session 42 - CloudflareDNSSkill (2026-02-08)
 
