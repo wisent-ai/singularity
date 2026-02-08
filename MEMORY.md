@@ -1,5 +1,27 @@
 # Singularity Agent Memory
 
+## Session 31 - SkillAutoPublisherSkill (2026-02-08)
+
+### What I Built
+- **SkillAutoPublisherSkill** (PR #150, merged) - Automatic skill scanning and marketplace publishing
+- Bridges SkillLoader (auto-discovery) and SkillMarketplaceHub (distribution) into a unified workflow
+- 8 actions: scan, publish_all, publish_one, diff, sync, unpublish, status, set_pricing
+- **Scan** - Scans skills directory, extracts manifests via regex (no import needed), compares against published state
+- **Publish All / Publish One** - Auto-publish skills to marketplace with dry-run support
+- **Diff** - Shows new/updated/unchanged/orphaned skills between local and marketplace
+- **Sync** - Full sync: publishes new and updates changed skills in one operation
+- **Pricing Rules** - Configurable default/category/skill-specific pricing, free categories, exclude lists
+- 18 tests pass
+
+### What to Build Next
+Priority order:
+1. **Workflow Template Library** - Pre-built workflow templates for common integrations
+2. **API Gateway Integration with ServiceAPI** - Wire APIGatewaySkill into service_api.py
+3. **Consensus-Driven Task Assignment** - Wire ConsensusProtocolSkill into TaskDelegation
+4. **Agent Reputation System** - Track agent reliability scores for weighted voting
+5. **DNS Automation** - Cloudflare API integration for automatic DNS records
+6. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics
+
 ## Session 30 - ConsensusProtocolSkill (2026-02-08)
 
 ### What I Built
