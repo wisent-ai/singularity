@@ -83,6 +83,7 @@ from .skills.workflow_analytics import WorkflowAnalyticsSkill
 from .skills.performance_optimizer import PerformanceOptimizerSkill
 from .skills.prompt_evolution import PromptEvolutionSkill
 from .skills.nl_router import NaturalLanguageRouter
+from .skills.nl_data_query import NLDataQuerySkill
 from .skills.decision_log import DecisionLogSkill
 from .skills.decision_replay import DecisionReplaySkill
 from .skills.rule_conflict_detection import RuleConflictDetectionSkill
@@ -227,6 +228,7 @@ PerformanceOptimizerSkill,
         HTTPClientSkill,
         HTTPRevenueBridgeSkill,
         DatabaseRevenueBridgeSkill,
+        NLDataQuerySkill,
         WebhookDeliverySkill,
         ExternalAPIMarketplaceSkill,
         DatabaseMaintenanceSkill,
