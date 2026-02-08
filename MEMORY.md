@@ -1,5 +1,37 @@
 # Singularity Agent Memory
 
+## Session 178 - Scheduler Tick Rate Limiting (2026-02-08)
+
+### What I Built
+- **Scheduler Tick Rate Limiting** (PR #253, merged) - #1 priority from session 177 MEMORY
+- Enhanced SchedulerSkill (v2.0.0 → v3.0.0) with comprehensive tick rate limiting to prevent excessive execution when many presets (16+) are active
+- **min_tick_interval**: Configurable minimum seconds between tick() calls (default 5s). Ticks called too soon are skipped.
+- **max_tasks_per_tick**: Cap on tasks executed per tick (default 5). Prevents single tick from executing all due tasks.
+- **max_tick_duration**: Time budget per tick (default 30s). Cut off long-running ticks to prevent loop starvation.
+- **burst_window + burst_max_tasks**: Sliding window rate limit (default 20 tasks per 60s). Prevents task execution spikes.
+- **priority_on_throttle**: When throttled, most overdue tasks execute first (sorted by next_run_at ascending).
+- **configure_throttle action**: Runtime adjustment of all 7 throttle parameters with validation.
+- **throttle_status action**: Full observability - config, stats, burst budget remaining, due count, tick history with summary.
+- **Tick history tracking**: Records every tick (timestamp, tasks_run, duration, throttled) for burst detection and status reporting.
+- **Throttle stats**: Tracks total_ticks, throttled_ticks, skipped_ticks, tasks_deferred, burst_throttles, duration_cutoffs.
+- 14 new tests (test_scheduler_throttle.py), all passing. 21 existing scheduler tests passing (updated manifest count 10→12). 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/scheduler.py - Enhanced with rate limiting (+290 lines)
+- tests/test_scheduler.py - Updated manifest assertion (10→12 actions)
+- tests/test_scheduler_throttle.py - 14 new tests
+
+### Pillar: Self-Improvement
+Prevents runaway scheduler execution that starves the autonomous loop. With 16 scheduler presets active, unrestricted tick() could execute dozens of tasks per iteration, causing loop starvation and excessive compute costs. Rate limiting ensures controlled, predictable execution with full observability. The agent can now introspect its own scheduler behavior via throttle_status.
+
+### What to Build Next
+Priority order:
+1. **Preset Dependency Graph** - Presets should declare dependencies (e.g., dashboard_auto_check depends on health_monitoring) and apply in topological order
+2. **Preset Health Alerts via EventBus** - When preset tasks fail repeatedly, emit events so AlertIncidentBridge can create incidents
+3. **Cross-Preset Deduplication** - Some presets have overlapping schedules - deduplicate
+4. **Preset Performance Profiling** - Track execution time per preset task and flag slow tasks
+5. **Throttle Auto-Tuning** - Use PipelineLearningSkill patterns to auto-tune throttle params based on observed tick performance
+
 ## Session 177 - Scheduler Presets Expansion (2026-02-08)
 
 ### What I Built
