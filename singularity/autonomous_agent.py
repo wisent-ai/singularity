@@ -51,6 +51,7 @@ from .skills.experiment import ExperimentSkill
 from .skills.event import EventSkill
 from .skills.planner import PlannerSkill
 from .skills.pipeline_planner import PipelinePlannerSkill
+from .skills.workflow_pipeline_bridge import WorkflowPipelineBridgeSkill
 from .skills.outcome_tracker import OutcomeTracker
 from .skills.scheduler import SchedulerSkill
 from .skills.strategy import StrategySkill
@@ -202,6 +203,7 @@ PerformanceOptimizerSkill,
         TaskPricingSkill,
         AgentReflectionSkill,
         ReflectionEventBridgeSkill,
+        WorkflowPipelineBridgeSkill,
     ]
 
 
