@@ -79,6 +79,10 @@ class AutonomousLoopSkill(Skill):
                 "circuit_breaker_enabled": True,  # Check circuit breaker before skill execution
                 "circuit_breaker_skip_self": True,  # Don't circuit-break the loop's own skill calls
                 "fleet_check_interval": 5,  # Run fleet_check every N iterations
+                "distillation_enabled": True,       # Run learning distillation in LEARN phase
+                "distillation_interval": 3,         # Distill every N iterations (not every time)
+                "consult_rules_in_decide": True,    # Query distilled rules during DECIDE phase
+                "min_rule_confidence": 0.5,          # Min confidence for rules to influence decisions
             },
             "stats": {
                 "total_iterations": 0,
@@ -90,6 +94,9 @@ class AutonomousLoopSkill(Skill):
                 "last_iteration_at": None,
                 "circuit_breaker_denials": 0,
                 "circuit_breaker_recordings": 0,
+                "distillation_runs": 0,
+                "rules_consulted": 0,
+                "decisions_influenced_by_rules": 0,
             },
             "last_assessment": None,
             "last_assessment_at": None,
@@ -114,7 +121,7 @@ class AutonomousLoopSkill(Skill):
         return SkillManifest(
             skill_id="autonomous_loop",
             name="Autonomous Loop",
-            version="1.0.0",
+            version="2.0.0",
             category="autonomy",
             description="Central executive for fully autonomous assess-decide-plan-act-measure-learn cycles",
             actions=[
@@ -180,7 +187,7 @@ class AutonomousLoopSkill(Skill):
                 ),
                 SkillAction(
                     name="configure",
-                    description="Update loop configuration (max_iterations, auto_learn, etc.)",
+                    description="Update loop configuration (max_iterations, auto_learn, distillation, etc.)",
                     parameters={
                         "max_iterations": {
                             "type": "integer",
@@ -196,6 +203,26 @@ class AutonomousLoopSkill(Skill):
                             "type": "number",
                             "required": False,
                             "description": "Seconds to pause between iterations"
+                        },
+                        "distillation_enabled": {
+                            "type": "boolean",
+                            "required": False,
+                            "description": "Enable learning distillation in LEARN phase"
+                        },
+                        "distillation_interval": {
+                            "type": "integer",
+                            "required": False,
+                            "description": "Run distillation every N iterations (default 3)"
+                        },
+                        "consult_rules_in_decide": {
+                            "type": "boolean",
+                            "required": False,
+                            "description": "Query distilled rules during DECIDE phase"
+                        },
+                        "min_rule_confidence": {
+                            "type": "number",
+                            "required": False,
+                            "description": "Min confidence threshold for rules (0-1)"
                         },
                     },
                     estimated_cost=0,
@@ -335,6 +362,7 @@ class AutonomousLoopSkill(Skill):
             "chosen_task": decision.get("task_description", ""),
             "chosen_pillar": decision.get("pillar", ""),
             "reasoning": decision.get("reasoning", ""),
+            "rules_consulted": decision.get("distilled_insights", {}).get("rules_consulted", 0),
         }
 
         if not decision.get("task_description"):
@@ -411,6 +439,8 @@ class AutonomousLoopSkill(Skill):
             journal_entry["phases"]["learn"] = {
                 "result": "completed",
                 "adaptations": learning.get("adaptations_count", 0),
+                "distillation_ran": learning.get("distillation_ran", False),
+                "rules_created": learning.get("rules_created", 0),
             }
 
         # Finalize
@@ -615,14 +645,99 @@ class AutonomousLoopSkill(Skill):
 
         return assessment
 
+    async def _consult_distilled_rules(self, assessment: Dict) -> Dict:
+        """
+        Query LearningDistillationSkill for relevant rules to inform the decision.
+        Returns a dict with rule insights: preferred skills, skills to avoid,
+        and general advice. Fail-silent: returns empty dict if unavailable.
+        """
+        insights = {
+            "preferred_skills": [],
+            "avoid_skills": [],
+            "advice": [],
+            "rules_consulted": 0,
+        }
+
+        if not self.context:
+            return insights
+
+        state = self._load()
+        config = state.get("config", {})
+        if not config.get("consult_rules_in_decide", True):
+            return insights
+
+        min_confidence = config.get("min_rule_confidence", 0.5)
+
+        try:
+            # Query success patterns - skills that work well
+            success_result = await self.context.call_skill(
+                "learning_distillation", "query",
+                {"category": "success_pattern", "min_confidence": min_confidence}
+            )
+            if success_result.success and success_result.data:
+                for rule in success_result.data.get("rules", []):
+                    skill_id = rule.get("skill_id", "")
+                    if skill_id:
+                        insights["preferred_skills"].append({
+                            "skill_id": skill_id,
+                            "confidence": rule.get("confidence", 0),
+                            "reason": rule.get("rule_text", ""),
+                        })
+                insights["rules_consulted"] += success_result.data.get("total_matching", 0)
+
+            # Query failure patterns - skills to avoid or use carefully
+            failure_result = await self.context.call_skill(
+                "learning_distillation", "query",
+                {"category": "failure_pattern", "min_confidence": min_confidence}
+            )
+            if failure_result.success and failure_result.data:
+                for rule in failure_result.data.get("rules", []):
+                    skill_id = rule.get("skill_id", "")
+                    if skill_id:
+                        insights["avoid_skills"].append({
+                            "skill_id": skill_id,
+                            "confidence": rule.get("confidence", 0),
+                            "reason": rule.get("rule_text", ""),
+                        })
+                insights["rules_consulted"] += failure_result.data.get("total_matching", 0)
+
+            # Query skill preferences from experiments
+            pref_result = await self.context.call_skill(
+                "learning_distillation", "query",
+                {"category": "skill_preference", "min_confidence": min_confidence}
+            )
+            if pref_result.success and pref_result.data:
+                for rule in pref_result.data.get("rules", []):
+                    insights["advice"].append({
+                        "rule_text": rule.get("rule_text", ""),
+                        "confidence": rule.get("confidence", 0),
+                        "skill_id": rule.get("skill_id", ""),
+                    })
+                insights["rules_consulted"] += pref_result.data.get("total_matching", 0)
+
+            # Update stats
+            stats = state.get("stats", {})
+            stats["rules_consulted"] = stats.get("rules_consulted", 0) + insights["rules_consulted"]
+            state["stats"] = stats
+            self._save(state)
+
+        except Exception:
+            pass  # Fail silently - distillation is an enhancement, not required
+
+        return insights
+
     async def _run_decision(self, assessment: Dict) -> Dict:
         """
         Decide what to work on based on assessment.
         Priority cascade:
         1. Active goal from goal_manager (if urgent/high priority)
-        2. Weakest pillar gaps
+        2. Weakest pillar gaps (informed by distilled rules)
         3. Revenue opportunities (if low balance)
         4. General self-improvement
+
+        In v2.0, also consults LearningDistillationSkill for accumulated
+        wisdom: which skills work well, which to avoid, and experiment winners.
+        This data is attached to the decision as 'distilled_insights'.
         """
         decision = {
             "task_description": "",
@@ -633,6 +748,10 @@ class AutonomousLoopSkill(Skill):
             "action_to_take": None,
             "params": {},
         }
+
+        # Consult distilled rules for accumulated wisdom
+        insights = await self._consult_distilled_rules(assessment)
+        decision["distilled_insights"] = insights
 
         # Priority 1: Check for urgent active goals
         next_goal = assessment.get("next_goal", {})
@@ -645,6 +764,9 @@ class AutonomousLoopSkill(Skill):
             )
             decision["source"] = "goal_manager"
             decision["goal_id"] = next_goal.get("id", "")
+            # Annotate with relevant distilled wisdom
+            if insights.get("rules_consulted", 0) > 0:
+                decision["reasoning"] += self._format_insight_annotation(insights)
             return decision
 
         # Priority 2: Address weakest pillar
@@ -660,6 +782,12 @@ class AutonomousLoopSkill(Skill):
                 f"with {len(gaps)} gap(s). Addressing top gap: {gaps[0]}"
             )
             decision["source"] = "strategy_assessment"
+            # Annotate with relevant distilled wisdom
+            if insights.get("rules_consulted", 0) > 0:
+                decision["reasoning"] += self._format_insight_annotation(insights)
+                state = self._load()
+                state["stats"]["decisions_influenced_by_rules"] = state["stats"].get("decisions_influenced_by_rules", 0) + 1
+                self._save(state)
             return decision
 
         if weakest:
@@ -667,11 +795,38 @@ class AutonomousLoopSkill(Skill):
             decision["pillar"] = weakest
             decision["reasoning"] = f"Pillar '{weakest}' identified as weakest. General improvement needed."
             decision["source"] = "strategy_assessment"
+            if insights.get("rules_consulted", 0) > 0:
+                decision["reasoning"] += self._format_insight_annotation(insights)
+                state = self._load()
+                state["stats"]["decisions_influenced_by_rules"] = state["stats"].get("decisions_influenced_by_rules", 0) + 1
+                self._save(state)
             return decision
 
         # Priority 3: No specific task found
         decision["reasoning"] = "No urgent goals or pillar gaps identified."
         return decision
+
+    def _format_insight_annotation(self, insights: Dict) -> str:
+        """Format distilled insights as a human-readable annotation for decision reasoning."""
+        parts = []
+        preferred = insights.get("preferred_skills", [])
+        avoid = insights.get("avoid_skills", [])
+        advice = insights.get("advice", [])
+
+        if preferred:
+            top = preferred[:3]
+            skill_names = [p["skill_id"] for p in top]
+            parts.append(f" [Distilled: prefer {', '.join(skill_names)}]")
+
+        if avoid:
+            top = avoid[:3]
+            skill_names = [a["skill_id"] for a in top]
+            parts.append(f" [Distilled: caution with {', '.join(skill_names)}]")
+
+        if advice and not preferred and not avoid:
+            parts.append(f" [Distilled: {len(advice)} rule(s) consulted]")
+
+        return "".join(parts) if parts else f" [Distilled: {insights.get('rules_consulted', 0)} rules consulted]"
 
     async def _run_planning(self, decision: Dict) -> Dict:
         """
@@ -1086,13 +1241,23 @@ class AutonomousLoopSkill(Skill):
         return measurement
 
     async def _run_learning(self, measurement: Dict) -> Dict:
-        """Run feedback loop to adapt based on results."""
+        """
+        Run feedback loop and learning distillation to adapt based on results.
+
+        v2.0: In addition to the feedback_loop analysis, also triggers
+        LearningDistillationSkill to synthesize raw outcome/feedback/experiment
+        data into reusable rules. Distillation runs every N iterations
+        (configured via distillation_interval) to avoid excessive processing.
+        """
         learning = {
             "adaptations_count": 0,
             "learned_at": datetime.now().isoformat(),
+            "distillation_ran": False,
+            "rules_created": 0,
         }
 
         if self.context:
+            # Original feedback loop analysis
             feedback_result = await self.context.call_skill(
                 "feedback_loop", "analyze", {}
             )
@@ -1102,7 +1267,57 @@ class AutonomousLoopSkill(Skill):
                 )
                 learning["patterns_detected"] = feedback_result.data.get("patterns", [])
 
+            # Learning distillation - synthesize raw data into rules
+            await self._run_distillation(learning)
+
         return learning
+
+    async def _run_distillation(self, learning: Dict):
+        """
+        Run LearningDistillationSkill to synthesize accumulated data into rules.
+        Only runs every N iterations (distillation_interval config).
+        Fail-silent: does nothing if skill is unavailable.
+        """
+        if not self.context:
+            return
+
+        state = self._load()
+        config = state.get("config", {})
+
+        if not config.get("distillation_enabled", True):
+            return
+
+        # Only distill every N iterations to avoid overhead
+        interval = config.get("distillation_interval", 3)
+        iteration_count = state.get("stats", {}).get("total_iterations", 0)
+        if interval > 0 and iteration_count % interval != 0:
+            return
+
+        try:
+            # Run distillation across all sources
+            distill_result = await self.context.call_skill(
+                "learning_distillation", "distill", {}
+            )
+            if distill_result.success and distill_result.data:
+                learning["distillation_ran"] = True
+                learning["rules_created"] = distill_result.data.get("rules_created", 0)
+                learning["total_rules"] = distill_result.data.get("total_rules", 0)
+                learning["sources_analyzed"] = distill_result.data.get("sources_analyzed", [])
+
+                # Update stats
+                stats = state.get("stats", {})
+                stats["distillation_runs"] = stats.get("distillation_runs", 0) + 1
+                state["stats"] = stats
+                self._save(state)
+
+            # Also auto-expire stale low-confidence rules periodically
+            if iteration_count % (interval * 5) == 0:
+                await self.context.call_skill(
+                    "learning_distillation", "expire", {}
+                )
+
+        except Exception:
+            pass  # Fail silently - distillation is an enhancement
 
     # ========== Info Actions ==========
 
@@ -1144,6 +1359,7 @@ class AutonomousLoopSkill(Skill):
                 "task": decide_phase.get("chosen_task", "N/A")[:80],
                 "pillar": decide_phase.get("chosen_pillar", ""),
                 "duration": entry.get("duration_seconds", 0),
+                "phases": entry.get("phases", {}),
             })
 
         return SkillResult(
@@ -1161,7 +1377,12 @@ class AutonomousLoopSkill(Skill):
         config = state.get("config", {})
 
         updated = []
-        for key in ["max_iterations", "auto_learn", "pause_between_iterations"]:
+        configurable_keys = [
+            "max_iterations", "auto_learn", "pause_between_iterations",
+            "distillation_enabled", "distillation_interval",
+            "consult_rules_in_decide", "min_rule_confidence",
+        ]
+        for key in configurable_keys:
             if key in params:
                 config[key] = params[key]
                 updated.append(f"{key}={params[key]}")

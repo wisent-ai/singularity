@@ -483,6 +483,19 @@ class SchedulerPresetsSkill(Skill):
         super().__init__(credentials)
         self._applied: Dict[str, Dict] = {}  # preset_id -> {task_ids, applied_at, ...}
         self._custom_presets: Dict[str, Dict] = {}
+        # Health alert state
+        self._alert_config = {
+            "failure_streak_threshold": 3,      # Alert after N consecutive failures
+            "success_rate_threshold": 50.0,     # Alert when success rate drops below %
+            "recovery_streak_threshold": 2,     # Recover after N consecutive successes
+            "emit_on_task_fail": True,          # Emit event on individual task failure
+            "emit_on_preset_unhealthy": True,   # Emit event when preset becomes unhealthy
+            "emit_on_preset_recovered": True,   # Emit event when preset recovers
+            "event_source": "scheduler_presets_health",
+        }
+        self._alert_state: Dict[str, Dict] = {}  # task_id -> {streak, status, ...}
+        self._alert_history: List[Dict] = []      # Recent alert events
+        self._max_alert_history = 200
         self._load_state()
 
     @property
@@ -490,7 +503,7 @@ class SchedulerPresetsSkill(Skill):
         return SkillManifest(
             skill_id="scheduler_presets",
             name="Scheduler Presets",
-            version="2.0.0",
+            version="3.0.0",
             category="operations",
             description="Pre-built automation schedules - one-command setup for health checks, alert polling, self-tuning, and more",
             actions=[
@@ -633,6 +646,57 @@ class SchedulerPresetsSkill(Skill):
                     },
                     estimated_cost=0,
                 ),
+                SkillAction(
+                    name="health_alerts",
+                    description="Scan applied presets for failures and emit EventBus alerts for unhealthy presets",
+                    parameters={
+                        "preset_id": {
+                            "type": "string",
+                            "required": False,
+                            "description": "Check a specific preset only. Omit for all applied presets.",
+                        },
+                    },
+                    estimated_cost=0,
+                ),
+                SkillAction(
+                    name="configure_alerts",
+                    description="Configure health alert thresholds and event emission settings",
+                    parameters={
+                        "failure_streak_threshold": {
+                            "type": "integer",
+                            "required": False,
+                            "description": "Number of consecutive failures before alerting (default 3)",
+                        },
+                        "success_rate_threshold": {
+                            "type": "number",
+                            "required": False,
+                            "description": "Success rate percentage below which a preset is unhealthy (default 50)",
+                        },
+                        "recovery_streak_threshold": {
+                            "type": "integer",
+                            "required": False,
+                            "description": "Number of consecutive successes before marking recovered (default 2)",
+                        },
+                    },
+                    estimated_cost=0,
+                ),
+                SkillAction(
+                    name="alert_history",
+                    description="View recent health alert events emitted for preset failures and recoveries",
+                    parameters={
+                        "limit": {
+                            "type": "integer",
+                            "required": False,
+                            "description": "Max number of events to return (default 50)",
+                        },
+                        "preset_id": {
+                            "type": "string",
+                            "required": False,
+                            "description": "Filter by preset ID",
+                        },
+                    },
+                    estimated_cost=0,
+                ),
             ],
             required_credentials=[],
         )
@@ -653,6 +717,9 @@ class SchedulerPresetsSkill(Skill):
             "dashboard": self._dashboard,
             "dependency_graph": self._dependency_graph,
             "apply_with_deps": self._apply_with_deps,
+            "health_alerts": self._health_alerts,
+            "configure_alerts": self._configure_alerts,
+            "alert_history": self._get_alert_history,
         }
 
         handler = handlers.get(action)
@@ -1580,6 +1647,338 @@ class SchedulerPresetsSkill(Skill):
 
         return scheduler_tasks, execution_history
 
+    # ── Health Alert Methods ──────────────────────────────────────────
+
+    async def _health_alerts(self, params: Dict) -> SkillResult:
+        """Scan applied presets for failures and emit EventBus alerts."""
+        filter_preset = params.get("preset_id", "").strip() or None
+
+        scheduler_tasks, execution_history = self._read_scheduler_data()
+        now = time.time()
+
+        applied_presets = dict(self._applied)
+        if filter_preset:
+            if filter_preset not in applied_presets:
+                return SkillResult(
+                    success=False,
+                    message=f"Preset '{filter_preset}' is not applied",
+                    data={"available": list(applied_presets.keys())},
+                )
+            applied_presets = {filter_preset: applied_presets[filter_preset]}
+
+        alerts_emitted = []
+        recoveries_emitted = []
+        preset_health_summary = []
+
+        for preset_id, info in applied_presets.items():
+            preset = self._get_preset(preset_id)
+            task_ids = info.get("task_ids", [])
+            preset_failures = 0
+            preset_total = 0
+            preset_unhealthy_tasks = []
+
+            for tid in task_ids:
+                task_data = scheduler_tasks.get(tid, {})
+                task_name = task_data.get("name", tid)
+                last_success = task_data.get("last_success")
+
+                # Compute recent execution history for this task
+                task_history = [h for h in execution_history if h.get("task_id") == tid]
+                task_exec_count = len(task_history)
+                task_success_count = sum(1 for h in task_history if h.get("success"))
+
+                # Initialize alert state for this task if not present
+                if tid not in self._alert_state:
+                    self._alert_state[tid] = {
+                        "failure_streak": 0,
+                        "success_streak": 0,
+                        "status": "healthy",  # healthy, alerting, unknown
+                        "preset_id": preset_id,
+                        "task_name": task_name,
+                        "last_checked": None,
+                        "total_alerts_emitted": 0,
+                    }
+
+                state = self._alert_state[tid]
+                state["last_checked"] = datetime.now().isoformat()
+                state["preset_id"] = preset_id
+                state["task_name"] = task_name
+
+                # Determine current task health from latest executions
+                # Look at the most recent N executions to determine streak
+                recent = sorted(task_history, key=lambda h: h.get("executed_at", ""), reverse=True)
+                streak_threshold = self._alert_config["failure_streak_threshold"]
+                recovery_threshold = self._alert_config["recovery_streak_threshold"]
+
+                # Count consecutive failures from most recent
+                consecutive_failures = 0
+                consecutive_successes = 0
+                for h in recent:
+                    if not h.get("success"):
+                        if consecutive_successes == 0:
+                            consecutive_failures += 1
+                        else:
+                            break
+                    else:
+                        if consecutive_failures == 0:
+                            consecutive_successes += 1
+                        else:
+                            break
+
+                # Also use last_success from scheduler task data as a quick indicator
+                if last_success is False and consecutive_failures == 0:
+                    consecutive_failures = 1
+
+                state["failure_streak"] = consecutive_failures
+                state["success_streak"] = consecutive_successes
+
+                # Success rate check
+                success_rate = (task_success_count / task_exec_count * 100) if task_exec_count > 0 else None
+                rate_threshold = self._alert_config["success_rate_threshold"]
+
+                was_alerting = state["status"] == "alerting"
+
+                # Determine if this task should alert
+                should_alert = False
+                alert_reasons = []
+
+                if consecutive_failures >= streak_threshold:
+                    should_alert = True
+                    alert_reasons.append(f"failure_streak={consecutive_failures}")
+
+                if success_rate is not None and success_rate < rate_threshold and task_exec_count >= 3:
+                    should_alert = True
+                    alert_reasons.append(f"success_rate={success_rate:.0f}%<{rate_threshold:.0f}%")
+
+                if should_alert:
+                    state["status"] = "alerting"
+                    preset_failures += 1
+                    preset_unhealthy_tasks.append(tid)
+
+                    # Emit task failure event
+                    if self._alert_config["emit_on_task_fail"]:
+                        event_data = {
+                            "task_id": tid,
+                            "task_name": task_name,
+                            "preset_id": preset_id,
+                            "preset_name": preset.name if preset else preset_id,
+                            "failure_streak": consecutive_failures,
+                            "success_rate": f"{success_rate:.0f}%" if success_rate is not None else "n/a",
+                            "total_executions": task_exec_count,
+                            "reasons": alert_reasons,
+                            "severity": "critical" if consecutive_failures >= streak_threshold * 2 else "warning",
+                        }
+                        emitted = await self._emit_alert_event(
+                            "preset.task_failed", event_data,
+                            priority="high" if consecutive_failures >= streak_threshold * 2 else "normal",
+                        )
+                        if emitted:
+                            state["total_alerts_emitted"] += 1
+                            alerts_emitted.append({
+                                "topic": "preset.task_failed",
+                                "task_id": tid,
+                                "task_name": task_name,
+                                "preset_id": preset_id,
+                                "reasons": alert_reasons,
+                            })
+
+                elif was_alerting and consecutive_successes >= recovery_threshold:
+                    # Task recovered!
+                    state["status"] = "healthy"
+                    if self._alert_config["emit_on_preset_recovered"]:
+                        event_data = {
+                            "task_id": tid,
+                            "task_name": task_name,
+                            "preset_id": preset_id,
+                            "preset_name": preset.name if preset else preset_id,
+                            "recovery_streak": consecutive_successes,
+                            "success_rate": f"{success_rate:.0f}%" if success_rate is not None else "n/a",
+                        }
+                        emitted = await self._emit_alert_event(
+                            "preset.task_recovered", event_data, priority="normal",
+                        )
+                        if emitted:
+                            recoveries_emitted.append({
+                                "topic": "preset.task_recovered",
+                                "task_id": tid,
+                                "task_name": task_name,
+                                "preset_id": preset_id,
+                            })
+                elif not should_alert:
+                    state["status"] = "healthy"
+
+                preset_total += 1
+
+            # Determine preset-level health
+            preset_status = "healthy"
+            if preset_failures > 0:
+                preset_status = "degraded" if preset_failures < preset_total else "unhealthy"
+
+            # Emit preset-level unhealthy event if any tasks are alerting
+            if preset_failures > 0 and self._alert_config["emit_on_preset_unhealthy"]:
+                event_data = {
+                    "preset_id": preset_id,
+                    "preset_name": preset.name if preset else preset_id,
+                    "pillar": preset.pillar if preset else "unknown",
+                    "status": preset_status,
+                    "unhealthy_tasks": preset_failures,
+                    "total_tasks": preset_total,
+                    "unhealthy_task_ids": preset_unhealthy_tasks,
+                    "severity": "critical" if preset_status == "unhealthy" else "warning",
+                }
+                await self._emit_alert_event(
+                    "preset.unhealthy", event_data,
+                    priority="high" if preset_status == "unhealthy" else "normal",
+                )
+
+            preset_health_summary.append({
+                "preset_id": preset_id,
+                "name": preset.name if preset else preset_id,
+                "status": preset_status,
+                "healthy_tasks": preset_total - preset_failures,
+                "unhealthy_tasks": preset_failures,
+                "total_tasks": preset_total,
+            })
+
+        self._save_state()
+
+        total_healthy = sum(1 for p in preset_health_summary if p["status"] == "healthy")
+        total_degraded = sum(1 for p in preset_health_summary if p["status"] == "degraded")
+        total_unhealthy = sum(1 for p in preset_health_summary if p["status"] == "unhealthy")
+
+        summary_msg = (
+            f"Scanned {len(preset_health_summary)} presets: "
+            f"{total_healthy} healthy, {total_degraded} degraded, {total_unhealthy} unhealthy. "
+            f"{len(alerts_emitted)} alerts emitted, {len(recoveries_emitted)} recoveries."
+        )
+
+        return SkillResult(
+            success=True,
+            message=summary_msg,
+            data={
+                "presets": preset_health_summary,
+                "alerts_emitted": alerts_emitted,
+                "recoveries_emitted": recoveries_emitted,
+                "total_healthy": total_healthy,
+                "total_degraded": total_degraded,
+                "total_unhealthy": total_unhealthy,
+            },
+        )
+
+    async def _configure_alerts(self, params: Dict) -> SkillResult:
+        """Configure health alert thresholds."""
+        changed = []
+        valid_keys = {
+            "failure_streak_threshold": (int, 1, 100),
+            "success_rate_threshold": (float, 0, 100),
+            "recovery_streak_threshold": (int, 1, 100),
+            "emit_on_task_fail": (bool, None, None),
+            "emit_on_preset_unhealthy": (bool, None, None),
+            "emit_on_preset_recovered": (bool, None, None),
+        }
+
+        for key, (typ, min_val, max_val) in valid_keys.items():
+            if key in params:
+                val = params[key]
+                if typ == bool:
+                    val = bool(val)
+                elif typ == int:
+                    val = int(val)
+                    if min_val is not None and val < min_val:
+                        return SkillResult(success=False, message=f"{key} must be >= {min_val}")
+                    if max_val is not None and val > max_val:
+                        return SkillResult(success=False, message=f"{key} must be <= {max_val}")
+                elif typ == float:
+                    val = float(val)
+                    if min_val is not None and val < min_val:
+                        return SkillResult(success=False, message=f"{key} must be >= {min_val}")
+                    if max_val is not None and val > max_val:
+                        return SkillResult(success=False, message=f"{key} must be <= {max_val}")
+                self._alert_config[key] = val
+                changed.append(f"{key}={val}")
+
+        if not changed:
+            return SkillResult(
+                success=True,
+                message="No changes (pass threshold parameters to update)",
+                data={"current_config": dict(self._alert_config)},
+            )
+
+        self._save_state()
+        return SkillResult(
+            success=True,
+            message=f"Updated alert config: {', '.join(changed)}",
+            data={"config": dict(self._alert_config), "changed": changed},
+        )
+
+    async def _get_alert_history(self, params: Dict) -> SkillResult:
+        """View recent health alert events."""
+        limit = min(params.get("limit", 50), self._max_alert_history)
+        filter_preset = params.get("preset_id", "").strip() or None
+
+        history = list(self._alert_history)
+        if filter_preset:
+            history = [h for h in history if h.get("data", {}).get("preset_id") == filter_preset]
+
+        history = history[-limit:]
+
+        # Compute summary stats
+        total_task_failed = sum(1 for h in self._alert_history if h.get("topic") == "preset.task_failed")
+        total_unhealthy = sum(1 for h in self._alert_history if h.get("topic") == "preset.unhealthy")
+        total_recovered = sum(1 for h in self._alert_history if h.get("topic") == "preset.task_recovered")
+
+        return SkillResult(
+            success=True,
+            message=f"{len(history)} alert events (of {len(self._alert_history)} total)",
+            data={
+                "events": history,
+                "total_events": len(self._alert_history),
+                "returned": len(history),
+                "summary": {
+                    "task_failed_events": total_task_failed,
+                    "preset_unhealthy_events": total_unhealthy,
+                    "task_recovered_events": total_recovered,
+                },
+            },
+        )
+
+    async def _emit_alert_event(self, topic: str, data: Dict, priority: str = "normal") -> bool:
+        """Emit a health alert event via EventBus (EventSkill)."""
+        event_record = {
+            "topic": topic,
+            "data": data,
+            "priority": priority,
+            "timestamp": datetime.now().isoformat(),
+            "emitted": False,
+        }
+
+        try:
+            source = self._alert_config.get("event_source", "scheduler_presets_health")
+            if hasattr(self, "_skill_registry") and self._skill_registry:
+                result = await self._skill_registry.execute_skill(
+                    "event", "publish",
+                    {"topic": topic, "data": data, "source": source, "priority": priority},
+                )
+                emitted = result.success if result else False
+            elif self.context:
+                result = await self.context.call_skill(
+                    "event", "publish",
+                    {"topic": topic, "data": data, "source": source, "priority": priority},
+                )
+                emitted = result.success if result else False
+            else:
+                # No event bus available - still record the alert locally
+                emitted = False
+        except Exception:
+            emitted = False
+
+        event_record["emitted"] = emitted
+        self._alert_history.append(event_record)
+        if len(self._alert_history) > self._max_alert_history:
+            self._alert_history = self._alert_history[-self._max_alert_history:]
+
+        return emitted
+
     def _preset_priority(self, preset_id: str) -> int:
         """Priority ranking for recommendations (lower = higher priority)."""
         priority_order = [
@@ -1618,12 +2017,15 @@ class SchedulerPresetsSkill(Skill):
             return f"{seconds / 86400:.1f}d"
 
     def _save_state(self):
-        """Persist applied presets and custom presets to disk."""
+        """Persist applied presets, custom presets, and alert state to disk."""
         try:
             DATA_DIR.mkdir(parents=True, exist_ok=True)
             data = {
                 "applied": self._applied,
                 "custom_presets": self._custom_presets,
+                "alert_config": self._alert_config,
+                "alert_state": self._alert_state,
+                "alert_history": self._alert_history[-self._max_alert_history:],
                 "saved_at": datetime.now().isoformat(),
             }
             PRESETS_FILE.write_text(json.dumps(data, indent=2))
@@ -1637,6 +2039,11 @@ class SchedulerPresetsSkill(Skill):
                 data = json.loads(PRESETS_FILE.read_text())
                 self._applied = data.get("applied", {})
                 self._custom_presets = data.get("custom_presets", {})
+                saved_config = data.get("alert_config", {})
+                if saved_config:
+                    self._alert_config.update(saved_config)
+                self._alert_state = data.get("alert_state", {})
+                self._alert_history = data.get("alert_history", [])[-self._max_alert_history:]
         except Exception:
             self._applied = {}
             self._custom_presets = {}

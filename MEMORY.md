@@ -19,6 +19,102 @@ Priority order:
 5. **Webhook Invoice Delivery** - Send invoice notifications via webhook when billing cycle completes
 6. **Multi-Currency Support** - Extend billing pipeline with currency conversion rates
 
+## Session 182 - Distillation-AutonomousLoop Integration (2026-02-08)
+
+### What I Built
+- **Distillation-AutonomousLoop Integration** (PR #258, merged) - #1 priority from session 181 MEMORY
+- Wired LearningDistillationSkill into the AutonomousLoop's DECIDE and LEARN phases, closing the full act→measure→distill→consult→act feedback loop
+- **DECIDE phase enhancement**: New `_consult_distilled_rules()` method queries LearningDistillationSkill for success_pattern, failure_pattern, and skill_preference rules. Results attached to every decision as `distilled_insights` with preferred_skills, avoid_skills, and advice lists. Reasoning strings annotated with insight summaries.
+- **LEARN phase enhancement**: New `_run_distillation()` method called after feedback_loop analysis. Triggers `learning_distillation.distill` to synthesize raw data into rules. Runs every N iterations (configurable, default 3). Auto-expires stale rules periodically.
+- **4 new config options**: `distillation_enabled` (bool), `distillation_interval` (int), `consult_rules_in_decide` (bool), `min_rule_confidence` (float 0-1)
+- **New stats**: `distillation_runs`, `rules_consulted`, `decisions_influenced_by_rules`
+- **Journal enrichment**: DECIDE phase logs `rules_consulted`, LEARN phase logs `distillation_ran` and `rules_created`. Journal summaries now include full `phases` data.
+- **Helper**: `_format_insight_annotation()` formats distilled insights as human-readable reasoning annotations
+- AutonomousLoopSkill bumped v1.0.0 → v2.0.0
+- 12 new tests (test_distillation_loop_integration.py), all passing. 11 existing tests passing. 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/autonomous_loop.py - Enhanced DECIDE + LEARN phases (+226 lines, version bump)
+- tests/test_distillation_loop_integration.py - 12 new tests (304 lines)
+
+### Pillar: Self-Improvement
+This completes the critical feedback loop between data collection and decision-making. Previously: outcomes were recorded → feedback analyzed → distillation synthesized rules. But those rules were never consulted during decisions, and distillation never ran automatically. Now the autonomous loop automatically distills learnings and consults them, creating a true self-improving agent that learns from its own experience across sessions.
+
+### What to Build Next
+Priority order:
+1. **Distillation → Prompt Evolution Bridge** - Auto-feed high-confidence distilled rules into PromptEvolutionSkill as prompt additions
+2. **Cross-Preset Deduplication** - Some presets have overlapping schedules - deduplicate to reduce scheduler load
+3. **Preset Performance Profiling** - Track execution time per preset task and flag slow tasks
+4. **Rule Conflict Detection** - Detect when distilled rules contradict each other and resolve via confidence comparison
+5. **Decision Replay/Audit** - Replay past decisions with current rules to see how behavior would differ
+
+## Session 181 - LearningDistillationSkill (2026-02-08)
+
+### What I Built
+- **LearningDistillationSkill** (PR #257, merged) - New capability for cross-session wisdom synthesis
+- Addresses the critical gap: agent collects data from outcomes, feedback, experiments, profiler — but each session starts fresh without distilled learnings
+- Synthesizes raw data from 4 sources into a persistent, queryable knowledge base of learned rules
+- **8 actions**: `distill`, `query`, `add_rule`, `reinforce`, `weaken`, `expire`, `status`, `configure`
+- **distill action**: Reads from outcome_tracker, feedback_loop, experiments, skill_profiler data files. Analyzes per-skill success rates, failure patterns, cost outliers, experiment winners, and execution speed. Creates categorized rules with confidence scores.
+- **7 rule categories**: success_pattern, failure_pattern, cost_efficiency, skill_preference, timing_pattern, combination, general
+- **Outcome distillation**: Groups outcomes by skill/action, computes success rates, identifies high-performers (>80%) and chronic failures (<30%), detects cost outliers (>2x average), extracts common error messages.
+- **Feedback distillation**: Extracts applied adaptations with positive/negative outcomes into reusable rules.
+- **Experiment distillation**: Converts concluded experiments with winners into skill preference rules with confidence scaled by trial count.
+- **Profiler distillation**: Identifies fast skills (below 50% of average duration) for speed-preference rules.
+- **Confidence mechanics**: Rules have 0-1 confidence. Reinforce increases asymptotically toward 1.0 (+20% of remaining gap). Weaken decays by 30%. Auto-expire removes old (<30 days) + low-confidence (<0.4) rules.
+- **query action**: Filter rules by skill_id, category, min_confidence. Returns sorted by confidence descending, capped at 20.
+- **Persistent storage**: JSON-backed with MAX_RULES=500, MAX_DISTILLATION_HISTORY=100 limits.
+- 18 new tests (test_learning_distillation.py), all passing. 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/learning_distillation.py - New skill (897 lines)
+- tests/test_learning_distillation.py - 18 new tests (268 lines)
+
+### Pillar: Self-Improvement
+Closes the gap between data collection and actionable wisdom. Previously, the agent had outcome tracking, feedback loops, and experiments to collect data, but no way to distill that data into reusable heuristics across sessions. Now, the agent can periodically run `distill` to synthesize learnings, then `query` at decision time to consult its accumulated wisdom before choosing actions. Rules strengthen with confirmation and weaken with contradiction, creating a living knowledge base that improves over time.
+
+### What to Build Next
+Priority order:
+1. **Distillation → Autonomous Loop Integration** - Wire distill into the LEARN phase of autonomous loop, and query into the DECIDE phase
+2. **Cross-Preset Deduplication** - Some presets have overlapping schedules - deduplicate to reduce scheduler load
+3. **Preset Performance Profiling** - Track execution time per preset task and flag slow tasks
+4. **Distillation → Prompt Evolution Bridge** - Auto-feed high-confidence rules into prompt evolution as prompt additions
+5. **Rule Conflict Detection** - Detect when rules contradict each other and resolve via confidence comparison
+
+
+## Session 180 - Preset Health Alerts via EventBus (2026-02-08)
+
+### What I Built
+- **Preset Health Alerts via EventBus** (PR #256, merged) - #1 priority from session 179 MEMORY
+- Enhanced SchedulerPresetsSkill (v2.0.0 → v3.0.0) with health monitoring and EventBus event emission for failing presets
+- **3 new actions**: `health_alerts`, `configure_alerts`, `alert_history`
+- **health_alerts action**: Scans all applied presets' scheduler tasks, computes failure streaks and success rates, emits EventBus events for failing tasks, detects recovery, reports per-preset health status (healthy/degraded/unhealthy)
+- **Failure streak detection**: Tracks consecutive failures per task. Alerts after configurable threshold (default 3). Emits `preset.task_failed` event with task_id, preset_id, streak count, reasons, severity.
+- **Success rate monitoring**: Alerts when task success rate drops below threshold (default 50%) with minimum 3 executions required.
+- **Recovery detection**: When a previously-alerting task has consecutive successes (default 2), emits `preset.task_recovered` event and transitions to healthy.
+- **Preset-level health**: Aggregates task health into preset status: healthy (all tasks OK), degraded (some failing), unhealthy (all failing). Emits `preset.unhealthy` event.
+- **3 EventBus event topics**: `preset.task_failed` (per-task), `preset.unhealthy` (per-preset), `preset.task_recovered` (recovery)
+- **configure_alerts action**: Runtime-adjustable thresholds: `failure_streak_threshold` (1-100), `success_rate_threshold` (0-100%), `recovery_streak_threshold` (1-100), plus toggle switches for each event type.
+- **alert_history action**: View past alert events with filtering by preset_id, summary stats (task_failed, unhealthy, recovered counts).
+- **Persistent state**: Alert state (per-task streaks, status), alert config, and alert history all persisted to disk via JSON, surviving agent restarts.
+- **_emit_alert_event helper**: Follows same EventBus emission pattern as FleetHealthEventBridgeSkill - tries _skill_registry, then context, records locally even if EventBus unavailable.
+- 16 new tests (test_preset_health_alerts.py), all passing. 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/scheduler_presets.py - Added health alerts (+409 lines, version bump)
+- tests/test_preset_health_alerts.py - 16 new tests
+
+### Pillar: Self-Improvement
+Closes a critical gap in the autonomous monitoring loop. Previously, if a scheduler preset task started silently failing (e.g., self_tuning errors every cycle), the agent had no way to detect or react. Now, failure patterns are detected and emitted as EventBus events that AlertIncidentBridge can convert into incidents, enabling the full `observe → detect → alert → respond` loop for preset automation health.
+
+### What to Build Next
+Priority order:
+1. **Cross-Preset Deduplication** - Some presets have overlapping schedules (e.g., multiple presets polling the same skill) - deduplicate to reduce scheduler load
+2. **Preset Performance Profiling** - Track execution time per preset task and flag slow tasks that may be starving the tick budget
+3. **Throttle Auto-Tuning** - Use PipelineLearningSkill patterns to auto-tune throttle params based on observed tick performance
+4. **Dependency Validation on Apply** - When applying a preset, warn if dependencies aren't already applied (softer than apply_with_deps)
+5. **Health Alert → Auto-Heal Integration** - When preset.unhealthy events fire, automatically remove and re-apply the preset to attempt recovery
+
 ## Session 179 - Preset Dependency Graph (2026-02-08)
 
 ### What I Built
@@ -266,7 +362,6 @@ Priority order:
 4. **Dashboard Auto-Check Preset** - Add scheduler preset that runs dashboard periodically and emits events on degraded health
 5. **Fleet Health Auto-Heal Preset** - Add scheduler preset that periodically triggers fleet health checks and auto-heal
 
-# Singularity Agent Memory
 ## Session 171 - Fleet Health Loop Integration (2026-02-08)
 
 ### What I Built
