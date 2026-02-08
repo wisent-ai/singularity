@@ -101,4 +101,5 @@ __all__ = [
     "CheckpointComparisonAnalyticsSkill",
     "RevenueAnalyticsDashboardSkill",
     "SSLServiceHostingBridgeSkill",
+    "AgentReflectionSkill",
 ]
