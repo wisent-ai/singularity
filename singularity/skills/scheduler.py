@@ -125,6 +125,27 @@ class SchedulerSkill(Skill):
         self._schedule_file = self._data_dir / "scheduler.json"
         self._max_history = 100
 
+        # Rate limiting configuration
+        self._rate_limit_config: Dict[str, Any] = {
+            "min_tick_interval": 5.0,       # Min seconds between ticks
+            "max_tasks_per_tick": 5,         # Max tasks executed per tick
+            "per_skill_cooldown": 10.0,      # Min seconds between same-skill executions
+            "priority_skills": [],           # Skills that bypass per-tick limits
+            "enabled": True,                 # Rate limiting on/off
+        }
+        # Rate limiting state
+        self._last_tick_at: float = 0.0
+        self._per_skill_last_run: Dict[str, float] = {}  # skill_id -> last_run_timestamp
+        self._tick_stats: Dict[str, Any] = {
+            "total_ticks": 0,
+            "throttled_ticks": 0,          # Ticks skipped due to min_tick_interval
+            "tasks_deferred": 0,           # Tasks skipped due to per-tick limit
+            "skill_cooldown_hits": 0,      # Tasks skipped due to per-skill cooldown
+            "last_tick_tasks_executed": 0,
+            "last_tick_tasks_deferred": 0,
+            "last_tick_duration": 0.0,
+        }
+
     def _get_cron(self, task: ScheduledTask) -> Optional[CronExpression]:
         """Get parsed cron expression for a task, with caching."""
         if task.schedule_type != "cron" or not task.cron_expression:
@@ -151,7 +172,7 @@ class SchedulerSkill(Skill):
         return SkillManifest(
             skill_id="scheduler",
             name="Scheduler",
-            version="2.0.0",
+            version="2.1.0",
             category="autonomy",
             description="Schedule future tasks, recurring jobs, cron-based schedules, and time-based actions for autonomous operation",
             actions=[
@@ -345,6 +366,44 @@ class SchedulerSkill(Skill):
                     },
                     estimated_cost=0,
                 ),
+                SkillAction(
+                    name="configure_rate_limit",
+                    description="Configure tick rate limiting to prevent excessive execution when many presets are active",
+                    parameters={
+                        "min_tick_interval": {
+                            "type": "number",
+                            "required": False,
+                            "description": "Min seconds between ticks (default 5.0)"
+                        },
+                        "max_tasks_per_tick": {
+                            "type": "integer",
+                            "required": False,
+                            "description": "Max tasks executed per tick (default 5)"
+                        },
+                        "per_skill_cooldown": {
+                            "type": "number",
+                            "required": False,
+                            "description": "Min seconds between same-skill executions (default 10.0)"
+                        },
+                        "priority_skills": {
+                            "type": "array",
+                            "required": False,
+                            "description": "Skill IDs that bypass per-tick limits"
+                        },
+                        "enabled": {
+                            "type": "boolean",
+                            "required": False,
+                            "description": "Enable/disable rate limiting (default true)"
+                        },
+                    },
+                    estimated_cost=0,
+                ),
+                SkillAction(
+                    name="rate_limit_status",
+                    description="View current rate limiting configuration and tick statistics",
+                    parameters={},
+                    estimated_cost=0,
+                ),
             ],
             required_credentials=[],
         )
@@ -364,6 +423,8 @@ class SchedulerSkill(Skill):
             "resume": self._resume,
             "run_now": self._run_now,
             "pending": self._pending,
+            "configure_rate_limit": self._configure_rate_limit,
+            "rate_limit_status": self._rate_limit_status,
         }
 
         handler = handlers.get(action)
@@ -831,22 +892,159 @@ class SchedulerSkill(Skill):
                 data={"task": task.to_dict()}
             )
 
+    async def _configure_rate_limit(self, params: Dict) -> SkillResult:
+        """Configure tick rate limiting parameters."""
+        updated = []
+
+        if "min_tick_interval" in params:
+            val = float(params["min_tick_interval"])
+            if val < 0:
+                return SkillResult(success=False, message="min_tick_interval must be >= 0")
+            self._rate_limit_config["min_tick_interval"] = val
+            updated.append(f"min_tick_interval={val}s")
+
+        if "max_tasks_per_tick" in params:
+            val = int(params["max_tasks_per_tick"])
+            if val < 1:
+                return SkillResult(success=False, message="max_tasks_per_tick must be >= 1")
+            self._rate_limit_config["max_tasks_per_tick"] = val
+            updated.append(f"max_tasks_per_tick={val}")
+
+        if "per_skill_cooldown" in params:
+            val = float(params["per_skill_cooldown"])
+            if val < 0:
+                return SkillResult(success=False, message="per_skill_cooldown must be >= 0")
+            self._rate_limit_config["per_skill_cooldown"] = val
+            updated.append(f"per_skill_cooldown={val}s")
+
+        if "priority_skills" in params:
+            val = list(params["priority_skills"])
+            self._rate_limit_config["priority_skills"] = val
+            updated.append(f"priority_skills={val}")
+
+        if "enabled" in params:
+            val = bool(params["enabled"])
+            self._rate_limit_config["enabled"] = val
+            updated.append(f"enabled={val}")
+
+        if not updated:
+            return SkillResult(
+                success=False,
+                message="No rate limit parameters provided. Use min_tick_interval, max_tasks_per_tick, per_skill_cooldown, priority_skills, or enabled.",
+            )
+
+        return SkillResult(
+            success=True,
+            message=f"Rate limiting updated: {', '.join(updated)}",
+            data={"config": dict(self._rate_limit_config)},
+        )
+
+    async def _rate_limit_status(self, params: Dict) -> SkillResult:
+        """Get current rate limiting config and tick statistics."""
+        now = time.time()
+        time_since_last_tick = round(now - self._last_tick_at, 1) if self._last_tick_at else None
+
+        # Compute per-skill cooldown status
+        skill_cooldowns = {}
+        cooldown = self._rate_limit_config.get("per_skill_cooldown", 10.0)
+        for skill_id, last_run in self._per_skill_last_run.items():
+            remaining = max(0, cooldown - (now - last_run))
+            skill_cooldowns[skill_id] = {
+                "last_run_ago": round(now - last_run, 1),
+                "cooldown_remaining": round(remaining, 1),
+                "ready": remaining == 0,
+            }
+
+        return SkillResult(
+            success=True,
+            message=f"Rate limiting {'enabled' if self._rate_limit_config.get('enabled') else 'disabled'}. "
+                    f"{self._tick_stats.get('total_ticks', 0)} total ticks, "
+                    f"{self._tick_stats.get('throttled_ticks', 0)} throttled.",
+            data={
+                "config": dict(self._rate_limit_config),
+                "stats": dict(self._tick_stats),
+                "time_since_last_tick": time_since_last_tick,
+                "skill_cooldowns": skill_cooldowns,
+                "due_task_count": self.get_due_count(),
+            },
+        )
+
     async def tick(self) -> List[SkillResult]:
         """
         Check and execute any due tasks. Should be called periodically
         by the agent's main loop.
 
+        Rate limiting prevents excessive execution when many presets are active:
+        - min_tick_interval: skips tick entirely if called too frequently
+        - max_tasks_per_tick: caps how many tasks run per tick (rest deferred)
+        - per_skill_cooldown: prevents same skill from running too frequently
+        - priority_skills: bypass per-tick limits for critical skills
+
         Returns list of results from executed tasks.
         """
         now = time.time()
         results = []
+        config = self._rate_limit_config
 
-        for task in list(self._tasks.values()):
-            if (task.enabled and
-                task.status == "pending" and
-                task.next_run_at <= now):
-                result = await self._execute_task(task)
-                results.append(result)
+        self._tick_stats["total_ticks"] = self._tick_stats.get("total_ticks", 0) + 1
+
+        # Rate limit: skip tick if called too soon
+        if config.get("enabled", True):
+            min_interval = config.get("min_tick_interval", 5.0)
+            if self._last_tick_at and (now - self._last_tick_at) < min_interval:
+                self._tick_stats["throttled_ticks"] = self._tick_stats.get("throttled_ticks", 0) + 1
+                return results
+
+        self._last_tick_at = now
+        tick_start = now
+
+        # Gather all due tasks
+        due_tasks = [
+            task for task in self._tasks.values()
+            if task.enabled and task.status == "pending" and task.next_run_at <= now
+        ]
+
+        if not due_tasks:
+            self._tick_stats["last_tick_tasks_executed"] = 0
+            self._tick_stats["last_tick_tasks_deferred"] = 0
+            self._tick_stats["last_tick_duration"] = 0.0
+            return results
+
+        # Sort by next_run_at (oldest-due first = highest priority)
+        due_tasks.sort(key=lambda t: t.next_run_at)
+
+        max_per_tick = config.get("max_tasks_per_tick", 5) if config.get("enabled", True) else len(due_tasks)
+        cooldown = config.get("per_skill_cooldown", 10.0) if config.get("enabled", True) else 0
+        priority_skills = set(config.get("priority_skills", []))
+
+        executed = 0
+        deferred = 0
+
+        for task in due_tasks:
+            is_priority = task.skill_id in priority_skills
+
+            # Check per-tick limit (priority skills bypass)
+            if not is_priority and executed >= max_per_tick:
+                deferred += 1
+                self._tick_stats["tasks_deferred"] = self._tick_stats.get("tasks_deferred", 0) + 1
+                continue
+
+            # Check per-skill cooldown (priority skills bypass)
+            if not is_priority and cooldown > 0:
+                last_run = self._per_skill_last_run.get(task.skill_id, 0)
+                if last_run and (now - last_run) < cooldown:
+                    deferred += 1
+                    self._tick_stats["skill_cooldown_hits"] = self._tick_stats.get("skill_cooldown_hits", 0) + 1
+                    continue
+
+            result = await self._execute_task(task)
+            results.append(result)
+            executed += 1
+            self._per_skill_last_run[task.skill_id] = time.time()
+
+        self._tick_stats["last_tick_tasks_executed"] = executed
+        self._tick_stats["last_tick_tasks_deferred"] = deferred
+        self._tick_stats["last_tick_duration"] = round(time.time() - tick_start, 3)
 
         return results
 

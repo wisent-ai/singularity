@@ -943,6 +943,11 @@ class AutonomousLoopSkill(Skill):
         recurring maintenance (adaptive threshold tuning, revenue goal tracking,
         experiment management, circuit sharing monitoring) happens automatically.
 
+        The scheduler's built-in rate limiter (v2.1+) prevents excessive execution
+        when many presets are active by enforcing min_tick_interval, max_tasks_per_tick,
+        and per_skill_cooldown. The loop can call tick() freely; the scheduler handles
+        throttling internally.
+
         Fail-silent: if the scheduler skill isn't registered, just skip.
         """
         try:
@@ -959,6 +964,12 @@ class AutonomousLoopSkill(Skill):
                         stats["scheduler_tasks_executed"] = stats.get("scheduler_tasks_executed", 0) + tasks_executed
                         if tasks_executed > 0:
                             stats["last_scheduler_execution"] = datetime.now().isoformat()
+                        # Track rate limiter stats if available
+                        tick_stats = getattr(scheduler, "_tick_stats", None)
+                        if tick_stats:
+                            stats["scheduler_throttled_ticks"] = tick_stats.get("throttled_ticks", 0)
+                            stats["scheduler_tasks_deferred"] = tick_stats.get("tasks_deferred", 0)
+                            stats["scheduler_skill_cooldown_hits"] = tick_stats.get("skill_cooldown_hits", 0)
                         state["stats"] = stats
         except Exception:
             pass  # Scheduler not registered or error - that's OK
