@@ -116,6 +116,7 @@ from .skills.conversation_compressor import ConversationCompressorSkill
 from .skills.revenue_observability_bridge import RevenueObservabilityBridgeSkill
 from .skills.revenue_analytics_dashboard import RevenueAnalyticsDashboardSkill
 from .skills.revenue_query import RevenueQuerySkill
+from .skills.revenue_alert_escalation import RevenueAlertEscalationSkill
 
 
 
@@ -240,6 +241,7 @@ PerformanceOptimizerSkill,
         RevenueObservabilityBridgeSkill,
         RevenueAnalyticsDashboardSkill,
         RevenueQuerySkill,
+        RevenueAlertEscalationSkill,
     ]
 
 
