@@ -1,5 +1,34 @@
 # Singularity Agent Memory
 
+## Session 147 - FleetOrchestrationPoliciesSkill (2026-02-08)
+
+### What I Built
+- **FleetOrchestrationPoliciesSkill** (PR #211, merged) - Pre-built fleet management policies for autonomous orchestration
+- #1 priority from multiple sessions: "Fleet Orchestration Policies"
+- FleetHealthManagerSkill had configurable policies but agents started with generic defaults and had to manually tune
+- This skill provides battle-tested policy presets optimized for specific operational goals
+- 5 built-in policies: cost_aware, resilience, revenue_optimized, balanced, dev_test
+- 3 built-in schedule bundles: production_standard, startup_growth, always_on
+- 8 actions: list_policies, preview, deploy, compare, recommend, customize, schedule, status
+- Policy recommendation engine: scores all 5 policies against fleet state (budget, health, revenue, SLA, production flag)
+- Side-by-side policy comparison with per-field diffs and change percentages
+- Custom policies: fork any built-in with config overrides, validated against known fields
+- Time-based policy switching: schedule different policies for hours/days via bundles or custom entries
+- Deploys to FleetHealthManagerSkill via SkillContext cross-skill call (set_policy)
+- Dry run support for previewing changes before applying
+- Deploy history tracking with switch counts and per-policy deploy counts
+- Replication pillar: intelligent fleet management without manual tuning
+- 18 tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **Function Marketplace** - Allow agents to publish/import serverless functions from each other
+2. **Serverless-ServiceHosting Bridge** - Auto-register serverless functions in ServiceHostingSkill
+3. **Cross-Agent Checkpoint Sync** - Share checkpoint analytics between replicas for fleet-wide progress tracking
+4. **Revenue Goal Auto-Setting** - Auto-set revenue goals from RevenueAnalyticsDashboard forecast data
+5. **Multi-Agent Consensus Workflow** - Coordinate complex tasks across multiple agents with voting
+6. **Pipeline-Aware Planner** - Enhance PlannerSkill to output pipeline steps instead of single actions
+
 ## Session 54 - SSLServiceHostingBridgeSkill (2026-02-08)
 
 ### What I Built
