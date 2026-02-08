@@ -20,6 +20,7 @@ this skill provides one-command setup of common automation patterns:
 - Revenue goal evaluation: periodic revenue goal status checks, reports, and history reviews
 - Dashboard auto-check: periodic loop iteration dashboard health checks and alert scanning
 - Fleet health auto-heal: periodic fleet health monitoring with automatic heal triggers
+- Revenue observability sync: periodic revenue data sync into metrics pipeline for alerting
 - Full autonomy: all presets at once for fully autonomous operation
 
 Each preset is a named collection of scheduler entries with sensible defaults
@@ -189,7 +190,7 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
     "revenue_reporting": PresetDefinition(
         preset_id="revenue_reporting",
         name="Revenue Reporting",
-        description="Periodic revenue analytics and usage reporting",
+        description="Periodic revenue analytics, usage reporting, and metrics sync",
         pillar="revenue",
         schedules=[
             PresetSchedule(
@@ -199,6 +200,22 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
                 params={},
                 interval_seconds=3600,  # every hour
                 description="Generate usage analytics for all customers",
+            ),
+            PresetSchedule(
+                name="Revenue Observability Sync",
+                skill_id="revenue_observability_bridge",
+                action="sync",
+                params={"force": True},
+                interval_seconds=1800,  # every 30 minutes
+                description="Sync revenue data into ObservabilitySkill metrics for alerting and trend analysis",
+            ),
+            PresetSchedule(
+                name="Revenue Dashboard Overview",
+                skill_id="revenue_analytics_dashboard",
+                action="overview",
+                params={},
+                interval_seconds=3600,  # every hour
+                description="Generate comprehensive revenue overview from all sources",
             ),
         ],
     ),
@@ -493,6 +510,39 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
                 params={},
                 interval_seconds=43200,  # every 12 hours
                 description="Generate billing status report - next run, last run, revenue collected",
+            ),
+        ],
+    ),
+    "revenue_observability_sync": PresetDefinition(
+        preset_id="revenue_observability_sync",
+        name="Revenue Observability Sync",
+        description="Periodic sync of revenue data into ObservabilitySkill metrics for time-series tracking, alerting, and trend analysis",
+        pillar="revenue",
+        depends_on=["revenue_reporting"],
+        schedules=[
+            PresetSchedule(
+                name="Revenue Metrics Sync",
+                skill_id="revenue_observability_bridge",
+                action="sync",
+                params={"force": True},
+                interval_seconds=900,  # every 15 minutes
+                description="Sync revenue data from all 8 sources into ObservabilitySkill metrics pipeline",
+            ),
+            PresetSchedule(
+                name="Revenue Dashboard Snapshot",
+                skill_id="revenue_analytics_dashboard",
+                action="snapshot",
+                params={},
+                interval_seconds=3600,  # every hour
+                description="Capture point-in-time revenue snapshot for trend tracking and forecasting",
+            ),
+            PresetSchedule(
+                name="Revenue Alert Check",
+                skill_id="revenue_observability_bridge",
+                action="status",
+                params={},
+                interval_seconds=1800,  # every 30 minutes
+                description="Check revenue bridge status and verify metrics are flowing correctly",
             ),
         ],
     ),
