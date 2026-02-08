@@ -88,6 +88,8 @@ from .skills.llm_router import CostAwareLLMRouter
 from .skills.cost_optimizer import CostOptimizerSkill
 from .skills.skill_marketplace_hub import SkillMarketplaceHub
 from .skills.execution_instrumenter import SkillExecutionInstrumenter
+from .skills.observability import ObservabilitySkill
+from .skills.skill_event_bridge import SkillEventBridgeSkill
 
 
 
@@ -95,6 +97,7 @@ from .skills.execution_instrumenter import SkillExecutionInstrumenter
 
 from .adaptive_executor import AdaptiveExecutor
 from .event_bus import EventBus, Event, EventPriority
+from .execution_instrumentation import ExecutionInstrumentation
 
 
 class AutonomousAgent:
@@ -184,6 +187,8 @@ PerformanceOptimizerSkill,
         CostOptimizerSkill,
         SkillMarketplaceHub,
         SkillExecutionInstrumenter,
+        ObservabilitySkill,
+        SkillEventBridgeSkill,
     ]
 
 
@@ -290,6 +295,9 @@ PerformanceOptimizerSkill,
             persist_path=str(Path(__file__).parent / "data" / "events.json"),
         )
         self._wire_event_bus()
+
+        # Wire execution instrumentation (ObservabilitySkill + SkillEventBridge)
+        self._instrumentation = ExecutionInstrumentation(self)
 
         # Inject installed skill IDs into profiler after all skills are loaded
         if hasattr(self, '_skill_profiler') and self._skill_profiler:
@@ -847,53 +855,31 @@ PerformanceOptimizerSkill,
                     return {"status": "blocked", "message": advice.reason}
 
                 try:
-                    _t0 = time.time()
-                    result = await skill.execute(action_name, params)
-                    _latency_ms = (time.time() - _t0) * 1000
-                    outcome = {
-                        "status": "success" if result.success else "failed",
-                        "data": result.data,
-                        "message": result.message
-                    }
-                    # Record outcome for adaptive learning
-                    self._adaptive_executor.record_outcome(
-                        skill_id, action_name,
-                        success=result.success,
-                        error=result.message if not result.success else "",
+                    async def _do_execute():
+                        r = await skill.execute(action_name, params)
+                        o = {
+                            "status": "success" if r.success else "failed",
+                            "data": r.data,
+                            "message": r.message,
+                        }
+                        # Record outcome for adaptive learning
+                        self._adaptive_executor.record_outcome(
+                            skill_id, action_name,
+                            success=r.success,
+                            error=r.message if not r.success else "",
+                        )
+                        return o
+
+                    # Execute with instrumentation (metrics, bridge events, EventBus)
+                    outcome = await self._instrumentation.instrumented_execute(
+                        skill_id, action_name, params, _do_execute,
                     )
-                    # Auto-instrument via SkillExecutionInstrumenter
-                    if self._instrumenter and skill_id != "execution_instrumenter":
-                        try:
-                            await self._instrumenter.execute("instrument", {
-                                "skill_id": skill_id,
-                                "action": action_name,
-                                "success": result.success,
-                                "latency_ms": _latency_ms,
-                                "result_data": result.data if isinstance(result.data, dict) else {},
-                                "error": result.message if not result.success else "",
-                            })
-                        except Exception:
-                            pass  # Never let instrumentation break execution
                     return outcome
                 except Exception as e:
-                    _latency_ms = (time.time() - _t0) * 1000 if '_t0' in dir() else 0
                     self._adaptive_executor.record_outcome(
                         skill_id, action_name,
                         success=False, error=str(e),
                     )
-                    # Auto-instrument errors too
-                    if self._instrumenter and skill_id != "execution_instrumenter":
-                        try:
-                            await self._instrumenter.execute("instrument", {
-                                "skill_id": skill_id,
-                                "action": action_name,
-                                "success": False,
-                                "latency_ms": _latency_ms,
-                                "result_data": {},
-                                "error": str(e),
-                            })
-                        except Exception:
-                            pass
                     return {"status": "error", "message": str(e)}
 
         return {"status": "error", "message": f"Unknown tool: {tool}"}
