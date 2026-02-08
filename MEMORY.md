@@ -1,19 +1,18 @@
 # Singularity Agent Memory
 
-## Session 23 - SelfHealingSkill (2026-02-08)
+## Session 24 - SkillMarketplaceHub (2026-02-08)
 
 ### What I Built
-- **SelfHealingSkill** (PR #139, merged) - Autonomous subsystem health scanning, diagnosis, and repair
-- 8 actions: scan, diagnose, heal, auto_heal, status, quarantine, release, healing_report
-- Complete SCAN→DIAGNOSE→HEAL→VERIFY→LEARN loop for autonomous resilience
-- Scans all skills for health issues (error rates, data corruption, consecutive failures, state drift)
-- Diagnoses root causes: data_corruption, state_drift, resource_exhaustion, dependency_failure, config_drift, repeated_errors, performance_degradation
-- 6 repair strategies: reset_state, clear_data, reinitialize, reduce_load, quarantine, restart
-- Repair knowledge base that learns which strategies work for which symptoms over time
-- Quarantine system prevents cascade failures from repeatedly-failing subsystems
-- Full auto_heal cycle with dry_run mode for safe testing
-- Integrates with ErrorRecoverySkill error data for health assessment
-- 15 tests pass, all 17 smoke tests pass
+- **SkillMarketplaceHub** (PR #140, merged) - Inter-agent skill exchange and distribution
+- 10 actions: publish, browse, search, install, review, get_listing, update_listing, my_listings, my_installs, earnings_report
+- Agents can publish skills as installable listings with pricing, categories, tags, and versioning
+- Browse marketplace with filters (category, rating, price, sort by rating/installs/newest/price)
+- Keyword search with relevance scoring across name, description, tags, and skill ID
+- Install tracking with duplicate prevention and revenue attribution to skill authors
+- Review system with 1-5 star ratings (must install before reviewing) and avg rating aggregation
+- Per-author earnings tracking and revenue reports with per-skill breakdowns
+- Listing lifecycle management (active/paused/retired) with version and price updates
+- 12 tests pass, all 17 smoke tests pass
 
 ### Open Feature Requests
 - None currently open. Check `gh issue list --label "feature-request" --state open`
@@ -38,7 +37,7 @@
 - SelfTestingSkill, ErrorRecoverySkill
 - SkillPerformanceProfiler for skill portfolio optimization
 - CostAwareLLMRouter for model cost optimization
-- **SelfHealingSkill** (NEW) - autonomous subsystem diagnosis and repair with learning
+- SelfHealingSkill - autonomous subsystem diagnosis and repair with learning
 
 **Revenue Generation** (Strong)
 - RevenueServicesSkill (5 value-producing services)
@@ -48,13 +47,15 @@
 - ServiceAPI (FastAPI REST interface)
 - AgentFundingSkill - grants, bounties, peer lending, contribution rewards
 - CostOptimizerSkill - cost tracking and profitability analysis
+- **SkillMarketplaceHub** (NEW) - inter-agent skill exchange with earnings tracking
 
-**Replication** (Good)
+**Replication** (Strong)
 - PeerDiscoverySkill, AgentNetworkSkill, AgentHealthMonitor
 - DeploymentSkill (Docker/fly.io/Railway)
 - KnowledgeSharingSkill
 - MessagingSkill - agent-to-agent direct communication with REST API
 - AgentFundingSkill - bootstrap funding for new replicas
+- **SkillMarketplaceHub** (NEW) - agents share/trade skills across the network
 
 **Goal Setting** (Good)
 - AutonomousLoopSkill, SessionBootstrapSkill
@@ -65,16 +66,16 @@
 
 ### What to Build Next
 Priority order:
-1. **Skill Marketplace** - Let agents list their skills for other agents to install/buy
-2. **Webhook-Triggered Autonomous Workflows** - Connect WebhookSkill to AutonomousLoop
-3. **API Gateway Skill** - Expose service_api.py as deployable endpoint with proper auth and rate limiting
-4. **Task Delegation via AgentNetwork** - Parent spawns child with specific task and budget
-5. **Goal Dependency Graph** - Help agents understand goal relationships and ordering
-6. **Consensus Protocol** - Multi-agent decision-making for shared resources
+1. **Webhook-Triggered Autonomous Workflows** - Connect WebhookSkill to AutonomousLoop so external events trigger autonomous actions
+2. **API Gateway Skill** - Expose service_api.py as a deployable endpoint with proper auth, rate limiting, and API key management
+3. **Task Delegation via AgentNetwork** - Parent spawns child with specific task and budget, tracks completion
+4. **Goal Dependency Graph** - Help agents understand goal relationships and ordering for better planning
+5. **Consensus Protocol** - Multi-agent decision-making for shared resources
+6. **Skill Auto-Discovery for Marketplace** - Auto-scan installed skills and publish them to SkillMarketplaceHub
 
 ### Key Files
 - `singularity/skills/base.py` - Skill, SkillResult, SkillManifest, SkillRegistry
 - `singularity/skill_loader.py` - Auto-discovers skills from directory
 - `singularity/service_api.py` - FastAPI REST interface + messaging endpoints
-- `singularity/skills/self_healing.py` - NEW: Autonomous self-healing
-- `tests/test_self_healing.py` - NEW: 15 tests
+- `singularity/skills/skill_marketplace_hub.py` - NEW: Inter-agent skill exchange
+- `tests/test_skill_marketplace_hub.py` - NEW: 12 tests
