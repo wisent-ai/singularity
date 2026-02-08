@@ -95,6 +95,7 @@ from .skills.agent_checkpoint import AgentCheckpointSkill
 from .skills.dashboard_observability_bridge import DashboardObservabilityBridgeSkill
 from .skills.task_pricing import TaskPricingSkill
 from .skills.agent_reflection import AgentReflectionSkill
+from .skills.cross_agent_checkpoint_sync import CrossAgentCheckpointSyncSkill
 
 
 
@@ -199,6 +200,7 @@ PerformanceOptimizerSkill,
         DashboardObservabilityBridgeSkill,
         TaskPricingSkill,
         AgentReflectionSkill,
+        CrossAgentCheckpointSyncSkill,
     ]
 
 
