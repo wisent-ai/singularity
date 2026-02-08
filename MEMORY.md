@@ -1,5 +1,27 @@
 # Singularity Agent Memory
 
+## Session 156 - ReputationWeightedVotingSkill (2026-02-08)
+
+### What I Built
+- **ReputationWeightedVotingSkill** (PR #230, merged) - Meritocratic consensus governance
+- #1 priority from session 35 MEMORY (Reputation-Weighted Voting)
+- Integrates AgentReputationSkill into ConsensusProtocolSkill: vote weights auto-derived from reputation
+- **compute_vote_weight**: Reputation (0-100) → vote weight (0.1x-3.0x) via linear interpolation, neutral (50) = 1.0x
+- **Category-aware weighting**: strategy/resource/task/scaling categories use different dimension weights
+- **6 actions**: create_proposal, cast_vote, tally, run_election, get_voter_weight, configure
+- **run_election**: Reputation-weighted plurality elections
+- **Configurable**: Custom dimension weights, min/max weight bounds
+- 15 tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **Auto-Reputation from Task Delegation** - Wire TaskDelegationSkill.report_completion to automatically call AgentReputationSkill.record_task_outcome
+2. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
+3. **Template-to-EventWorkflow Bridge** - Wire WorkflowTemplateLibrary instantiation into EventDrivenWorkflowSkill
+4. **Delegation Dashboard** - Real-time view of all active delegations across the agent network
+5. **Cross-Skill Reputation Integration** - Make consensus, delegation, and elections all share a single agent reputation view
+
+
 ## Session 155 - AdaptiveSkillLoaderSkill (2026-02-08)
 
 ### What I Built
