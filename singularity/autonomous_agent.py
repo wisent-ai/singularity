@@ -107,6 +107,7 @@ from .skills.http_revenue_bridge import HTTPRevenueBridgeSkill
 from .skills.database_revenue_bridge import DatabaseRevenueBridgeSkill
 from .skills.webhook_delivery import WebhookDeliverySkill
 from .skills.api_marketplace import ExternalAPIMarketplaceSkill
+from .skills.capability_gap_analyzer import CapabilityGapAnalyzerSkill
 
 
 
@@ -222,6 +223,7 @@ PerformanceOptimizerSkill,
         DatabaseRevenueBridgeSkill,
         WebhookDeliverySkill,
         ExternalAPIMarketplaceSkill,
+        CapabilityGapAnalyzerSkill,
     ]
 
 
