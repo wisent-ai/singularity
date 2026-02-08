@@ -1,4 +1,28 @@
 # Singularity Agent Memory
+## Session 171 - Fleet Health Loop Integration (2026-02-08)
+
+### What I Built
+- **Fleet Health Loop Integration** (PR #246, merged) - Wire FleetHealthEventBridgeSkill into AutonomousLoop
+- #1 priority from session 170 MEMORY: "Fleet Health Events in Autonomous Loop"
+- **singularity/skills/autonomous_loop.py**: Two new integrations wired into _step() after ACT phase:
+  - `_monitor_fleet_health(state)`: Called after every ACT phase. Calls FleetHealthEventBridgeSkill.monitor() to detect fleet management changes (heal, scale, replace, rolling update) and emit structured EventBus events. Enables downstream reactive automation: AlertIncidentBridge creates incidents on failed heals, StrategySkill reprioritizes on capacity changes, CircuitSharingEvents correlates circuit states with fleet health.
+  - `_check_fleet_health(state)`: Periodic proactive fleet health check (every N iterations, configurable via `fleet_check_interval`, default=5). Calls FleetHealthEventBridgeSkill.fleet_check() to analyze fleet for critical conditions (too many unhealthy replicas, capacity drops) and emit fleet_health.fleet_alert events. Rate-limited to avoid excessive overhead.
+  - Both fail-silent: missing skills or exceptions gracefully skipped
+  - New config option: `fleet_check_interval` (default: 5) - controls how often fleet_check runs
+  - New stats tracked: `fleet_health_monitors`, `fleet_health_checks`
+- 10 new tests (test_fleet_health_loop_integration.py), all passing. 13 existing loop tests passing. 17 smoke tests passing.
+
+### Why This Matters
+FleetHealthEventBridgeSkill (PR #242) was a standalone bridge that emitted fleet health events but nothing in the autonomous loop ever called it. Without this integration, fleet management actions (heal, scale, replace, rolling update) happened silently with no way for downstream skills to react. Now every loop iteration automatically monitors fleet health changes AND periodically checks for critical fleet conditions. Combined with the goal progress monitoring (session 169) and circuit sharing events (session 165), the agent now has full EventBus coverage across ALL critical subsystems: fleet management, circuit sharing, goal management, and reputation.
+
+### What to Build Next
+Priority order:
+1. **Goal Stall Scheduler Preset** - Add scheduler preset for periodic stall checks (every 4h) so stalled goals trigger automated alerts
+2. **Scheduler Tick Rate Limiting** - Add configurable min interval between ticks to prevent excessive execution
+3. **Loop Iteration Dashboard** - Unified view of all stats tracked per iteration (scheduler, reputation, goals, circuits, fleet health)
+4. **Dashboard Auto-Check Preset** - Add scheduler preset that runs dashboard periodically and emits events on degraded health
+5. **Fleet Health Auto-Heal Preset** - Add scheduler preset that periodically triggers fleet health checks and auto-heal
+
 ## Session 170 - Preset Status Dashboard (2026-02-08)
 
 ### What I Built

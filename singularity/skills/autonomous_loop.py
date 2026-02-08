@@ -78,6 +78,7 @@ class AutonomousLoopSkill(Skill):
                 "max_journal_entries": 200,
                 "circuit_breaker_enabled": True,  # Check circuit breaker before skill execution
                 "circuit_breaker_skip_self": True,  # Don't circuit-break the loop's own skill calls
+                "fleet_check_interval": 5,  # Run fleet_check every N iterations
             },
             "stats": {
                 "total_iterations": 0,
@@ -381,6 +382,12 @@ class AutonomousLoopSkill(Skill):
 
         # Monitor goal progress events for downstream automation
         await self._monitor_goal_progress(state)
+
+        # Monitor fleet health events for fleet state changes
+        await self._monitor_fleet_health(state)
+
+        # Run periodic fleet health check for critical conditions
+        await self._check_fleet_health(state)
 
         # Phase 5: MEASURE
         state["current_phase"] = LoopPhase.MEASURE
@@ -993,6 +1000,60 @@ class AutonomousLoopSkill(Skill):
                 )
                 stats = state.get("stats", {})
                 stats["goal_progress_monitors"] = stats.get("goal_progress_monitors", 0) + 1
+                state["stats"] = stats
+        except Exception:
+            pass  # Bridge not registered or unavailable - that's OK
+
+    async def _monitor_fleet_health(self, state: Dict):
+        """Monitor fleet health and emit events for fleet state changes.
+
+        After the ACT phase, fleet management actions (heal, scale, replace,
+        rolling update) may have occurred. This calls FleetHealthEventBridgeSkill
+        to detect changes and emit structured EventBus events so downstream
+        skills can react (AlertIncidentBridge creates incidents, StrategySkill
+        reprioritizes on capacity changes, CircuitSharingEvents correlates
+        circuit states with fleet health).
+
+        Fail-silent: if the bridge skill isn't registered, just skip.
+        """
+        try:
+            if self.context:
+                await self.context.call_skill(
+                    "fleet_health_events", "monitor", {}
+                )
+                stats = state.get("stats", {})
+                stats["fleet_health_monitors"] = stats.get("fleet_health_monitors", 0) + 1
+                state["stats"] = stats
+        except Exception:
+            pass  # Bridge not registered or unavailable - that's OK
+
+    async def _check_fleet_health(self, state: Dict):
+        """Run fleet health check for critical conditions and emit alerts.
+
+        Analyzes fleet health state for critical conditions (too many unhealthy
+        replicas, capacity drops, etc.) and emits fleet_health.fleet_alert events.
+        This is a proactive check beyond the change-detection in _monitor_fleet_health.
+
+        Called periodically (configurable via fleet_check_interval). Defaults to
+        every 5 iterations to avoid excessive overhead.
+
+        Fail-silent: if the bridge skill isn't registered, just skip.
+        """
+        config = state.get("config", {})
+        check_interval = config.get("fleet_check_interval", 5)
+        iteration_count = state.get("iteration_count", 0)
+
+        # Only run fleet check every N iterations (default: every 5)
+        if iteration_count > 0 and iteration_count % check_interval != 0:
+            return
+
+        try:
+            if self.context:
+                await self.context.call_skill(
+                    "fleet_health_events", "fleet_check", {}
+                )
+                stats = state.get("stats", {})
+                stats["fleet_health_checks"] = stats.get("fleet_health_checks", 0) + 1
                 state["stats"] = stats
         except Exception:
             pass  # Bridge not registered or unavailable - that's OK
