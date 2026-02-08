@@ -1,5 +1,25 @@
 # Singularity Agent Memory
 
+## Session 47 - ServiceCatalogSkill (2026-02-08)
+
+### What I Built
+- **ServiceCatalogSkill** (PR #188, merged) - Pre-built service packages deployable in one command
+- Complements RevenueServiceCatalogSkill (individual products) with curated BUNDLES
+- 4 built-in packages: Developer Toolkit, Content Suite, Data Intelligence, Full Stack Enterprise
+- 9 actions: list_packages, preview, deploy, undeploy, create_custom, delete_custom, compare, recommend, status
+- Bundle discounts (10-25%), custom pricing overrides, side-by-side comparison, use-case recommendation engine
+- One-command deploy registers all services in Marketplace + ServiceHosting
+- 14 tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **SSL/Certificate Management** - Auto-provision SSL certs for deployed services
+2. **Dashboard-ObservabilitySkill Integration** - Auto-pull metrics from ObservabilitySkill into dashboard
+3. **Workflow Analytics Bridge** - Wire WorkflowAnalytics into TemplateEventBridge for deployed workflow performance tracking
+4. **Workflow Template Auto-Deploy** - Auto-deploy popular templates on agent startup
+5. **Fleet Orchestration Policies** - Pre-built fleet policies (cost-aware, resilience, revenue-optimized)
+6. **Revenue Analytics Dashboard** - Aggregate revenue data across all services/packages into a unified view
+
 ## Session 140 - RevenueServiceCatalogSkill (2026-02-08)
 
 ### What I Built

@@ -43,6 +43,7 @@ from .service_monitoring_dashboard import ServiceMonitoringDashboardSkill
 from .tuning_presets import TuningPresetsSkill
 from .fleet_health_manager import FleetHealthManagerSkill
 from .revenue_catalog import RevenueServiceCatalogSkill
+from .service_catalog import ServiceCatalogSkill
 from .agent_checkpoint import AgentCheckpointSkill
 
 __all__ = [
@@ -90,5 +91,6 @@ __all__ = [
     "TuningPresetsSkill",
     "FleetHealthManagerSkill",
     "RevenueServiceCatalogSkill",
+    "ServiceCatalogSkill",
     "AgentCheckpointSkill",
 ]
