@@ -48,6 +48,7 @@ from .agent_checkpoint import AgentCheckpointSkill
 from .workflow_analytics_bridge import WorkflowAnalyticsBridgeSkill
 from .checkpoint_comparison import CheckpointComparisonAnalyticsSkill
 from .revenue_analytics_dashboard import RevenueAnalyticsDashboardSkill
+from .skill_dependency_map import SkillDependencyMapSkill
 from .ssl_service_hosting_bridge import SSLServiceHostingBridgeSkill
 from .serverless_service_hosting_bridge import ServerlessServiceHostingBridgeSkill
 
@@ -101,6 +102,7 @@ __all__ = [
     "WorkflowAnalyticsBridgeSkill",
     "CheckpointComparisonAnalyticsSkill",
     "RevenueAnalyticsDashboardSkill",
+    "SkillDependencyMapSkill",
     "SSLServiceHostingBridgeSkill",
     "ServerlessServiceHostingBridgeSkill",
     "AgentReflectionSkill",
