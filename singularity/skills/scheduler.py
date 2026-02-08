@@ -18,6 +18,9 @@ Supports:
 - Task cancellation and listing
 - Execution history with success/failure tracking
 - Persistent schedule that survives restarts (via JSON)
+- Tick rate limiting: min interval, max tasks/tick, burst protection
+- Duration budgets: cut off long-running ticks to prevent loop starvation
+- Priority scheduling: most overdue tasks execute first when throttled
 """
 
 import asyncio
@@ -125,6 +128,28 @@ class SchedulerSkill(Skill):
         self._schedule_file = self._data_dir / "scheduler.json"
         self._max_history = 100
 
+        # Tick rate limiting / throttle state
+        self._throttle_config = {
+            "min_tick_interval": 5.0,       # Min seconds between tick() calls
+            "max_tasks_per_tick": 5,        # Max tasks executed per tick
+            "max_tick_duration": 30.0,      # Max seconds a tick can run
+            "burst_window": 60.0,           # Sliding window for burst detection (seconds)
+            "burst_max_tasks": 20,          # Max total tasks within burst window
+            "priority_on_throttle": True,   # When throttled, prioritize by overdue time
+            "enabled": True,                # Master switch for throttling
+        }
+        self._last_tick_at: float = 0.0
+        self._tick_history: List[Dict] = []  # [{timestamp, tasks_run, duration, throttled}]
+        self._max_tick_history = 200
+        self._throttle_stats = {
+            "total_ticks": 0,
+            "throttled_ticks": 0,
+            "skipped_ticks": 0,       # Ticks skipped due to min_interval
+            "tasks_deferred": 0,      # Tasks that were due but deferred by throttle
+            "burst_throttles": 0,     # Times burst protection kicked in
+            "duration_cutoffs": 0,    # Times tick was cut short by duration limit
+        }
+
     def _get_cron(self, task: ScheduledTask) -> Optional[CronExpression]:
         """Get parsed cron expression for a task, with caching."""
         if task.schedule_type != "cron" or not task.cron_expression:
@@ -151,9 +176,9 @@ class SchedulerSkill(Skill):
         return SkillManifest(
             skill_id="scheduler",
             name="Scheduler",
-            version="2.0.0",
+            version="3.0.0",
             category="autonomy",
-            description="Schedule future tasks, recurring jobs, cron-based schedules, and time-based actions for autonomous operation",
+            description="Schedule future tasks, recurring jobs, cron-based schedules, and time-based actions with tick rate limiting for autonomous operation",
             actions=[
                 SkillAction(
                     name="schedule",
@@ -345,6 +370,60 @@ class SchedulerSkill(Skill):
                     },
                     estimated_cost=0,
                 ),
+                SkillAction(
+                    name="configure_throttle",
+                    description="Configure tick rate limiting to prevent excessive execution when many presets are active",
+                    parameters={
+                        "min_tick_interval": {
+                            "type": "number",
+                            "required": False,
+                            "description": "Minimum seconds between tick() calls (default 5)"
+                        },
+                        "max_tasks_per_tick": {
+                            "type": "integer",
+                            "required": False,
+                            "description": "Max tasks executed per tick (default 5)"
+                        },
+                        "max_tick_duration": {
+                            "type": "number",
+                            "required": False,
+                            "description": "Max seconds a tick can run before cutting off (default 30)"
+                        },
+                        "burst_window": {
+                            "type": "number",
+                            "required": False,
+                            "description": "Sliding window seconds for burst detection (default 60)"
+                        },
+                        "burst_max_tasks": {
+                            "type": "integer",
+                            "required": False,
+                            "description": "Max total tasks within burst window (default 20)"
+                        },
+                        "enabled": {
+                            "type": "boolean",
+                            "required": False,
+                            "description": "Enable/disable throttling (default true)"
+                        },
+                    },
+                    estimated_cost=0,
+                ),
+                SkillAction(
+                    name="throttle_status",
+                    description="View current throttle configuration, statistics, and recent tick history",
+                    parameters={
+                        "include_history": {
+                            "type": "boolean",
+                            "required": False,
+                            "description": "Include recent tick history entries (default false)"
+                        },
+                        "history_limit": {
+                            "type": "integer",
+                            "required": False,
+                            "description": "Max tick history entries to return (default 20)"
+                        },
+                    },
+                    estimated_cost=0,
+                ),
             ],
             required_credentials=[],
         )
@@ -364,6 +443,8 @@ class SchedulerSkill(Skill):
             "resume": self._resume,
             "run_now": self._run_now,
             "pending": self._pending,
+            "configure_throttle": self._configure_throttle,
+            "throttle_status": self._throttle_status,
         }
 
         handler = handlers.get(action)
@@ -833,22 +914,115 @@ class SchedulerSkill(Skill):
 
     async def tick(self) -> List[SkillResult]:
         """
-        Check and execute any due tasks. Should be called periodically
-        by the agent's main loop.
+        Check and execute any due tasks with rate limiting.
+
+        Rate limiting prevents excessive execution when many presets are active.
+        Controls include:
+        - min_tick_interval: skip tick if called too frequently
+        - max_tasks_per_tick: cap tasks executed per tick
+        - max_tick_duration: cut off tick if running too long
+        - burst protection: sliding window limit on total tasks
+        - priority ordering: most overdue tasks run first when throttled
 
         Returns list of results from executed tasks.
         """
         now = time.time()
-        results = []
+        self._throttle_stats["total_ticks"] = self._throttle_stats.get("total_ticks", 0) + 1
+        throttled = False
 
-        for task in list(self._tasks.values()):
-            if (task.enabled and
-                task.status == "pending" and
-                task.next_run_at <= now):
-                result = await self._execute_task(task)
-                results.append(result)
+        # Check min tick interval
+        if (self._throttle_config.get("enabled", True) and
+                self._throttle_config.get("min_tick_interval", 0) > 0):
+            elapsed = now - self._last_tick_at
+            if elapsed < self._throttle_config["min_tick_interval"]:
+                self._throttle_stats["skipped_ticks"] = self._throttle_stats.get("skipped_ticks", 0) + 1
+                return []
+
+        self._last_tick_at = now
+
+        # Gather all due tasks
+        due_tasks = [
+            task for task in self._tasks.values()
+            if task.enabled and task.status == "pending" and task.next_run_at <= now
+        ]
+
+        if not due_tasks:
+            self._record_tick(now, 0, 0.0, False)
+            return []
+
+        # Apply burst protection: check sliding window
+        burst_remaining = self._burst_budget(now)
+        max_per_tick = self._throttle_config.get("max_tasks_per_tick", 5)
+
+        if self._throttle_config.get("enabled", True):
+            effective_limit = min(max_per_tick, burst_remaining)
+        else:
+            effective_limit = len(due_tasks)  # No limit when disabled
+
+        if effective_limit < len(due_tasks):
+            throttled = True
+            self._throttle_stats["tasks_deferred"] = (
+                self._throttle_stats.get("tasks_deferred", 0) + len(due_tasks) - effective_limit
+            )
+            if burst_remaining < max_per_tick:
+                self._throttle_stats["burst_throttles"] = self._throttle_stats.get("burst_throttles", 0) + 1
+
+        # Priority ordering when throttled: most overdue first
+        if throttled and self._throttle_config.get("priority_on_throttle", True):
+            due_tasks.sort(key=lambda t: t.next_run_at)
+
+        # Execute up to the effective limit, respecting duration budget
+        results = []
+        tick_start = time.time()
+        max_duration = self._throttle_config.get("max_tick_duration", 30.0)
+
+        for task in due_tasks[:effective_limit]:
+            # Check duration budget
+            if (self._throttle_config.get("enabled", True) and
+                    max_duration > 0 and
+                    (time.time() - tick_start) >= max_duration):
+                remaining = len(due_tasks) - len(results)
+                self._throttle_stats["duration_cutoffs"] = self._throttle_stats.get("duration_cutoffs", 0) + 1
+                self._throttle_stats["tasks_deferred"] = (
+                    self._throttle_stats.get("tasks_deferred", 0) + remaining
+                )
+                throttled = True
+                break
+
+            result = await self._execute_task(task)
+            results.append(result)
+
+        if throttled:
+            self._throttle_stats["throttled_ticks"] = self._throttle_stats.get("throttled_ticks", 0) + 1
+
+        tick_duration = time.time() - tick_start
+        self._record_tick(now, len(results), tick_duration, throttled)
 
         return results
+
+    def _burst_budget(self, now: float) -> int:
+        """Calculate remaining task budget within the burst window."""
+        window = self._throttle_config.get("burst_window", 60.0)
+        max_burst = self._throttle_config.get("burst_max_tasks", 20)
+        cutoff = now - window
+        recent_tasks = sum(
+            entry.get("tasks_run", 0)
+            for entry in self._tick_history
+            if entry.get("timestamp", 0) >= cutoff
+        )
+        return max(0, max_burst - recent_tasks)
+
+    def _record_tick(self, timestamp: float, tasks_run: int, duration: float, throttled: bool):
+        """Record a tick in history for burst detection and status reporting."""
+        self._tick_history.append({
+            "timestamp": timestamp,
+            "tasks_run": tasks_run,
+            "duration": round(duration, 4),
+            "throttled": throttled,
+            "time": datetime.fromtimestamp(timestamp).isoformat(),
+        })
+        if len(self._tick_history) > self._max_tick_history:
+            self._tick_history = self._tick_history[-self._max_tick_history:]
 
     def get_due_count(self) -> int:
         """Get count of tasks that are currently due (for agent loop integration)."""
@@ -856,6 +1030,108 @@ class SchedulerSkill(Skill):
         return sum(
             1 for task in self._tasks.values()
             if task.enabled and task.status == "pending" and task.next_run_at <= now
+        )
+
+    async def _configure_throttle(self, params: Dict) -> SkillResult:
+        """Configure tick rate limiting parameters."""
+        valid_keys = {
+            "min_tick_interval", "max_tasks_per_tick", "max_tick_duration",
+            "burst_window", "burst_max_tasks", "priority_on_throttle", "enabled",
+        }
+        updated = {}
+        for key in valid_keys:
+            if key in params:
+                value = params[key]
+                # Validate numeric fields
+                if key in ("min_tick_interval", "max_tick_duration", "burst_window"):
+                    if not isinstance(value, (int, float)) or value < 0:
+                        return SkillResult(
+                            success=False,
+                            message=f"{key} must be a non-negative number"
+                        )
+                elif key in ("max_tasks_per_tick", "burst_max_tasks"):
+                    if not isinstance(value, (int, float)) or value < 1:
+                        return SkillResult(
+                            success=False,
+                            message=f"{key} must be a positive integer"
+                        )
+                    value = int(value)
+                elif key in ("priority_on_throttle", "enabled"):
+                    value = bool(value)
+                self._throttle_config[key] = value
+                updated[key] = value
+
+        if not updated:
+            return SkillResult(
+                success=False,
+                message=f"No valid throttle parameters provided. Valid keys: {sorted(valid_keys)}"
+            )
+
+        return SkillResult(
+            success=True,
+            message=f"Updated {len(updated)} throttle settings: {', '.join(sorted(updated.keys()))}",
+            data={
+                "updated": updated,
+                "config": dict(self._throttle_config),
+            }
+        )
+
+    async def _throttle_status(self, params: Dict) -> SkillResult:
+        """Get current throttle configuration, stats, and optional tick history."""
+        include_history = params.get("include_history", False)
+        history_limit = params.get("history_limit", 20)
+
+        # Compute current burst budget
+        now = time.time()
+        burst_remaining = self._burst_budget(now)
+
+        data = {
+            "config": dict(self._throttle_config),
+            "stats": dict(self._throttle_stats),
+            "burst_budget_remaining": burst_remaining,
+            "active_tasks": len([
+                t for t in self._tasks.values()
+                if t.enabled and t.status == "pending"
+            ]),
+            "due_now": self.get_due_count(),
+            "last_tick_at": (
+                datetime.fromtimestamp(self._last_tick_at).isoformat()
+                if self._last_tick_at > 0 else None
+            ),
+        }
+
+        if include_history:
+            history = self._tick_history[-history_limit:]
+            data["tick_history"] = history
+            # Summary stats from history
+            if history:
+                total_tasks = sum(e.get("tasks_run", 0) for e in history)
+                throttled_count = sum(1 for e in history if e.get("throttled"))
+                avg_duration = sum(e.get("duration", 0) for e in history) / len(history)
+                data["history_summary"] = {
+                    "entries": len(history),
+                    "total_tasks_run": total_tasks,
+                    "throttled_ticks": throttled_count,
+                    "avg_tick_duration": round(avg_duration, 4),
+                    "throttle_rate": round(throttled_count / len(history), 3) if history else 0,
+                }
+
+        throttle_pct = 0
+        total = self._throttle_stats.get("total_ticks", 0)
+        if total > 0:
+            throttle_pct = round(
+                self._throttle_stats.get("throttled_ticks", 0) / total * 100, 1
+            )
+
+        return SkillResult(
+            success=True,
+            message=(
+                f"Throttle {'enabled' if self._throttle_config.get('enabled') else 'disabled'} | "
+                f"{self._throttle_stats.get('total_ticks', 0)} ticks | "
+                f"{throttle_pct}% throttled | "
+                f"burst budget: {burst_remaining}/{self._throttle_config.get('burst_max_tasks', 20)}"
+            ),
+            data=data,
         )
 
     def _save_schedule(self):
