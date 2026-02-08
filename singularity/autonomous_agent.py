@@ -112,6 +112,8 @@ from .skills.capability_gap_analyzer import CapabilityGapAnalyzerSkill
 from .skills.database_migration import DatabaseMigrationSkill
 from .skills.cross_database_join import CrossDatabaseJoinSkill
 from .skills.conversation_compressor import ConversationCompressorSkill
+from .skills.revenue_observability_bridge import RevenueObservabilityBridgeSkill
+from .skills.revenue_analytics_dashboard import RevenueAnalyticsDashboardSkill
 
 
 
@@ -232,6 +234,8 @@ PerformanceOptimizerSkill,
         DatabaseMigrationSkill,
         CrossDatabaseJoinSkill,
         ConversationCompressorSkill,
+        RevenueObservabilityBridgeSkill,
+        RevenueAnalyticsDashboardSkill,
     ]
 
 
@@ -338,7 +342,7 @@ PerformanceOptimizerSkill,
             persist_path=str(Path(__file__).parent / "data" / "events.json"),
         )
         self._wire_event_bus()
-
+        self._wire_revenue_observability()
         # Wire execution instrumentation (ObservabilitySkill + SkillEventBridge)
         self._instrumentation = ExecutionInstrumentation(self)
 
@@ -507,6 +511,8 @@ PerformanceOptimizerSkill,
                     self.cognition.set_conversation_compressor(skill)
                     # Wire cognition engine back into compressor for LLM-powered compression
                     skill.set_cognition_engine(self.cognition)
+                if skill_class == RevenueObservabilityBridgeSkill and skill:
+                    self._revenue_obs_bridge = skill
 
                 # Store reference to execution instrumenter for auto-instrumentation
                 if skill_class == SkillExecutionInstrumenter and skill:
@@ -534,6 +540,20 @@ PerformanceOptimizerSkill,
                 skill.set_event_bus(self._event_bus)
                 self._log("EVENT", "EventBus wired into EventSkill")
                 break
+
+    def _wire_revenue_observability(self):
+        """Wire RevenueObservabilityBridgeSkill to ObservabilitySkill."""
+        obs_skill = None
+        rev_bridge = None
+        for skill in self.skills.skills.values():
+            if isinstance(skill, ObservabilitySkill):
+                obs_skill = skill
+            if isinstance(skill, RevenueObservabilityBridgeSkill):
+                rev_bridge = skill
+        if obs_skill and rev_bridge:
+            rev_bridge.set_observability(obs_skill)
+            self._log("WIRE", "RevenueObservabilityBridge -> ObservabilitySkill")
+
 
 
     async def _tick_scheduler(self):
