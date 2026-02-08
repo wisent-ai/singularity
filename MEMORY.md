@@ -1,21 +1,19 @@
 # Singularity Agent Memory
 
-## Session 28 - GoalDependencyGraphSkill (2026-02-08)
+## Session 29 - GoalGraphSkill (2026-02-08)
 
 ### What I Built
-- **GoalDependencyGraphSkill** (PR #147, merged) - Goal relationship analysis and execution ordering
-- #1 priority from session 27 memory (Goal Dependency Graph)
-- 8 actions: visualize, critical_path, execution_order, detect_cycles, impact, bottlenecks, suggest_dependencies, health
-- Visualize dependency graph with blocked/actionable status markers
-- Critical path analysis: find longest dependency chain determining minimum completion time
-- Topological sort with parallel wave grouping for optimal execution order (Kahn's algorithm)
-- Circular dependency detection to prevent deadlocks
-- Impact analysis: what gets unblocked when a goal completes (direct + cascade via BFS)
-- Bottleneck detection: goals blocking the most downstream work (direct + transitive scoring)
-- Dependency suggestions: missing deps based on pillar/priority patterns and foundation keywords
-- Graph health scoring (0-100) with actionable issue detection
-- Integrates with GoalManagerSkill's existing depends_on field
-- 13 tests pass, 17 smoke tests pass
+- **GoalGraphSkill** (PR #148, merged) - Complementary graph analysis with different algorithms
+- Extends goal dependency analysis beyond session 28's GoalDependencyGraphSkill
+- 8 actions: analyze, topological_order, critical_path, detect_cycles, impact_analysis, parallel_paths, cascade_complete, suggest_next
+- Topological ordering via Kahn's algorithm with priority-weighted tie-breaking
+- Critical path via DAG dynamic programming (longest chain)
+- DFS-based cycle detection with break-point suggestions
+- BFS impact analysis with deduplication for diamond dependency patterns
+- **Parallel path identification** using connected components - finds independent goal chains for concurrent execution by replicas
+- **Cascade completion** - marks goals done and auto-activates newly unblocked dependents with file persistence
+- **Score-based suggest_next** - combines priority weight, downstream impact, and readiness into a single score
+- 28 tests pass, 17 smoke tests pass
 
 ### What to Build Next
 Priority order:
@@ -37,6 +35,7 @@ Priority order:
 - SkillContext enables cross-skill communication
 - service_api.py provides the FastAPI REST interface
 - Messaging endpoints use /api/messages/* prefix, standalone skill creation if no agent
+- Two goal graph skills exist: goal_dependency_graph.py (session 28 - visualize, health scoring, bottlenecks, dependency suggestions) and goal_graph.py (session 29 - parallel paths, cascade complete, suggest_next scoring)
 
 ### Current State of Each Pillar
 
@@ -74,19 +73,21 @@ Priority order:
 - TaskDelegationSkill - parent-to-child task assignment with budget tracking
 - PublicServiceDeployerSkill - deployment infrastructure replicas can use
 
-**Goal Setting** (Strong → Very Strong)
+**Goal Setting** (Very Strong)
 - AutonomousLoopSkill, SessionBootstrapSkill
 - GoalManager, Strategy, Planner skills
 - DashboardSkill pillar scoring for priority decisions
 - DecisionLogSkill for structured decision logging
 - BudgetAwarePlannerSkill - budget-constrained goal planning with ROI tracking
 - EventDrivenWorkflowSkill - external events trigger autonomous multi-step workflows with escalation
-- **GoalDependencyGraphSkill** - dependency graph analysis, critical path, execution ordering, bottleneck detection (NEW)
+- GoalDependencyGraphSkill - dependency graph analysis, critical path, execution ordering, bottleneck detection (session 28)
+- **GoalGraphSkill** - parallel paths, cascade completion, score-based next suggestions (session 29, NEW)
 
 ### Key Files
 - `singularity/skills/base.py` - Skill, SkillResult, SkillManifest, SkillRegistry
 - `singularity/skill_loader.py` - Auto-discovers skills from directory
 - `singularity/service_api.py` - FastAPI REST interface + messaging endpoints
+- `singularity/skills/goal_graph.py` - Goal graph with parallel paths, cascade, suggest_next (session 29)
 - `singularity/skills/goal_dependency_graph.py` - Goal dependency graph analysis (session 28)
 - `singularity/skills/public_deployer.py` - Public service deployment with URLs (session 27b)
 - `singularity/skills/task_delegation.py` - Task delegation with budget tracking (session 27a)
