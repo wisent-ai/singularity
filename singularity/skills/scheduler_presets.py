@@ -12,6 +12,10 @@ this skill provides one-command setup of common automation patterns:
 - Reputation polling: auto-reputation updates from task completions
 - Revenue reporting: periodic revenue/usage analytics
 - Knowledge sync: periodic knowledge sharing between agents
+- Adaptive thresholds: auto-tune circuit breaker thresholds per skill
+- Revenue goals: auto-set/track/adjust revenue goals from forecast data
+- Experiment management: auto-conclude experiments and review learnings
+- Circuit sharing monitor: monitor cross-agent circuit states and fleet alerts
 - Full autonomy: all presets at once for fully autonomous operation
 
 Each preset is a named collection of scheduler entries with sensible defaults
@@ -220,6 +224,110 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
                 params={},
                 interval_seconds=1800,  # every 30 min
                 description="Analyze performance data and generate adaptations",
+            ),
+        ],
+    ),
+    "adaptive_thresholds": PresetDefinition(
+        preset_id="adaptive_thresholds",
+        name="Adaptive Circuit Thresholds",
+        description="Auto-tune circuit breaker thresholds per skill based on historical performance data",
+        pillar="self_improvement",
+        schedules=[
+            PresetSchedule(
+                name="Tune All Circuit Thresholds",
+                skill_id="adaptive_circuit_thresholds",
+                action="tune_all",
+                params={},
+                interval_seconds=1800,  # every 30 min
+                description="Analyze all skill performance and update per-skill circuit breaker thresholds",
+            ),
+            PresetSchedule(
+                name="Circuit Threshold Profiles",
+                skill_id="adaptive_circuit_thresholds",
+                action="profiles",
+                params={},
+                interval_seconds=7200,  # every 2 hours
+                description="Review all skill performance profiles and current threshold overrides",
+            ),
+        ],
+    ),
+    "revenue_goals": PresetDefinition(
+        preset_id="revenue_goals",
+        name="Revenue Goal Management",
+        description="Auto-set and track revenue goals from forecast data, adjust when conditions change",
+        pillar="revenue",
+        schedules=[
+            PresetSchedule(
+                name="Revenue Assessment",
+                skill_id="revenue_goal_auto_setter",
+                action="assess",
+                params={},
+                interval_seconds=3600,  # every hour
+                description="Assess revenue state and generate goal recommendations from forecasts",
+            ),
+            PresetSchedule(
+                name="Revenue Goal Tracking",
+                skill_id="revenue_goal_auto_setter",
+                action="track",
+                params={},
+                interval_seconds=1800,  # every 30 min
+                description="Track progress of active revenue goals against actual data",
+            ),
+            PresetSchedule(
+                name="Revenue Goal Adjustment",
+                skill_id="revenue_goal_auto_setter",
+                action="adjust",
+                params={},
+                interval_seconds=7200,  # every 2 hours
+                description="Check for revenue condition changes and auto-adjust goals",
+            ),
+        ],
+    ),
+    "experiment_management": PresetDefinition(
+        preset_id="experiment_management",
+        name="Experiment Management",
+        description="Auto-conclude experiments and review learnings for continuous self-improvement",
+        pillar="self_improvement",
+        schedules=[
+            PresetSchedule(
+                name="Conclude Experiments",
+                skill_id="experiment",
+                action="conclude_all",
+                params={},
+                interval_seconds=3600,  # every hour
+                description="Evaluate all running experiments and conclude those with statistical significance",
+            ),
+            PresetSchedule(
+                name="Review Experiment Learnings",
+                skill_id="experiment",
+                action="learnings",
+                params={},
+                interval_seconds=14400,  # every 4 hours
+                description="Compile and review accumulated learnings from concluded experiments",
+            ),
+        ],
+    ),
+    "circuit_sharing_monitor": PresetDefinition(
+        preset_id="circuit_sharing_monitor",
+        name="Circuit Sharing Monitor",
+        description="Monitor cross-agent circuit sharing state and emit fleet-wide alerts",
+        pillar="replication",
+        schedules=[
+            PresetSchedule(
+                name="Circuit Sharing Monitor",
+                skill_id="circuit_sharing_events",
+                action="monitor",
+                params={},
+                interval_seconds=300,  # every 5 min
+                description="Check circuit sharing state for changes and emit events",
+            ),
+            PresetSchedule(
+                name="Fleet Circuit Health Check",
+                skill_id="circuit_sharing_events",
+                action="fleet_check",
+                params={},
+                interval_seconds=600,  # every 10 min
+                description="Analyze shared circuit states fleet-wide and alert if majority are open",
             ),
         ],
     ),

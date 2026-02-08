@@ -244,12 +244,60 @@ class AutonomousLoopSkill(Skill):
         except Exception:
             pass  # Fail silently - wiring is optional enhancement
 
+    async def _ensure_maintenance_presets(self, state: Dict):
+        """Auto-apply critical maintenance presets on first loop iteration.
+
+        Ensures that key periodic tasks (adaptive threshold tuning, revenue
+        goal tracking, experiment management, circuit sharing monitoring)
+        are scheduled without manual intervention. Only runs once per agent
+        lifetime (tracked in state). Fail-silent: does nothing if
+        SchedulerPresetsSkill is unavailable.
+
+        Presets applied:
+        - adaptive_thresholds: Auto-tune circuit breaker thresholds (30min)
+        - revenue_goals: Auto-set/track/adjust revenue goals (30min-2h)
+        - experiment_management: Auto-conclude experiments (1h)
+        - circuit_sharing_monitor: Monitor fleet circuit states (5-10min)
+        """
+        if not self.context:
+            return
+        if state.get("maintenance_presets_applied"):
+            return
+
+        maintenance_presets = [
+            "adaptive_thresholds",
+            "revenue_goals",
+            "experiment_management",
+            "circuit_sharing_monitor",
+        ]
+
+        applied = []
+        for preset_id in maintenance_presets:
+            try:
+                result = await self.context.call_skill(
+                    "scheduler_presets", "apply", {"preset_id": preset_id}
+                )
+                if result.success:
+                    applied.append(preset_id)
+            except Exception:
+                pass  # Fail silently - preset application is best-effort
+
+        if applied:
+            state["maintenance_presets_applied"] = {
+                "presets": applied,
+                "applied_at": datetime.now().isoformat(),
+            }
+            self._save(state)
+
     async def _step(self, params: Dict) -> SkillResult:
         """Execute one full iteration of the autonomous loop."""
         # Auto-wire adaptive thresholds into circuit breaker if both exist
         self._wire_adaptive_circuit_breaker()
 
         state = self._load()
+
+        # Auto-apply maintenance presets on first iteration (fail-silent)
+        await self._ensure_maintenance_presets(state)
         force_assess = params.get("force_assess", False)
         iteration_id = f"iter_{uuid.uuid4().hex[:8]}"
         iteration_start = time.time()
