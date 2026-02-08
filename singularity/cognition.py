@@ -302,6 +302,9 @@ class CognitionEngine:
         self._conversation_history: List[Dict[str, str]] = []
         self._max_history_turns: int = 10  # Keep last N exchanges
 
+        # Conversation compressor for intelligent context management
+        self._conversation_compressor = None
+        self._compressed_context_preamble: str = ""
         # Configurable LLM parameters
         self._max_tokens: int = 1024
         self._temperature: float = 0.2
@@ -457,6 +460,10 @@ class CognitionEngine:
         """Set temperature for LLM calls."""
         self._temperature = max(0.0, min(2.0, temperature))
 
+    def set_conversation_compressor(self, compressor) -> None:
+        """Set conversation compressor for intelligent context management."""
+        self._conversation_compressor = compressor
+
     def set_max_history(self, max_turns: int) -> None:
         """Set maximum conversation history turns to keep."""
         self._max_history_turns = max(0, max_turns)
@@ -477,6 +484,10 @@ class CognitionEngine:
     def _build_messages(self, user_prompt: str) -> List[Dict[str, str]]:
         """Build messages list including conversation history."""
         messages = []
+        # Inject compressed context preamble if available
+        if self._compressed_context_preamble:
+            messages.append({"role": "user", "content": self._compressed_context_preamble})
+            messages.append({"role": "assistant", "content": "Understood, I have the compressed context from earlier turns."})
         # Add conversation history (already trimmed)
         messages.extend(self._conversation_history)
         # Add current user message
@@ -487,10 +498,19 @@ class CognitionEngine:
         """Record a conversation exchange in history."""
         self._conversation_history.append({"role": "user", "content": user_prompt})
         self._conversation_history.append({"role": "assistant", "content": assistant_response})
-        # Trim to max history
-        max_messages = self._max_history_turns * 2
-        if len(self._conversation_history) > max_messages:
-            self._conversation_history = self._conversation_history[-max_messages:]
+        # Auto-compress if compressor is available, otherwise simple trim
+        if self._conversation_compressor:
+            result = self._conversation_compressor.auto_compress_if_needed(
+                self._conversation_history
+            )
+            if result.get("compressed"):
+                self._conversation_history = result["messages"]
+                self._compressed_context_preamble = result.get("context_preamble", "")
+        else:
+            # Fallback: simple trim to max history
+            max_messages = self._max_history_turns * 2
+            if len(self._conversation_history) > max_messages:
+                self._conversation_history = self._conversation_history[-max_messages:]
 
     async def _call_provider(
         self, provider_type: str, model: str, client: Any,

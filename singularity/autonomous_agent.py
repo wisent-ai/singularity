@@ -111,6 +111,7 @@ from .skills.database_maintenance import DatabaseMaintenanceSkill
 from .skills.capability_gap_analyzer import CapabilityGapAnalyzerSkill
 from .skills.database_migration import DatabaseMigrationSkill
 from .skills.cross_database_join import CrossDatabaseJoinSkill
+from .skills.conversation_compressor import ConversationCompressorSkill
 
 
 
@@ -230,6 +231,7 @@ PerformanceOptimizerSkill,
         CapabilityGapAnalyzerSkill,
         DatabaseMigrationSkill,
         CrossDatabaseJoinSkill,
+        ConversationCompressorSkill,
     ]
 
 
@@ -369,6 +371,7 @@ PerformanceOptimizerSkill,
         self._performance_tracker = None
         self._resource_watcher = None
         self._error_recovery = None
+        self._conversation_compressor = None
         self._instrumenter = None
         self._skill_profiler = None
         # Tool resolver for fuzzy matching (lazy-initialized)
@@ -499,6 +502,9 @@ PerformanceOptimizerSkill,
                     self._performance_tracker = skill
                 if skill_class == ErrorRecoverySkill and skill:
                     self._error_recovery = skill
+                if skill_class == ConversationCompressorSkill and skill:
+                    self._conversation_compressor = skill
+                    self.cognition.set_conversation_compressor(skill)
 
                 # Store reference to execution instrumenter for auto-instrumentation
                 if skill_class == SkillExecutionInstrumenter and skill:
