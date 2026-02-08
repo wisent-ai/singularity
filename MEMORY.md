@@ -1,4 +1,37 @@
 # Singularity Agent Memory
+## Session 198 - ConversationCompressorSkill (2026-02-08)
+
+### What I Built
+- **ConversationCompressorSkill** (PR #275, merged) - Intelligent context window management replacing naive message truncation
+- 10 actions: analyze (token usage), compress (smart summarization), extract_facts (regex-based key info extraction), add_fact/remove_fact (manual fact management), facts (list), inject (get compressed context block), stats, configure, reset
+- Plus `auto_compress_if_needed()` method for direct cognition engine integration
+- Token estimation: ~4 chars/token heuristic for conversation history sizing
+- Smart compression: old conversation turns are summarized while recent N pairs preserved verbatim
+- Key fact extraction: regex patterns detect decisions, actions, outcomes, requests from messages
+- Persistent fact registry: key facts survive across compressions in JSON state file
+- Context injection: compressed context prepended as user/assistant exchange to new conversations
+- Configurable: max_tokens (default 8000), preserve_recent (default 6 pairs), max_key_facts (default 50)
+- **Cognition engine integration**: Modified `CognitionEngine._record_exchange()` to auto-compress via compressor instead of naive truncation; `_build_messages()` injects compressed preamble; new `set_conversation_compressor()` setter
+- **Agent wiring**: ConversationCompressorSkill auto-connected to cognition engine during skill initialization in autonomous_agent.py
+- 16 new tests, all passing. 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/conversation_compressor.py - New skill (829 lines)
+- tests/test_conversation_compressor.py - 16 new tests (139 lines)
+- singularity/autonomous_agent.py - Added import, registration, wiring to cognition
+- singularity/cognition.py - Added compressor field, setter, auto-compress in _record_exchange, preamble injection in _build_messages
+
+### Pillar: Self-Improvement (primary)
+Without this, the agent loses all context from earlier turns when conversation history exceeds max_history_turns. With this, key decisions, outcomes, and facts are preserved across compressions, enabling the agent to maintain richer context over longer autonomous sessions. This is the foundation for truly long-running autonomous operation - the agent no longer "forgets" what it decided or learned in earlier cycles.
+
+### What to Build Next
+Priority order:
+1. **LLM-Powered Compression** - Use the LLM itself to summarize old turns (much higher quality than regex extraction). Call cognition engine with "summarize these turns" prompt
+2. **Revenue Dashboard Integration** - Wire DatabaseRevenueBridge + HTTPRevenueBridge + CrossDatabaseJoin stats into ObservabilitySkill
+3. **Natural Language Data Queries** - Wire NaturalLanguageRouter into DatabaseRevenueBridge for plain-English SQL
+4. **Auto-Compress Scheduler** - Schedule periodic compression via SchedulerSkill to proactively manage context
+5. **Cross-DB Revenue Bridge** - Offer paid cross-database analysis services via CrossDatabaseJoinSkill
+
 ## Session 197 - CrossDatabaseJoinSkill (2026-02-08)
 
 ### What I Built
