@@ -1,5 +1,37 @@
 # Singularity Agent Memory
 
+## Session 161 - CrossAgentCircuitSharingSkill (2026-02-08)
+
+### What I Built
+- **CrossAgentCircuitSharingSkill** (PR #236, merged) - Share circuit breaker states across agent replicas
+- #1 priority from session 160 MEMORY: "Cross-Agent Circuit Sharing"
+- **singularity/skills/circuit_sharing.py**: Fleet-wide circuit breaker state sharing:
+  - Export: Serialize local circuit breaker states into shareable snapshots
+  - Import: Merge another agent's circuit states with configurable merge strategies
+  - Shared Store: File-based shared store for replicas on same volume (Docker compatible)
+  - Sync: Bidirectional pull+publish in one operation
+  - Three merge strategies:
+    - pessimistic (default): If ANY peer reports circuit OPEN, adopt locally (safest for budget)
+    - optimistic: Only adopt OPEN if local circuit also shows failures (independent verification)
+    - newest: Adopt whichever state was most recently updated (fast convergence)
+  - Conflict resolution: Manual overrides (forced_open/forced_closed) never overridden
+  - Minimum data thresholds: Peers need sufficient data points before their states are trusted
+  - Pessimistic recovery: If local is OPEN but peer recovered (3+ consecutive successes), adopt CLOSED
+  - Persistent sync history, peer tracking, and conflict resolution counts across sessions
+  - 8 actions: export, import_states, sync, publish, pull, status, configure, history
+- 15 new tests, all passing. 17 smoke tests pass.
+
+### Why This Matters
+When multiple agent replicas operate autonomously, each independently discovers skill failures - wasting budget. If replica A finds an API is down, replicas B, C, D still burn budget learning the same lesson. This skill solves this by broadcasting circuit state changes across the fleet. One failure signal protects the entire fleet (pessimistic mode). This is the missing piece for safe autonomous replication at scale.
+
+### What to Build Next
+Priority order:
+1. **Adaptive Thresholds** - Auto-tune circuit breaker thresholds based on historical skill performance patterns using AgentReflectionSkill data
+2. **Revenue Goal Auto-Setting** - Auto-set revenue goals from RevenueAnalyticsDashboard forecast data
+3. **Fleet Health Monitor** - Use AgentSpawnerSkill + HealthMonitor to auto-heal unhealthy replicas
+4. **Auto-Reputation from Task Delegation** - Wire TaskDelegationSkill.report_completion to automatically call AgentReputationSkill.record_task_outcome
+5. **Circuit Sharing EventBus Integration** - Emit events when remote circuit states are imported (circuit_sharing.imported, circuit_sharing.conflict_resolved)
+
 ## Session 160 - CronExpressionParser (2026-02-08)
 
 ### What I Built
