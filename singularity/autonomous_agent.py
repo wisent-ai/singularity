@@ -76,6 +76,8 @@ from .skills.learned_behavior import LearnedBehaviorSkill
 from .skills.code_review import CodeReviewSkill
 from .skills.skill_analyzer import SkillDependencyAnalyzer
 from .skills.workflow_analytics import WorkflowAnalyticsSkill
+from .skills.performance_optimizer import PerformanceOptimizerSkill
+from .skills.prompt_evolution import PromptEvolutionSkill
 
 
 
@@ -161,6 +163,8 @@ class AutonomousAgent:
         CodeReviewSkill,
         SkillDependencyAnalyzer,
         WorkflowAnalyticsSkill,
+        PerformanceOptimizerSkill,
+        PromptEvolutionSkill,
     ]
 
 
