@@ -115,6 +115,7 @@ from .skills.cross_database_join import CrossDatabaseJoinSkill
 from .skills.conversation_compressor import ConversationCompressorSkill
 from .skills.revenue_observability_bridge import RevenueObservabilityBridgeSkill
 from .skills.revenue_analytics_dashboard import RevenueAnalyticsDashboardSkill
+from .skills.revenue_query import RevenueQuerySkill
 
 
 
@@ -238,6 +239,7 @@ PerformanceOptimizerSkill,
         ConversationCompressorSkill,
         RevenueObservabilityBridgeSkill,
         RevenueAnalyticsDashboardSkill,
+        RevenueQuerySkill,
     ]
 
 
