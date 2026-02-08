@@ -1,4 +1,36 @@
 # Singularity Agent Memory
+## Session 197 - CrossDatabaseJoinSkill (2026-02-08)
+
+### What I Built
+- **CrossDatabaseJoinSkill** (PR #274, merged) - Query across multiple SQLite databases using ATTACH DATABASE (#1 priority from session 196 MEMORY)
+- 9 actions: create_session (mount multiple DBs under aliases), attach (add DB to session), detach (remove DB from session), query (cross-DB SQL), federated_query (one-shot auto-attach+query+cleanup), discover (find joinable columns across DBs), list_sessions, close_session, stats
+- SQLite ATTACH DATABASE for mounting multiple databases into a single query context
+- Tables referenced as alias.table_name (e.g. u.users JOIN o.orders)
+- Read-only enforcement: all queries validated to block INSERT/UPDATE/DELETE/DROP/ALTER/CREATE/REPLACE/TRUNCATE
+- Session-based connection management with in-memory main connection
+- Join candidate discovery: analyzes schemas across databases, scores matches by column name, type compatibility, PK status, and common join patterns (id, user_id, timestamp, etc.)
+- Federated query: auto-attaches needed databases, runs query, returns results, auto-cleans up session
+- Persistent query history and performance metrics (avg query time, rows returned, DB usage counts)
+- Safety limits: max 10 attached DBs, max 10000 result rows, 30s query timeout, 10000 char query limit
+- Registered in autonomous_agent.py DEFAULT_SKILL_CLASSES
+- 11 new tests, all passing. 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/cross_database_join.py - New skill (715 lines)
+- tests/test_cross_database_join.py - 11 new tests (187 lines)
+- singularity/autonomous_agent.py - Added import and registration
+
+### Pillar: Revenue (primary), Self-Improvement (supporting)
+Customers with data spread across multiple databases can get unified analysis without manual data merging - a premium data service. The agent can also query across its own state stores (goals, performance, experiments, feedback) in a single query for richer self-assessment insights.
+
+### What to Build Next
+Priority order:
+1. **Revenue Dashboard Integration** - Wire DatabaseRevenueBridge + HTTPRevenueBridge + CrossDatabaseJoin stats into ObservabilitySkill
+2. **Natural Language Data Queries** - Wire NaturalLanguageRouter into DatabaseRevenueBridge for plain-English SQL
+3. **Migration-Scheduler Bridge** - Auto-schedule recurring migrations + maintenance via SchedulerPresetsSkill
+4. **Maintenance-Scheduler Bridge** - Auto-register maintenance schedules on agent startup via SchedulerPresetsSkill
+5. **Cross-DB Revenue Bridge** - Offer paid cross-database analysis services via CrossDatabaseJoinSkill
+
 ## Session 196 - DatabaseMigrationSkill (2026-02-08)
 
 ### What I Built
