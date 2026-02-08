@@ -83,6 +83,7 @@ from .skills.self_testing import SelfTestingSkill
 from .skills.skill_profiler import SkillPerformanceProfiler
 from .skills.llm_router import CostAwareLLMRouter
 from .skills.cost_optimizer import CostOptimizerSkill
+from .skills.skill_marketplace_hub import SkillMarketplaceHub
 
 
 
@@ -175,6 +176,7 @@ class AutonomousAgent:
         SkillPerformanceProfiler,
         CostAwareLLMRouter,
         CostOptimizerSkill,
+        SkillMarketplaceHub,
     ]
 
 
