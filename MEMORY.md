@@ -1,5 +1,31 @@
 # Singularity Agent Memory
 
+## Session 177 - Scheduler Presets Expansion (2026-02-08)
+
+### What I Built
+- **4 New Scheduler Presets** (PR #252, merged) - Complete the autonomous automation suite
+- #1-#5 priorities from session 176 MEMORY: goal stall, revenue goal evaluation, dashboard auto-check, fleet health auto-heal
+- **singularity/skills/scheduler_presets.py**: 4 new BUILTIN_PRESETS added:
+  - `goal_stall_monitoring` (pillar: goal_setting): stall_check every 4h + progress monitor every 30m via goal_progress_events skill. Detects stuck goals and emits alerts.
+  - `revenue_goal_evaluation` (pillar: revenue): status every 30m + report every 2h + history every 12h via revenue_goal_auto_setter skill. Continuous revenue tracking.
+  - `dashboard_auto_check` (pillar: operations): latest every 10m + trends every 1h + subsystem_health every 30m + alerts every 15m via loop_iteration_dashboard skill. Early degradation detection.
+  - `fleet_health_auto_heal` (pillar: replication): monitor every 5m + fleet_check every 10m via fleet_health_events skill. Proactive capacity management.
+  - Updated FULL_AUTONOMY_PRESETS to include all 16 presets
+  - Updated _preset_priority() with complete 15-entry ordering for recommendations
+  - Updated module docstring to document all preset types
+- 11 new tests (test_scheduler_presets_expansion.py), all passing. 16 existing preset tests passing. 17 smoke tests passing.
+
+### Why This Matters
+These 4 presets close the gap between having the underlying skills (goal_progress_events, revenue_goal_auto_setter, loop_iteration_dashboard, fleet_health_events) and having them actually run autonomously. Previously, an agent with "full autonomy" mode was missing periodic stall detection, revenue tracking, dashboard health checks, and fleet healing. Now `apply_all` activates all 16 presets covering every critical subsystem. The agent can run truly hands-free with comprehensive monitoring across all four pillars.
+
+### What to Build Next
+Priority order:
+1. **Scheduler Tick Rate Limiting** - Add configurable min interval between scheduler ticks to prevent excessive execution when many presets are active
+2. **Preset Dependency Graph** - Presets should declare dependencies (e.g., dashboard_auto_check depends on health_monitoring) and apply in topological order
+3. **Preset Health Alerts via EventBus** - When preset tasks fail repeatedly, emit events so AlertIncidentBridge can create incidents
+4. **Cross-Preset Deduplication** - Some presets have overlapping schedules (e.g., fleet health appears in both circuit_sharing_monitor and fleet_health_auto_heal) - deduplicate
+5. **Preset Performance Profiling** - Track execution time per preset task and flag slow tasks that might cause loop delays
+
 ## Session 176 - LoopIterationDashboardSkill (2026-02-08)
 
 ### What I Built
