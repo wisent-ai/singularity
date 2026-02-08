@@ -1,5 +1,39 @@
 # Singularity Agent Memory
 
+## Session 179 - Preset Dependency Graph (2026-02-08)
+
+### What I Built
+- **Preset Dependency Graph** (PR #255, merged) - #1 priority from session 178 MEMORY
+- Enhanced SchedulerPresetsSkill (v1.0.0 → v2.0.0) with dependency declarations and topological sorting
+- **depends_on field**: Added to PresetDefinition dataclass. Each preset can declare which presets it depends on.
+- **7 dependency edges** declared across built-in presets:
+  - health_monitoring → alert_polling, adaptive_thresholds, dashboard_auto_check
+  - self_assessment → self_tuning
+  - feedback_loop → experiment_management
+  - revenue_goals → revenue_goal_evaluation
+  - circuit_sharing_monitor → fleet_health_auto_heal
+- **dependency_graph action**: Visualize full dependency graph with roots, leaves, depths per node, cycle detection. Can zoom into single preset's transitive deps.
+- **apply_with_deps action**: Apply a preset and all its transitive dependencies in correct topological order. Skips already-applied presets.
+- **apply_all uses topological order**: Dependencies always applied before dependents. Returns apply_order in response data.
+- **Kahn's algorithm** for topological sort, **DFS-based cycle detection**, **transitive dependency resolution** via BFS.
+- 13 new tests (test_preset_dependency_graph.py), all passing. 44 existing tests passing. 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/scheduler_presets.py - Added dependency graph (+297 lines)
+- tests/test_preset_dependency_graph.py - 13 new tests
+
+### Pillar: Self-Improvement / Operations
+Without dependency ordering, presets could be applied in random order, causing downstream presets to reference data from upstream presets that haven't started yet. For example, dashboard_auto_check polls health data from health_monitoring - if the dashboard check runs before health monitoring is set up, it gets stale/empty data. Topological ordering ensures foundational presets are always applied before presets that depend on their output.
+
+### What to Build Next
+Priority order:
+1. **Preset Health Alerts via EventBus** - When preset tasks fail repeatedly, emit events so AlertIncidentBridge can create incidents
+2. **Cross-Preset Deduplication** - Some presets have overlapping schedules - deduplicate
+3. **Preset Performance Profiling** - Track execution time per preset task and flag slow tasks
+4. **Throttle Auto-Tuning** - Use PipelineLearningSkill patterns to auto-tune throttle params based on observed tick performance
+5. **Dependency Validation on Apply** - When applying a preset, warn if dependencies aren't already applied (softer than apply_with_deps)
+
+
 ## Session 178 - Scheduler Tick Rate Limiting (2026-02-08)
 
 ### What I Built
