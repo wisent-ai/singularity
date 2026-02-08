@@ -42,6 +42,7 @@ from .cloudflare_dns import CloudflareDNSSkill
 from .service_monitoring_dashboard import ServiceMonitoringDashboardSkill
 from .tuning_presets import TuningPresetsSkill
 from .fleet_health_manager import FleetHealthManagerSkill
+from .revenue_catalog import RevenueServiceCatalogSkill
 
 __all__ = [
     # Base
@@ -87,4 +88,5 @@ __all__ = [
     "ServiceMonitoringDashboardSkill",
     "TuningPresetsSkill",
     "FleetHealthManagerSkill",
+    "RevenueServiceCatalogSkill",
 ]

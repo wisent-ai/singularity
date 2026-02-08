@@ -90,7 +90,7 @@ from .skills.skill_marketplace_hub import SkillMarketplaceHub
 from .skills.execution_instrumenter import SkillExecutionInstrumenter
 from .skills.observability import ObservabilitySkill
 from .skills.skill_event_bridge import SkillEventBridgeSkill
-
+from .skills.revenue_catalog import RevenueServiceCatalogSkill
 
 
 
@@ -189,6 +189,7 @@ PerformanceOptimizerSkill,
         SkillExecutionInstrumenter,
         ObservabilitySkill,
         SkillEventBridgeSkill,
+        RevenueServiceCatalogSkill,
     ]
 
 
