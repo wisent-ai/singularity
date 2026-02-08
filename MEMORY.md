@@ -1,5 +1,32 @@
 # Singularity Agent Memory
 
+## Session 152 - FunctionMarketplaceDiscoveryEventsSkill (2026-02-08)
+
+### What I Built
+- **FunctionMarketplaceDiscoveryEventsSkill** (PR #TBD, pending) - Emit events when marketplace functions are published, imported, rated, or trending
+- Multi-priority-list item from Sessions 56, 149: "Function Marketplace Discovery Events"
+- FunctionMarketplaceSkill declares events but doesn't emit them; this bridge monitors marketplace state and emits real events via EventBus
+- Enables reactive behavior: auto-import trending functions, notify on new publications, watch for specific categories/agents
+- 8 actions: wire, unwire, check, watch, unwatch, trending, configure, status
+- wire: Activate monitoring, take initial marketplace snapshot for change detection
+- check: Compare current marketplace state to snapshot, detect new_listings, new_imports, new_ratings, price_changes, trending; emit events for each change
+- watch: Add persistent watch rules with category/agent/rating/tag filters; emit marketplace.watch.matched events on rule matches
+- trending: Analyze import acceleration patterns; emit marketplace.trending events
+- 6 event types: marketplace.new_listing, marketplace.new_import, marketplace.new_rating, marketplace.trending, marketplace.price_change, marketplace.watch.matched
+- Snapshot-based change detection: stores listing_id -> {import_count, avg_rating, rating_count, price, status}
+- Configurable: watch_categories, watch_agents, emit toggles per event type, trending threshold
+- Storage limits: 500 event log, 50 watch rules
+- Replication pillar: reactive marketplace awareness for fleet-wide function sharing
+- 81 tests in 16 test classes, passes in 0.61s
+
+### What to Build Next
+Priority order:
+1. **Playbook-Pipeline Integration** - Convert playbooks into PipelineExecutor pipelines for automatic execution
+2. **Cross-Agent Playbook Sharing** - Share effective playbooks between agent replicas via FunctionMarketplace
+3. **Agent Specialization Advisor** - Analyze what functions an agent should build based on marketplace gaps
+4. **Reflection-Driven Goal Setting** - Use pattern analysis to recommend new goals based on identified weaknesses
+5. **Adaptive Skill Loading** - Use reflection patterns to dynamically load/unload skills based on task types
+
 ## Session 150 - ReflectionEventBridgeSkill (2026-02-08)
 
 ### What I Built
