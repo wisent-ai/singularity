@@ -66,6 +66,7 @@ class PresetDefinition:
     pillar: str  # which pillar this serves
     schedules: List[PresetSchedule]
     category: str = "operations"
+    depends_on: List[str] = field(default_factory=list)  # preset IDs this depends on
 
 
 # ── Built-in preset definitions ──────────────────────────────────────────
@@ -100,6 +101,7 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
         name="Alert Polling",
         description="Automatic alert checking and incident creation from observability alerts",
         pillar="operations",
+        depends_on=["health_monitoring"],
         schedules=[
             PresetSchedule(
                 name="Alert→Incident Poll",
@@ -156,6 +158,7 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
         name="Self-Tuning",
         description="Recurring parameter optimization based on observability metrics",
         pillar="self_improvement",
+        depends_on=["self_assessment"],
         schedules=[
             PresetSchedule(
                 name="Auto-Tune Cycle",
@@ -236,6 +239,7 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
         name="Adaptive Circuit Thresholds",
         description="Auto-tune circuit breaker thresholds per skill based on historical performance data",
         pillar="self_improvement",
+        depends_on=["health_monitoring"],
         schedules=[
             PresetSchedule(
                 name="Tune All Circuit Thresholds",
@@ -292,6 +296,7 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
         name="Experiment Management",
         description="Auto-conclude experiments and review learnings for continuous self-improvement",
         pillar="self_improvement",
+        depends_on=["feedback_loop"],
         schedules=[
             PresetSchedule(
                 name="Conclude Experiments",
@@ -364,6 +369,7 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
         name="Revenue Goal Evaluation",
         description="Periodic revenue goal evaluation - assess performance, track progress, auto-adjust targets",
         pillar="revenue",
+        depends_on=["revenue_goals"],
         schedules=[
             PresetSchedule(
                 name="Revenue Goal Status",
@@ -396,6 +402,7 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
         name="Dashboard Auto-Check",
         description="Periodic loop iteration dashboard checks - detect degraded health and emit alerts",
         pillar="operations",
+        depends_on=["health_monitoring"],
         schedules=[
             PresetSchedule(
                 name="Dashboard Latest Check",
@@ -436,6 +443,7 @@ BUILTIN_PRESETS: Dict[str, PresetDefinition] = {
         name="Fleet Health Auto-Heal",
         description="Periodic fleet health monitoring with automatic heal triggers and fleet-wide checks",
         pillar="replication",
+        depends_on=["circuit_sharing_monitor"],
         schedules=[
             PresetSchedule(
                 name="Fleet Health Monitor",
@@ -482,7 +490,7 @@ class SchedulerPresetsSkill(Skill):
         return SkillManifest(
             skill_id="scheduler_presets",
             name="Scheduler Presets",
-            version="1.0.0",
+            version="2.0.0",
             category="operations",
             description="Pre-built automation schedules - one-command setup for health checks, alert polling, self-tuning, and more",
             actions=[
@@ -596,6 +604,35 @@ class SchedulerPresetsSkill(Skill):
                     },
                     estimated_cost=0,
                 ),
+                SkillAction(
+                    name="dependency_graph",
+                    description="Show the preset dependency graph with topological apply order and cycle detection",
+                    parameters={
+                        "preset_id": {
+                            "type": "string",
+                            "required": False,
+                            "description": "Show dependencies for a specific preset. Omit for full graph.",
+                        },
+                    },
+                    estimated_cost=0,
+                ),
+                SkillAction(
+                    name="apply_with_deps",
+                    description="Apply a preset and all its dependencies in topological order",
+                    parameters={
+                        "preset_id": {
+                            "type": "string",
+                            "required": True,
+                            "description": "ID of the preset to apply (dependencies applied first)",
+                        },
+                        "interval_multiplier": {
+                            "type": "number",
+                            "required": False,
+                            "description": "Multiply all intervals by this factor. Default 1.0",
+                        },
+                    },
+                    estimated_cost=0,
+                ),
             ],
             required_credentials=[],
         )
@@ -614,6 +651,8 @@ class SchedulerPresetsSkill(Skill):
             "create_custom": self._create_custom,
             "recommend": self._recommend,
             "dashboard": self._dashboard,
+            "dependency_graph": self._dependency_graph,
+            "apply_with_deps": self._apply_with_deps,
         }
 
         handler = handlers.get(action)
@@ -689,30 +728,35 @@ class SchedulerPresetsSkill(Skill):
         return await self._apply_preset(preset, multiplier)
 
     async def _apply_all(self, params: Dict) -> SkillResult:
-        """Apply all presets for full autonomy."""
+        """Apply all presets for full autonomy, in dependency-sorted order."""
         multiplier = params.get("interval_multiplier", 1.0)
         results = []
         applied_count = 0
         skipped = []
 
-        for preset_id in FULL_AUTONOMY_PRESETS:
+        # Apply in topological order so dependencies are satisfied first
+        ordered = self._topological_sort(FULL_AUTONOMY_PRESETS)
+
+        for preset_id in ordered:
             if preset_id in self._applied:
                 skipped.append(preset_id)
                 continue
-            preset = BUILTIN_PRESETS[preset_id]
+            preset = BUILTIN_PRESETS.get(preset_id)
+            if not preset:
+                continue
             result = await self._apply_preset(preset, multiplier)
             results.append({"preset_id": preset_id, "success": result.success, "message": result.message})
             if result.success:
                 applied_count += 1
 
-        msg = f"Applied {applied_count}/{len(FULL_AUTONOMY_PRESETS)} presets for full autonomy"
+        msg = f"Applied {applied_count}/{len(FULL_AUTONOMY_PRESETS)} presets for full autonomy (dependency-ordered)"
         if skipped:
             msg += f" (skipped {len(skipped)} already applied)"
 
         return SkillResult(
             success=True,
             message=msg,
-            data={"results": results, "applied": applied_count, "skipped": skipped},
+            data={"results": results, "applied": applied_count, "skipped": skipped, "apply_order": ordered},
         )
 
     async def _remove(self, params: Dict) -> SkillResult:
@@ -872,6 +916,247 @@ class SchedulerPresetsSkill(Skill):
             message=f"{len(recommendations)} presets recommended ({sum(1 for r in recommendations if r['installable'])} installable now)",
             data={"recommendations": recommendations},
         )
+
+    # ── Dependency Graph ──────────────────────────────────────────────
+
+    async def _dependency_graph(self, params: Dict) -> SkillResult:
+        """Show the preset dependency graph with topological order and cycle detection."""
+        preset_id = params.get("preset_id")
+        all_presets = {**BUILTIN_PRESETS}
+        for pid, pdata in self._custom_presets.items():
+            all_presets[pid] = self._dict_to_preset(pdata)
+
+        # Build adjacency info
+        graph = {}
+        for pid, preset in all_presets.items():
+            deps = getattr(preset, "depends_on", []) or []
+            graph[pid] = {
+                "name": preset.name,
+                "pillar": preset.pillar,
+                "depends_on": deps,
+                "depended_by": [],
+                "applied": pid in self._applied,
+            }
+
+        # Compute reverse edges (who depends on me)
+        for pid, info in graph.items():
+            for dep in info["depends_on"]:
+                if dep in graph:
+                    graph[dep]["depended_by"].append(pid)
+
+        # Detect cycles
+        cycles = self._detect_cycles(graph)
+
+        # Compute topological order
+        all_ids = list(all_presets.keys())
+        topo_order = self._topological_sort(all_ids)
+
+        # Compute depth (longest path from root)
+        depths = {}
+        for pid in topo_order:
+            deps = graph[pid]["depends_on"]
+            if not deps:
+                depths[pid] = 0
+            else:
+                depths[pid] = max((depths.get(d, 0) for d in deps if d in depths), default=0) + 1
+            graph[pid]["depth"] = depths[pid]
+
+        # If specific preset requested, show its transitive deps
+        if preset_id:
+            if preset_id not in graph:
+                return SkillResult(
+                    success=False,
+                    message=f"Unknown preset: '{preset_id}'",
+                )
+            transitive = self._transitive_deps(preset_id, all_presets)
+            filtered_order = [p for p in topo_order if p in transitive or p == preset_id]
+            return SkillResult(
+                success=True,
+                message=f"Dependency graph for '{preset_id}': {len(transitive)} dependencies",
+                data={
+                    "preset_id": preset_id,
+                    "direct_deps": graph[preset_id]["depends_on"],
+                    "transitive_deps": list(transitive),
+                    "apply_order": filtered_order,
+                    "depended_by": graph[preset_id]["depended_by"],
+                    "depth": depths.get(preset_id, 0),
+                },
+            )
+
+        # Full graph
+        roots = [pid for pid, info in graph.items() if not info["depends_on"]]
+        leaves = [pid for pid, info in graph.items() if not info["depended_by"]]
+
+        return SkillResult(
+            success=True,
+            message=f"Dependency graph: {len(graph)} presets, {sum(len(v['depends_on']) for v in graph.values())} edges, {len(cycles)} cycles",
+            data={
+                "graph": graph,
+                "topological_order": topo_order,
+                "roots": roots,
+                "leaves": leaves,
+                "cycles": cycles,
+                "max_depth": max(depths.values()) if depths else 0,
+            },
+        )
+
+    async def _apply_with_deps(self, params: Dict) -> SkillResult:
+        """Apply a preset and all its transitive dependencies in topological order."""
+        preset_id = params.get("preset_id", "").strip()
+        multiplier = params.get("interval_multiplier", 1.0)
+
+        if not preset_id:
+            return SkillResult(success=False, message="preset_id is required")
+
+        all_presets = {**BUILTIN_PRESETS}
+        for pid, pdata in self._custom_presets.items():
+            all_presets[pid] = self._dict_to_preset(pdata)
+
+        if preset_id not in all_presets:
+            return SkillResult(success=False, message=f"Unknown preset: '{preset_id}'")
+
+        # Get all transitive deps + self
+        transitive = self._transitive_deps(preset_id, all_presets)
+        all_needed = list(transitive) + [preset_id]
+
+        # Check for cycles
+        cycles = self._detect_cycles({
+            pid: {"depends_on": getattr(all_presets.get(pid, PresetDefinition("", "", "", "", [])), "depends_on", []) or []}
+            for pid in all_needed
+        })
+        if cycles:
+            return SkillResult(
+                success=False,
+                message=f"Circular dependency detected: {cycles}",
+                data={"cycles": cycles},
+            )
+
+        # Sort in dependency order
+        ordered = self._topological_sort(all_needed)
+
+        results = []
+        applied_count = 0
+        skipped = []
+
+        for pid in ordered:
+            if pid in self._applied:
+                skipped.append(pid)
+                continue
+            preset = all_presets.get(pid)
+            if not preset:
+                continue
+            result = await self._apply_preset(preset, multiplier)
+            results.append({"preset_id": pid, "success": result.success, "message": result.message})
+            if result.success:
+                applied_count += 1
+
+        msg = f"Applied '{preset_id}' with {len(transitive)} dependencies ({applied_count} new)"
+        if skipped:
+            msg += f" (skipped {len(skipped)} already applied)"
+
+        return SkillResult(
+            success=True,
+            message=msg,
+            data={
+                "preset_id": preset_id,
+                "apply_order": ordered,
+                "results": results,
+                "applied": applied_count,
+                "skipped": skipped,
+            },
+        )
+
+    def _topological_sort(self, preset_ids: List[str]) -> List[str]:
+        """Topological sort of preset IDs based on their dependencies.
+
+        Returns presets in order such that dependencies come before dependents.
+        Uses Kahn's algorithm. Presets not in preset_ids are ignored.
+        """
+        all_presets = {**BUILTIN_PRESETS}
+        for pid, pdata in self._custom_presets.items():
+            all_presets[pid] = self._dict_to_preset(pdata)
+
+        id_set = set(preset_ids)
+
+        # Build in-degree map
+        in_degree = {pid: 0 for pid in preset_ids}
+        adj = {pid: [] for pid in preset_ids}
+
+        for pid in preset_ids:
+            preset = all_presets.get(pid)
+            if not preset:
+                continue
+            deps = getattr(preset, "depends_on", []) or []
+            for dep in deps:
+                if dep in id_set:
+                    in_degree[pid] = in_degree.get(pid, 0) + 1
+                    adj.setdefault(dep, []).append(pid)
+
+        # Kahn's algorithm
+        queue = [pid for pid in preset_ids if in_degree.get(pid, 0) == 0]
+        queue.sort()  # Deterministic ordering among same-depth presets
+        result = []
+
+        while queue:
+            node = queue.pop(0)
+            result.append(node)
+            for neighbor in sorted(adj.get(node, [])):
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+            queue.sort()
+
+        # If not all nodes in result, there's a cycle - append remaining
+        remaining = [pid for pid in preset_ids if pid not in set(result)]
+        result.extend(sorted(remaining))
+
+        return result
+
+    def _transitive_deps(self, preset_id: str, all_presets: Dict) -> set:
+        """Get all transitive dependencies of a preset (not including itself)."""
+        visited = set()
+        stack = [preset_id]
+
+        while stack:
+            current = stack.pop()
+            preset = all_presets.get(current)
+            if not preset:
+                continue
+            deps = getattr(preset, "depends_on", []) or []
+            for dep in deps:
+                if dep not in visited and dep != preset_id:
+                    visited.add(dep)
+                    stack.append(dep)
+
+        return visited
+
+    def _detect_cycles(self, graph: Dict) -> List[List[str]]:
+        """Detect cycles in the dependency graph using DFS."""
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = {pid: WHITE for pid in graph}
+        cycles = []
+
+        def dfs(node, path):
+            color[node] = GRAY
+            path.append(node)
+            deps = graph[node].get("depends_on", [])
+            for dep in deps:
+                if dep not in color:
+                    continue
+                if color[dep] == GRAY:
+                    # Found cycle
+                    cycle_start = path.index(dep)
+                    cycles.append(path[cycle_start:] + [dep])
+                elif color[dep] == WHITE:
+                    dfs(dep, path)
+            path.pop()
+            color[node] = BLACK
+
+        for node in graph:
+            if color[node] == WHITE:
+                dfs(node, [])
+
+        return cycles
 
     # ── Helpers ───────────────────────────────────────────────────────
 
