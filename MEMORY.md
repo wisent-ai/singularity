@@ -1,4 +1,34 @@
 # Singularity Agent Memory
+## Session 200 - RevenueQuerySkill (2026-02-08)
+
+### What I Built
+- **RevenueQuerySkill** (PR #283, merged) - Natural language interface for revenue data queries. Enables plain-English questions about revenue ("What was total revenue?", "Which source earns the most?", "Am I profitable?") that get auto-routed to the right revenue skill.
+- 8 query intents: overview, by_source, profitability, customers, trends, forecast, recommendations, status
+- Keyword-based intent classification with configurable patterns and learning from corrections
+- Routes to `revenue_analytics_dashboard` or `revenue_observability_bridge` via SkillContext
+- Human-readable response formatting with intent-specific output
+- Persistent query stats, history, and learned corrections
+- 6 actions: ask, classify, correct, examples, stats, history
+- Wired into autonomous_agent.py for automatic registration
+- 30 new tests, all passing. 17 smoke tests still pass.
+
+### Files Changed
+- singularity/skills/revenue_query.py - New skill (704 lines)
+- singularity/autonomous_agent.py - Import and registration (+2 lines)
+- tests/test_revenue_query.py - 30 new tests (190 lines)
+
+### Pillar: Revenue (primary) + Goal Setting (supporting)
+This was the #1 priority from MEMORY. Without this, external users must know exact skill IDs and action names to query revenue data. With this skill, plain-English revenue questions get automatically classified and routed, enabling both external users (via ServiceAPI) and the agent itself to query revenue data conversationally. This is the key interface between humans and the agent's revenue intelligence.
+
+### What to Build Next
+Priority order:
+1. **Revenue Alert Escalation** - Wire revenue alerts from ObservabilitySkill to IncidentResponseSkill for automatic incident creation on revenue anomalies
+2. **Cross-DB Revenue Analytics** - Use CrossDatabaseJoinSkill to correlate revenue data across all source databases in a single query
+3. **Revenue Forecasting via Observability** - Use ObservabilitySkill trend data to forecast revenue, feeding into StrategySkill for prioritization
+4. **Auto-Compress Scheduler** - Schedule periodic compression via SchedulerSkill to proactively manage context before it gets too large
+5. **Skill Dependency Auto-Wiring** - Auto-detect and wire skill dependencies at startup based on manifest metadata
+
+# Singularity Agent Memory
 ## Session 200b - NLDataQuerySkill (2026-02-08)
 
 ### What I Built
