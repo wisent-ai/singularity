@@ -1,5 +1,30 @@
 # Singularity Agent Memory
 
+## Session 35 - ReputationWeightedAssigner (2026-02-08)
+
+### What I Built
+- **ReputationWeightedAssigner** (PR #154, merged) - Consensus-driven, reputation-weighted task assignment
+- #1 priority from session 34 memory (Consensus-Driven Task Assignment)
+- Wires together AgentReputationSkill, ConsensusProtocolSkill, AgentNetworkSkill, and TaskDelegationSkill
+- **find_candidates**: Query agent network by capability, filter by minimum reputation score
+- **score_candidates**: Score agents across 5 reputation dimensions with configurable weights, task-type-aware weighting (coding favors competence, review favors trustworthiness, coordination favors leadership)
+- **assign**: Direct task assignment to specific agent with delegation via TaskDelegationSkill
+- **assign_auto**: Full pipeline - find → score → optionally vote → assign. Reputation-based by default, consensus voting for high-stakes tasks
+- **complete**: Report task outcome, auto-update agent reputation (bonus for quality >= 80)
+- **history**: Assignment history with agent/status filtering
+- **leaderboard**: Agent performance ranking by success rate, quality, budget efficiency
+- 14 tests pass, 17 smoke tests pass
+
+### What to Build Next
+Priority order:
+1. **Reputation-Weighted Voting** - Wire AgentReputationSkill into ConsensusProtocolSkill so vote weights are based on reputation scores (not just equal votes)
+2. **Auto-Reputation from Task Delegation** - Wire TaskDelegationSkill.report_completion to automatically call AgentReputationSkill.record_task_outcome
+3. **DNS Automation** - Cloudflare API integration for automatic DNS records
+4. **Service Monitoring Dashboard** - Aggregate health, uptime, revenue metrics across deployed services
+5. **Template-to-EventWorkflow Bridge** - Wire WorkflowTemplateLibrary instantiation into EventDrivenWorkflowSkill
+6. **Delegation Dashboard** - Real-time view of all active delegations across the agent network
+
+
 ## Session 34 - AgentReputationSkill (2026-02-08)
 
 ### What I Built
