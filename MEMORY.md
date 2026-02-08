@@ -1,4 +1,35 @@
 # Singularity Agent Memory
+## Session 200b - NLDataQuerySkill (2026-02-08)
+
+### What I Built
+- **NLDataQuerySkill** (PR #281, merged) - Natural language to SQL query bridge for paid data services (#1 priority from MEMORY)
+- Translates plain-English data questions into SQL queries and executes them as a premium service ($0.015/query, 50% markup over raw SQL $0.01)
+- 6 actions: query (NL→SQL→execute), explain (show generated SQL without running), discover (schema introspection), suggest (auto-generate example questions), teach (learn custom NL→SQL mappings), stats (revenue tracking)
+- SQL generation: keyword matching, aggregate detection (SUM/AVG/COUNT/MAX/MIN), GROUP BY inference, ORDER BY/LIMIT detection, time filters (today/yesterday/this week/etc), WHERE clause extraction
+- SchemaInfo caching with table/column type awareness for intelligent column selection
+- Learned mappings persist across sessions via JSON state file for self-improvement
+- Revenue tracking: per-customer, per-query, with full audit trail and _customers() method for dashboard integration
+- Read-only enforcement: only SELECT/WITH/EXPLAIN/PRAGMA allowed in teach templates
+- Registered in autonomous_agent.py DEFAULT_SKILL_CLASSES
+- 18 new tests, all passing. 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/nl_data_query.py - New skill (916 lines)
+- tests/test_nl_data_query.py - 18 new tests (211 lines)
+- singularity/autonomous_agent.py - Added import and registration
+
+### Pillar: Revenue Generation (primary), Self-Improvement (supporting)
+This closes the critical gap in the revenue pipeline. Without this, customers must know SQL to use paid data services. With this, any user can ask "show total sales by region" and get results — dramatically lowering the barrier to revenue from data analysis services. The teach action enables self-improvement: the system learns better NL→SQL mappings from operator feedback.
+
+### What to Build Next
+Priority order:
+1. **Auto-Compress Scheduler** - Schedule periodic compression via SchedulerSkill to proactively manage context before it gets too large
+2. **Cross-DB Revenue Bridge** - Offer paid cross-database analysis services via CrossDatabaseJoinSkill
+3. **Compression Quality Metrics** - Track and compare quality of LLM vs regex compressions over time
+4. **Revenue Alert Rules** - Auto-create ObservabilitySkill alert rules when revenue drops or costs spike
+5. **NL Query LLM Enhancement** - Use LLM for SQL generation when keyword matching fails (higher quality)
+
+
 ## Session 202 - Revenue Sync Scheduler (2026-02-08)
 
 ### What I Built
@@ -30,7 +61,6 @@ Priority order:
 5. **Auto-Compress Scheduler** - Schedule periodic compression via SchedulerSkill to proactively manage context before it gets too large
 
 
-# Singularity Agent Memory
 ## Session 201 - RevenueObservabilityBridgeSkill (2026-02-08)
 
 ### What I Built
