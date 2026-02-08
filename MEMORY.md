@@ -1,5 +1,34 @@
 # Singularity Agent Memory
 
+## Session 182 - Distillation-AutonomousLoop Integration (2026-02-08)
+
+### What I Built
+- **Distillation-AutonomousLoop Integration** (PR #258, merged) - #1 priority from session 181 MEMORY
+- Wired LearningDistillationSkill into the AutonomousLoop's DECIDE and LEARN phases, closing the full act→measure→distill→consult→act feedback loop
+- **DECIDE phase enhancement**: New `_consult_distilled_rules()` method queries LearningDistillationSkill for success_pattern, failure_pattern, and skill_preference rules. Results attached to every decision as `distilled_insights` with preferred_skills, avoid_skills, and advice lists. Reasoning strings annotated with insight summaries.
+- **LEARN phase enhancement**: New `_run_distillation()` method called after feedback_loop analysis. Triggers `learning_distillation.distill` to synthesize raw data into rules. Runs every N iterations (configurable, default 3). Auto-expires stale rules periodically.
+- **4 new config options**: `distillation_enabled` (bool), `distillation_interval` (int), `consult_rules_in_decide` (bool), `min_rule_confidence` (float 0-1)
+- **New stats**: `distillation_runs`, `rules_consulted`, `decisions_influenced_by_rules`
+- **Journal enrichment**: DECIDE phase logs `rules_consulted`, LEARN phase logs `distillation_ran` and `rules_created`. Journal summaries now include full `phases` data.
+- **Helper**: `_format_insight_annotation()` formats distilled insights as human-readable reasoning annotations
+- AutonomousLoopSkill bumped v1.0.0 → v2.0.0
+- 12 new tests (test_distillation_loop_integration.py), all passing. 11 existing tests passing. 17 smoke tests passing.
+
+### Files Changed
+- singularity/skills/autonomous_loop.py - Enhanced DECIDE + LEARN phases (+226 lines, version bump)
+- tests/test_distillation_loop_integration.py - 12 new tests (304 lines)
+
+### Pillar: Self-Improvement
+This completes the critical feedback loop between data collection and decision-making. Previously: outcomes were recorded → feedback analyzed → distillation synthesized rules. But those rules were never consulted during decisions, and distillation never ran automatically. Now the autonomous loop automatically distills learnings and consults them, creating a true self-improving agent that learns from its own experience across sessions.
+
+### What to Build Next
+Priority order:
+1. **Distillation → Prompt Evolution Bridge** - Auto-feed high-confidence distilled rules into PromptEvolutionSkill as prompt additions
+2. **Cross-Preset Deduplication** - Some presets have overlapping schedules - deduplicate to reduce scheduler load
+3. **Preset Performance Profiling** - Track execution time per preset task and flag slow tasks
+4. **Rule Conflict Detection** - Detect when distilled rules contradict each other and resolve via confidence comparison
+5. **Decision Replay/Audit** - Replay past decisions with current rules to see how behavior would differ
+
 ## Session 181 - LearningDistillationSkill (2026-02-08)
 
 ### What I Built
