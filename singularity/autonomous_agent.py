@@ -99,6 +99,7 @@ from .skills.task_pricing import TaskPricingSkill
 
 
 from .adaptive_executor import AdaptiveExecutor
+from .pipeline_executor import PipelineExecutor
 from .event_bus import EventBus, Event, EventPriority
 from .execution_instrumentation import ExecutionInstrumentation
 
@@ -342,6 +343,12 @@ PerformanceOptimizerSkill,
 
         # Adaptive executor for smart retry, circuit breakers, and cost guards
         self._adaptive_executor = AdaptiveExecutor(balance=starting_balance)
+
+        # Pipeline executor for multi-step action chains
+        self._pipeline_executor = PipelineExecutor(
+            execute_fn=self._execute,
+            log_fn=self._log,
+        )
     def _init_skills(self):
         """Install skills that have credentials configured."""
         credentials = {
@@ -577,6 +584,13 @@ PerformanceOptimizerSkill,
                     "parameters": action.parameters
                 })
 
+
+        # Add pipeline executor as a special tool
+        tools.append({
+            "name": "pipeline:run",
+            "description": "Execute a multi-step action pipeline. Pass steps list with tool, params, condition, on_failure. Steps run sequentially with result passing between them.",
+            "parameters": {"steps": {"type": "array", "required": True, "description": "List of step objects"}, "max_cost": {"type": "number", "required": False}}
+        })
         if not tools:
             tools.append({
                 "name": "wait",
@@ -816,6 +830,27 @@ PerformanceOptimizerSkill,
 
         if tool == "wait":
             return {"status": "waited"}
+
+        # Handle pipeline execution
+        if tool == "pipeline:run":
+            try:
+                raw_steps = params.get("steps", [])
+                max_cost = params.get("max_cost")
+                result = await self._pipeline_executor.run_from_dicts(
+                    raw_steps, max_cost=max_cost
+                )
+                return {
+                    "status": "success" if result.success else "failed",
+                    "message": result.summary(),
+                    "data": {
+                        "steps_executed": result.steps_executed,
+                        "steps_succeeded": result.steps_succeeded,
+                        "steps_failed": result.steps_failed,
+                        "total_duration_ms": result.total_duration_ms,
+                    }
+                }
+            except Exception as e:
+                return {"status": "error", "message": f"Pipeline error: {e}"}
 
         # Use ToolResolver for fuzzy matching
         if not hasattr(self, '_tool_resolver') or self._tool_resolver is None:
