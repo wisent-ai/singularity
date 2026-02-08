@@ -38,6 +38,7 @@ from .cost_optimizer import CostOptimizerSkill
 from .skill_marketplace_hub import SkillMarketplaceHub
 from .self_tuning import SelfTuningSkill
 from .self_assessment import SelfAssessmentSkill
+from .cloudflare_dns import CloudflareDNSSkill
 
 __all__ = [
     # Base
@@ -79,4 +80,5 @@ __all__ = [
     "SkillMarketplaceHub",
     "SelfTuningSkill",
     "SelfAssessmentSkill",
+    "CloudflareDNSSkill",
 ]
