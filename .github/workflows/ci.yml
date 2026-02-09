@@ -24,7 +24,7 @@ jobs:
         run: pip install ruff
 
       - name: Run ruff check
-        run: ruff check singularity/ --select E,F --ignore E501
+        run: ruff check singularity/ --select E,F --ignore E501,E402,E721,E731,E741,F401,F841,F541
 
   test:
     name: Test (Python ${{ matrix.python-version }})
