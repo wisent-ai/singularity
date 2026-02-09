@@ -6,7 +6,6 @@ The agent can request features, fixes, or help from human operators.
 Requests are stored and viewable via web UI.
 """
 
-import asyncio
 import json
 import os
 import uuid
@@ -205,8 +204,7 @@ class RequestSkill(Skill):
     async def _create_linear_ticket(self, request: Dict) -> Optional[Dict]:
         """Create a Linear ticket for the request"""
         try:
-            timeout = aiohttp.ClientTimeout(total=30)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with aiohttp.ClientSession() as session:
                 async with session.post(
                     LINEAR_API_URL,
                     json={"request": request},
@@ -217,9 +215,6 @@ class RequestSkill(Skill):
                     else:
                         print(f"Linear API error: {resp.status}")
                         return None
-        except asyncio.TimeoutError:
-            print("Linear API request timed out after 30s")
-            return None
         except Exception as e:
             print(f"Failed to create Linear ticket: {e}")
             return None
