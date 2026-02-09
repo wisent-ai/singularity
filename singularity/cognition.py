@@ -55,7 +55,7 @@ except ImportError:
     HAS_ANTHROPIC = False
 
 try:
-    from anthropic import AnthropicVertex
+    from anthropic import AsyncAnthropicVertex
     HAS_VERTEX_CLAUDE = True
 except ImportError:
     HAS_VERTEX_CLAUDE = False
@@ -311,7 +311,7 @@ class CognitionEngine:
         # Initialize the selected backend
         if llm_provider == "vertex":
             if llm_model.startswith("claude") and HAS_VERTEX_CLAUDE:
-                self.llm = AnthropicVertex(project_id=self.vertex_project, region=self.vertex_location)
+                self.llm = AsyncAnthropicVertex(project_id=self.vertex_project, region=self.vertex_location)
                 self.llm_type = "vertex"
             elif HAS_VERTEX_GEMINI:
                 vertexai.init(project=self.vertex_project, location=self.vertex_location)
@@ -618,7 +618,7 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             )
 
         elif self.llm_type == "vertex":
-            response = self.llm.messages.create(
+            response = await self.llm.messages.create(
                 model=self.llm_model,
                 max_tokens=500,
                 system=system_prompt,
@@ -708,19 +708,16 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         )
 
     def _parse_action(self, response: str) -> Action:
-        """Parse LLM response into an Action."""
-        # Try to extract JSON from response
-        json_match = re.search(r'\{[^{}]*"tool"[^{}]*\}', response, re.DOTALL)
-        if json_match:
-            try:
-                data = json.loads(json_match.group())
-                return Action(
-                    tool=data.get("tool", "wait"),
-                    params=data.get("params", {}),
-                    reasoning=data.get("reasoning", "")
-                )
-            except json.JSONDecodeError:
-                pass
+        """Parse LLM response into an Action.
+
+        Handles nested JSON in params (e.g., {"tool": "shell:bash", "params": {"command": "ls"}}).
+        The previous regex [^{}]* rejected any braces inside the JSON, silently dropping
+        all params when the LLM returned nested objects — which is the common case.
+        """
+        # Try to extract JSON with nested braces by finding balanced { }
+        action = self._extract_tool_json(response)
+        if action:
+            return action
 
         # Fallback - look for tool name
         tool_match = re.search(r'(\w+:\w+)', response)
@@ -728,3 +725,38 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             return Action(tool=tool_match.group(1), params={}, reasoning=response[:200])
 
         return Action(tool="wait", params={}, reasoning="Could not parse response")
+
+    def _extract_tool_json(self, text: str) -> Optional[Action]:
+        """Extract a JSON object containing 'tool' from text, handling nested braces.
+
+        Scans for '{', then counts brace depth to find the matching '}',
+        and attempts json.loads on the result. This correctly handles nested
+        objects like {"tool": "x", "params": {"key": "value"}}.
+        """
+        start = 0
+        while start < len(text):
+            idx = text.find('{', start)
+            if idx == -1:
+                break
+            # Find matching closing brace by counting depth
+            depth = 0
+            for i in range(idx, len(text)):
+                if text[i] == '{':
+                    depth += 1
+                elif text[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        candidate = text[idx:i + 1]
+                        try:
+                            data = json.loads(candidate)
+                            if isinstance(data, dict) and "tool" in data:
+                                return Action(
+                                    tool=data.get("tool", "wait"),
+                                    params=data.get("params", {}),
+                                    reasoning=data.get("reasoning", "")
+                                )
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                        break
+            start = idx + 1
+        return None

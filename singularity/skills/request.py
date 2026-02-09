@@ -204,7 +204,8 @@ class RequestSkill(Skill):
     async def _create_linear_ticket(self, request: Dict) -> Optional[Dict]:
         """Create a Linear ticket for the request"""
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(
                     LINEAR_API_URL,
                     json={"request": request},
