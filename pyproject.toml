@@ -66,6 +66,7 @@ crypto = ["web3>=6.0.0", "eth-account>=0.10.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-timeout>=2.0.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
 ]
@@ -85,6 +86,11 @@ where = ["."]
 [tool.black]
 line-length = 100
 target-version = ["py310", "py311", "py312"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+timeout = 30
 
 [tool.ruff]
 line-length = 100
