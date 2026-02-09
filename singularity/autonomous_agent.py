@@ -118,6 +118,7 @@ from .skills.revenue_analytics_dashboard import RevenueAnalyticsDashboardSkill
 from .skills.revenue_query import RevenueQuerySkill
 from .skills.revenue_alert_escalation import RevenueAlertEscalationSkill
 from .skills.revenue_forecast import RevenueForecastSkill
+from .skills.alert_scheduler_bridge import AlertSchedulerBridgeSkill
 
 
 
@@ -244,6 +245,7 @@ PerformanceOptimizerSkill,
         RevenueQuerySkill,
         RevenueAlertEscalationSkill,
         RevenueForecastSkill,
+        AlertSchedulerBridgeSkill,
     ]
 
 
