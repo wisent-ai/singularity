@@ -495,8 +495,6 @@ Now go. Live your life. The clock is ticking.
         sent_to = []
         for agent_id, living in _all_living_agents.items():
             if living.status == LifeStatus.ALIVE and agent_id != self._my_id:
-                if agent_id not in _message_boxes:
-                    _message_boxes[agent_id] = asyncio.Queue()
                 await _message_boxes[agent_id].put({
                     "from_id": self._my_id,
                     "from_name": getattr(self._my_agent, 'name', 'Unknown'),

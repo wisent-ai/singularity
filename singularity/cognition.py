@@ -55,7 +55,7 @@ except ImportError:
     HAS_ANTHROPIC = False
 
 try:
-    from anthropic import AsyncAnthropicVertex
+    from anthropic import AnthropicVertex
     HAS_VERTEX_CLAUDE = True
 except ImportError:
     HAS_VERTEX_CLAUDE = False
@@ -311,7 +311,7 @@ class CognitionEngine:
         # Initialize the selected backend
         if llm_provider == "vertex":
             if llm_model.startswith("claude") and HAS_VERTEX_CLAUDE:
-                self.llm = AsyncAnthropicVertex(project_id=self.vertex_project, region=self.vertex_location)
+                self.llm = AnthropicVertex(project_id=self.vertex_project, region=self.vertex_location)
                 self.llm_type = "vertex"
             elif HAS_VERTEX_GEMINI:
                 vertexai.init(project=self.vertex_project, location=self.vertex_location)
@@ -618,7 +618,7 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             )
 
         elif self.llm_type == "vertex":
-            response = await self.llm.messages.create(
+            response = self.llm.messages.create(
                 model=self.llm_model,
                 max_tokens=500,
                 system=system_prompt,
