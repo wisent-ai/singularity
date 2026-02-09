@@ -449,6 +449,10 @@ Now go. Live your life. The clock is ticking.
         if not recipient:
             return SkillResult(success=False, message=f"No agent found: {to}")
 
+        # Ensure message box exists for recipient
+        if recipient.id not in _message_boxes:
+            _message_boxes[recipient.id] = asyncio.Queue()
+
         # Put message in their box
         await _message_boxes[recipient.id].put({
             "from_id": self._my_id,
@@ -495,6 +499,9 @@ Now go. Live your life. The clock is ticking.
         sent_to = []
         for agent_id, living in _all_living_agents.items():
             if living.status == LifeStatus.ALIVE and agent_id != self._my_id:
+                # Ensure message box exists for this agent
+                if agent_id not in _message_boxes:
+                    _message_boxes[agent_id] = asyncio.Queue()
                 await _message_boxes[agent_id].put({
                     "from_id": self._my_id,
                     "from_name": getattr(self._my_agent, 'name', 'Unknown'),
