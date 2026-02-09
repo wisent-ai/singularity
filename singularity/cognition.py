@@ -152,8 +152,6 @@ class AgentState:
     cycle: int = 0
     project_context: str = ""
     created_resources: Dict[str, Any] = field(default_factory=dict)
-    pending_events: List[Dict] = field(default_factory=list)
-    performance_context: str = ""
 
 
 @dataclass
@@ -231,10 +229,6 @@ class CognitionEngine:
     Supports multiple backends for flexibility:
     - Cloud APIs (Anthropic, OpenAI, Vertex AI)
     - Local inference (vLLM, Transformers)
-
-    Features automatic provider fallback: if the primary provider fails
-    (API error, rate limit, timeout), the engine tries the next available
-    provider in the fallback chain.
     """
 
     def __init__(
@@ -256,15 +250,12 @@ class CognitionEngine:
         worker_system_prompt: str = "",
         worker_system_prompt_file: str = "",
         project_context_file: str = "",
-        # Fallback configuration
-        enable_fallback: bool = True,
     ):
         self.agent_name = agent_name
         self.agent_ticker = agent_ticker
         self.agent_type = agent_type
         self.agent_specialty = agent_specialty or agent_type
         self.llm_model = llm_model
-        self.enable_fallback = enable_fallback
 
         # Store credentials
         self._anthropic_api_key = anthropic_api_key
@@ -298,26 +289,6 @@ class CognitionEngine:
         self._training_examples = []
         self._finetuned_model_id = None
 
-        # Conversation memory for multi-turn context
-        self._conversation_history: List[Dict[str, str]] = []
-        self._max_history_turns: int = 10  # Keep last N exchanges
-
-        # Conversation compressor for intelligent context management
-        self._conversation_compressor = None
-        self._compressed_context_preamble: str = ""
-        # Configurable LLM parameters
-        self._max_tokens: int = 1024
-        self._temperature: float = 0.2
-
-        # Fallback tracking
-        self._fallback_stats = {
-            "primary_failures": 0,
-            "fallback_successes": 0,
-            "total_fallbacks": 0,
-            "last_fallback_provider": None,
-            "last_fallback_error": None,
-        }
-
         # Auto-detect provider
         if llm_provider == "auto":
             if self.vertex_project and (HAS_VERTEX_CLAUDE or HAS_VERTEX_GEMINI):
@@ -331,7 +302,6 @@ class CognitionEngine:
             elif HAS_OPENAI:
                 llm_provider = "openai"
 
-        self._primary_provider = llm_provider
         print(f"[COGNITION] Device: {DEVICE}, Provider: {llm_provider}, Model: {llm_model}")
 
         self.llm = None
@@ -368,348 +338,7 @@ class CognitionEngine:
             self.llm = openai.AsyncOpenAI(api_key=openai_api_key or "not-needed", base_url=openai_base_url)
             self.llm_type = "openai"
 
-        # Build fallback chain (lazily initialized clients)
-        self._fallback_chain = self._build_fallback_chain(llm_provider)
-        # Cache for lazily-created fallback clients
-        self._fallback_clients: Dict[str, Any] = {}
-
-        fallback_names = [f["provider"] for f in self._fallback_chain]
-        if fallback_names:
-            print(f"[COGNITION] Fallback chain: {' -> '.join(fallback_names)}")
-
         print(f"[COGNITION] Initialized with {self.llm_type} backend")
-
-    # === Fallback chain ===
-
-    # Default models for each provider when used as fallback
-    FALLBACK_MODELS = {
-        "anthropic": "claude-sonnet-4-20250514",
-        "openai": "gpt-4o-mini",
-        "vertex": "gemini-2.0-flash-001",
-    }
-
-    def _build_fallback_chain(self, primary_provider: str) -> List[Dict]:
-        """Build ordered list of fallback providers (excluding the primary)."""
-        if not self.enable_fallback:
-            return []
-
-        # Priority order for fallbacks
-        provider_order = ["anthropic", "openai", "vertex"]
-        chain = []
-
-        for provider in provider_order:
-            if provider == primary_provider:
-                continue
-            if provider == "anthropic" and HAS_ANTHROPIC and self._anthropic_api_key:
-                chain.append({
-                    "provider": "anthropic",
-                    "model": self.FALLBACK_MODELS["anthropic"],
-                })
-            elif provider == "openai" and HAS_OPENAI and self._openai_api_key:
-                chain.append({
-                    "provider": "openai",
-                    "model": self.FALLBACK_MODELS["openai"],
-                })
-            elif provider == "vertex" and self.vertex_project:
-                if HAS_VERTEX_GEMINI:
-                    chain.append({
-                        "provider": "vertex_gemini",
-                        "model": self.FALLBACK_MODELS["vertex"],
-                    })
-                elif HAS_VERTEX_CLAUDE:
-                    chain.append({
-                        "provider": "vertex",
-                        "model": "claude-3-5-sonnet-v2@20241022",
-                    })
-
-        return chain
-
-    def _get_fallback_client(self, provider: str) -> Any:
-        """Lazily create and cache a client for a fallback provider."""
-        if provider in self._fallback_clients:
-            return self._fallback_clients[provider]
-
-        client = None
-        if provider == "anthropic" and HAS_ANTHROPIC:
-            client = AsyncAnthropic(api_key=self._anthropic_api_key)
-        elif provider == "openai" and HAS_OPENAI:
-            client = openai.AsyncOpenAI(
-                api_key=self._openai_api_key or "not-needed",
-                base_url=self._openai_base_url,
-            )
-        elif provider == "vertex" and HAS_VERTEX_CLAUDE:
-            client = AnthropicVertex(
-                project_id=self.vertex_project,
-                region=self.vertex_location,
-            )
-        elif provider == "vertex_gemini" and HAS_VERTEX_GEMINI:
-            vertexai.init(project=self.vertex_project, location=self.vertex_location)
-            client = "gemini"
-
-        if client is not None:
-            self._fallback_clients[provider] = client
-        return client
-
-    # === Conversation memory ===
-
-    def set_max_tokens(self, max_tokens: int) -> None:
-        """Set max output tokens for LLM calls."""
-        self._max_tokens = max(1, max_tokens)
-
-    def set_temperature(self, temperature: float) -> None:
-        """Set temperature for LLM calls."""
-        self._temperature = max(0.0, min(2.0, temperature))
-
-    def set_conversation_compressor(self, compressor) -> None:
-        """Set conversation compressor for intelligent context management."""
-        self._conversation_compressor = compressor
-
-    def set_max_history(self, max_turns: int) -> None:
-        """Set maximum conversation history turns to keep."""
-        self._max_history_turns = max(0, max_turns)
-        # Trim existing history if needed
-        if len(self._conversation_history) > self._max_history_turns * 2:
-            self._conversation_history = self._conversation_history[-(self._max_history_turns * 2):]
-
-    def clear_conversation(self) -> int:
-        """Clear conversation history. Returns number of messages cleared."""
-        count = len(self._conversation_history)
-        self._conversation_history = []
-        return count
-
-    def get_conversation_history(self) -> List[Dict[str, str]]:
-        """Get the current conversation history."""
-        return list(self._conversation_history)
-
-    def _build_messages(self, user_prompt: str) -> List[Dict[str, str]]:
-        """Build messages list including conversation history."""
-        messages = []
-        # Inject compressed context preamble if available
-        if self._compressed_context_preamble:
-            messages.append({"role": "user", "content": self._compressed_context_preamble})
-            messages.append({"role": "assistant", "content": "Understood, I have the compressed context from earlier turns."})
-        # Add conversation history (already trimmed)
-        messages.extend(self._conversation_history)
-        # Add current user message
-        messages.append({"role": "user", "content": user_prompt})
-        return messages
-
-    async def _record_exchange(self, user_prompt: str, assistant_response: str) -> None:
-        """Record a conversation exchange in history.
-
-        Uses async LLM-powered compression when available for higher quality
-        context preservation. Falls back to sync regex compression, then simple trim.
-        """
-        self._conversation_history.append({"role": "user", "content": user_prompt})
-        self._conversation_history.append({"role": "assistant", "content": assistant_response})
-        # Auto-compress if compressor is available, otherwise simple trim
-        if self._conversation_compressor:
-            # Try async LLM-powered compression first
-            if hasattr(self._conversation_compressor, 'async_auto_compress_if_needed'):
-                result = await self._conversation_compressor.async_auto_compress_if_needed(
-                    self._conversation_history
-                )
-            else:
-                result = self._conversation_compressor.auto_compress_if_needed(
-                    self._conversation_history
-                )
-            if result.get("compressed"):
-                self._conversation_history = result["messages"]
-                self._compressed_context_preamble = result.get("context_preamble", "")
-                if result.get("llm_powered"):
-                    print(f"[COGNITION] LLM-powered compression saved ~{result.get('tokens_saved', 0)} tokens")
-        else:
-            # Fallback: simple trim to max history
-            max_messages = self._max_history_turns * 2
-            if len(self._conversation_history) > max_messages:
-                self._conversation_history = self._conversation_history[-max_messages:]
-
-    async def _call_provider(
-        self, provider_type: str, model: str, client: Any,
-        system_prompt: str, user_prompt: str
-    ) -> tuple:
-        """
-        Call a specific LLM provider and return (response_text, token_usage).
-
-        Includes conversation history for providers that support multi-turn
-        messages (Anthropic, OpenAI, Vertex Claude). For other providers,
-        history is injected into the prompt text.
-
-        Args:
-            provider_type: The provider type string
-            model: Model identifier
-            client: The provider client instance
-            system_prompt: System prompt text
-            user_prompt: User prompt text
-
-        Returns:
-            Tuple of (response_text, TokenUsage)
-
-        Raises:
-            Exception: If the provider call fails
-        """
-        messages = self._build_messages(user_prompt)
-
-        if provider_type == "anthropic":
-            response = await client.messages.create(
-                model=model,
-                max_tokens=self._max_tokens,
-                system=system_prompt,
-                messages=messages,
-            )
-            return response.content[0].text, TokenUsage(
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
-            )
-
-        elif provider_type == "vertex":
-            response = client.messages.create(
-                model=model,
-                max_tokens=self._max_tokens,
-                system=system_prompt,
-                messages=messages,
-            )
-            return response.content[0].text, TokenUsage(
-                input_tokens=response.usage.input_tokens,
-                output_tokens=response.usage.output_tokens,
-            )
-
-        elif provider_type == "vertex_gemini":
-            # Gemini doesn't support messages array natively - inject history into prompt
-            history_text = self._format_history_as_text()
-            full_prompt = f"{history_text}{user_prompt}" if history_text else user_prompt
-            gen_model = GenerativeModel(model, system_instruction=system_prompt)
-            response = await asyncio.to_thread(
-                gen_model.generate_content,
-                full_prompt,
-                generation_config=GenerationConfig(
-                    max_output_tokens=self._max_tokens,
-                    temperature=self._temperature,
-                )
-            )
-            usage = TokenUsage()
-            if hasattr(response, 'usage_metadata'):
-                usage = TokenUsage(
-                    input_tokens=response.usage_metadata.prompt_token_count,
-                    output_tokens=response.usage_metadata.candidates_token_count,
-                )
-            return response.text, usage
-
-        elif provider_type == "openai":
-            oai_messages = [{"role": "system", "content": system_prompt}]
-            oai_messages.extend(messages)
-            response = await client.chat.completions.create(
-                model=model,
-                max_tokens=self._max_tokens,
-                messages=oai_messages,
-            )
-            usage = TokenUsage()
-            if response.usage:
-                usage = TokenUsage(
-                    input_tokens=response.usage.prompt_tokens,
-                    output_tokens=response.usage.completion_tokens,
-                )
-            return response.choices[0].message.content, usage
-
-        elif provider_type == "vllm":
-            history_text = self._format_history_as_text()
-            full_prompt = f"{system_prompt}\n\n{history_text}User: {user_prompt}\n\nAssistant:"
-            outputs = client.generate([full_prompt], self.sampling_params)
-            text = outputs[0].outputs[0].text
-            return text, TokenUsage(
-                input_tokens=len(full_prompt.split()),
-                output_tokens=len(text.split()),
-            )
-
-        elif provider_type == "transformers":
-            tf_messages = [{"role": "system", "content": system_prompt}]
-            tf_messages.extend(messages)
-            inputs = self.tokenizer.apply_chat_template(
-                tf_messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
-            ).to(client.device)
-
-            with torch.no_grad():
-                outputs = client.generate(
-                    **inputs, max_new_tokens=self._max_tokens,
-                    temperature=self._temperature, do_sample=True,
-                )
-
-            text = self.tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-            return text, TokenUsage(
-                input_tokens=inputs.input_ids.shape[1],
-                output_tokens=len(outputs[0]) - inputs.input_ids.shape[1],
-            )
-
-        raise ValueError(f"Unsupported provider type: {provider_type}")
-
-    def _format_history_as_text(self) -> str:
-        """Format conversation history as text for providers that don't support messages."""
-        if not self._conversation_history:
-            return ""
-        lines = []
-        for msg in self._conversation_history:
-            role = "User" if msg["role"] == "user" else "Assistant"
-            # Truncate long messages in history
-            content = msg["content"][:500]
-            lines.append(f"{role}: {content}")
-        return "\n".join(lines) + "\n\n"
-
-    async def _call_with_fallback(self, system_prompt: str, user_prompt: str) -> tuple:
-        """
-        Call the primary LLM provider, falling back to alternatives on failure.
-
-        Returns:
-            Tuple of (response_text, token_usage, provider_type, model)
-        """
-        # Try primary provider first
-        if self.llm is not None and self.llm_type != "none":
-            try:
-                text, usage = await self._call_provider(
-                    self.llm_type, self.llm_model, self.llm,
-                    system_prompt, user_prompt,
-                )
-                return text, usage, self.llm_type, self.llm_model
-            except Exception as primary_error:
-                self._fallback_stats["primary_failures"] += 1
-                self._fallback_stats["last_fallback_error"] = str(primary_error)
-                print(f"[COGNITION] Primary provider {self.llm_type} failed: {primary_error}")
-
-                if not self.enable_fallback or not self._fallback_chain:
-                    raise
-
-                # Try fallback providers
-                for fallback in self._fallback_chain:
-                    fb_provider = fallback["provider"]
-                    fb_model = fallback["model"]
-                    self._fallback_stats["total_fallbacks"] += 1
-
-                    try:
-                        fb_client = self._get_fallback_client(fb_provider)
-                        if fb_client is None:
-                            continue
-
-                        print(f"[COGNITION] Trying fallback: {fb_provider} ({fb_model})")
-                        text, usage = await self._call_provider(
-                            fb_provider, fb_model, fb_client,
-                            system_prompt, user_prompt,
-                        )
-                        self._fallback_stats["fallback_successes"] += 1
-                        self._fallback_stats["last_fallback_provider"] = fb_provider
-                        print(f"[COGNITION] Fallback succeeded: {fb_provider}")
-                        return text, usage, fb_provider, fb_model
-                    except Exception as fb_error:
-                        print(f"[COGNITION] Fallback {fb_provider} also failed: {fb_error}")
-                        continue
-
-                # All providers failed
-                raise primary_error
-
-        # No provider configured at all
-        return "", TokenUsage(), "none", ""
-
-    def get_fallback_stats(self) -> Dict:
-        """Get statistics about fallback usage."""
-        return dict(self._fallback_stats)
 
     # === Model access (for steering skill) ===
 
@@ -949,35 +578,13 @@ class CognitionEngine:
             for t in state.tools
         ])
 
-        # Format recent actions with rich result feedback
+        # Format recent actions
         recent_text = ""
         if state.recent_actions:
-            try:
-                from .result_feedback import format_recent_actions
-                recent_text = format_recent_actions(
-                    state.recent_actions,
-                    max_actions=5,
-                    max_total_len=2000,
-                    max_per_result=400,
-                )
-            except ImportError:
-                # Fallback to simple format
-                recent_text = "\nRecent actions:\n" + "\n".join([
-                    f"- {a['tool']}: {a.get('result', {}).get('status', 'unknown')}"
-                    for a in state.recent_actions[-5:]
-                ])
-
-        # Format pending events
-        events_text = ""
-        if state.pending_events:
-            events_lines = ["\nPENDING EVENTS (react to these):"]
-            for pe in state.pending_events[:5]:
-                evt = pe.get("event", {})
-                events_lines.append(
-                    f"  - [{evt.get('topic', '?')}] from {evt.get('source', '?')}: "
-                    f"{evt.get('data', {})} (reaction: {pe.get('reaction', 'handle it')})"
-                )
-            events_text = "\n".join(events_lines)
+            recent_text = "\nRecent actions:\n" + "\n".join([
+                f"- {a['tool']}: {a.get('result', {}).get('status', 'unknown')}"
+                for a in state.recent_actions[-5:]
+            ])
 
         user_prompt = f"""Current state:
 - Balance: ${state.balance:.4f}
@@ -988,42 +595,110 @@ class CognitionEngine:
 Available tools:
 {tools_text}
 {recent_text}
-{events_text}
 
 {state.project_context}
 
-{state.performance_context}
-
 What action should you take? Respond with JSON: {{"tool": "skill:action", "params": {{}}, "reasoning": "why"}}"""
 
-        # Call LLM with automatic fallback on failure
-        try:
-            response_text, token_usage, used_provider, used_model = await self._call_with_fallback(
-                system_prompt, user_prompt
+        # Call LLM based on backend
+        response_text = ""
+        token_usage = TokenUsage()
+
+        if self.llm_type == "anthropic":
+            response = await self.llm.messages.create(
+                model=self.llm_model,
+                max_tokens=500,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}]
             )
-        except Exception as e:
-            print(f"[COGNITION] All LLM providers failed: {e}")
-            return Decision(
-                action=Action(tool="wait", params={}, reasoning=f"LLM error: {e}"),
-                reasoning=f"All LLM providers failed: {e}",
-                token_usage=TokenUsage(),
-                api_cost_usd=0.0,
+            response_text = response.content[0].text
+            token_usage = TokenUsage(
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens
             )
 
-        if not response_text:
+        elif self.llm_type == "vertex":
+            response = self.llm.messages.create(
+                model=self.llm_model,
+                max_tokens=500,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}]
+            )
+            response_text = response.content[0].text
+            token_usage = TokenUsage(
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens
+            )
+
+        elif self.llm_type == "vertex_gemini":
+            model = GenerativeModel(self.llm_model, system_instruction=system_prompt)
+            response = await asyncio.to_thread(
+                model.generate_content,
+                user_prompt,
+                generation_config=GenerationConfig(max_output_tokens=500, temperature=0.2)
+            )
+            response_text = response.text
+            if hasattr(response, 'usage_metadata'):
+                token_usage = TokenUsage(
+                    input_tokens=response.usage_metadata.prompt_token_count,
+                    output_tokens=response.usage_metadata.candidates_token_count
+                )
+
+        elif self.llm_type == "openai":
+            response = await self.llm.chat.completions.create(
+                model=self.llm_model,
+                max_tokens=500,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ]
+            )
+            response_text = response.choices[0].message.content
+            if response.usage:
+                token_usage = TokenUsage(
+                    input_tokens=response.usage.prompt_tokens,
+                    output_tokens=response.usage.completion_tokens
+                )
+
+        elif self.llm_type == "vllm":
+            full_prompt = f"{system_prompt}\n\nUser: {user_prompt}\n\nAssistant:"
+            outputs = self.llm.generate([full_prompt], self.sampling_params)
+            response_text = outputs[0].outputs[0].text
+            token_usage = TokenUsage(
+                input_tokens=len(full_prompt.split()),
+                output_tokens=len(response_text.split())
+            )
+
+        elif self.llm_type == "transformers":
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            inputs = self.tokenizer.apply_chat_template(
+                messages, add_generation_prompt=True, return_tensors="pt", return_dict=True
+            ).to(self.llm.device)
+
+            with torch.no_grad():
+                outputs = self.llm.generate(**inputs, max_new_tokens=500, temperature=0.2, do_sample=True)
+
+            response_text = self.tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+            token_usage = TokenUsage(
+                input_tokens=inputs.input_ids.shape[1],
+                output_tokens=len(outputs[0]) - inputs.input_ids.shape[1]
+            )
+
+        else:
+            # Fallback - wait
             return Decision(
                 action=Action(tool="wait", params={}),
                 reasoning="No LLM backend available",
                 token_usage=TokenUsage(),
-                api_cost_usd=0.0,
+                api_cost_usd=0.0
             )
-
-        # Record exchange in conversation memory
-        await self._record_exchange(user_prompt, response_text)
 
         # Parse response
         action = self._parse_action(response_text)
-        api_cost = calculate_api_cost(used_provider, used_model, token_usage)
+        api_cost = calculate_api_cost(self.llm_type, self.llm_model, token_usage)
 
         return Decision(
             action=action,
@@ -1033,27 +708,19 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
         )
 
     def _parse_action(self, response: str) -> Action:
-        """Parse LLM response into an Action.
-
-        Uses balanced brace matching to correctly handle nested JSON objects
-        in params (e.g. params with nested dicts/lists).
-        """
-        # Strategy 1: Find JSON with balanced braces containing "tool"
-        action = self._extract_json_action(response)
-        if action:
-            return action
-
-        # Strategy 2: Try the whole response as JSON
-        try:
-            data = json.loads(response.strip())
-            if isinstance(data, dict) and "tool" in data:
+        """Parse LLM response into an Action."""
+        # Try to extract JSON from response
+        json_match = re.search(r'\{[^{}]*"tool"[^{}]*\}', response, re.DOTALL)
+        if json_match:
+            try:
+                data = json.loads(json_match.group())
                 return Action(
                     tool=data.get("tool", "wait"),
                     params=data.get("params", {}),
-                    reasoning=data.get("reasoning", ""),
+                    reasoning=data.get("reasoning", "")
                 )
-        except (json.JSONDecodeError, ValueError):
-            pass
+            except json.JSONDecodeError:
+                pass
 
         # Fallback - look for tool name
         tool_match = re.search(r'(\w+:\w+)', response)
@@ -1061,62 +728,3 @@ What action should you take? Respond with JSON: {{"tool": "skill:action", "param
             return Action(tool=tool_match.group(1), params={}, reasoning=response[:200])
 
         return Action(tool="wait", params={}, reasoning="Could not parse response")
-
-    def _extract_json_action(self, text: str) -> Optional[Action]:
-        """Extract a JSON action object using balanced brace matching.
-
-        Handles nested objects like: {"tool": "x", "params": {"key": {"nested": true}}}
-        """
-        # Find all positions where '{' followed eventually by '"tool"'
-        start = 0
-        while start < len(text):
-            brace_pos = text.find('{', start)
-            if brace_pos == -1:
-                break
-
-            # Try to find balanced closing brace
-            depth = 0
-            in_string = False
-            escape_next = False
-            end_pos = None
-
-            for i in range(brace_pos, len(text)):
-                ch = text[i]
-                if escape_next:
-                    escape_next = False
-                    continue
-                if ch == '\\' and in_string:
-                    escape_next = True
-                    continue
-                if ch == '"' and not escape_next:
-                    in_string = not in_string
-                    continue
-                if in_string:
-                    continue
-                if ch == '{':
-                    depth += 1
-                elif ch == '}':
-                    depth -= 1
-                    if depth == 0:
-                        end_pos = i
-                        break
-
-            if end_pos is None:
-                start = brace_pos + 1
-                continue
-
-            candidate = text[brace_pos:end_pos + 1]
-            try:
-                data = json.loads(candidate)
-                if isinstance(data, dict) and "tool" in data:
-                    return Action(
-                        tool=data.get("tool", "wait"),
-                        params=data.get("params", {}),
-                        reasoning=data.get("reasoning", ""),
-                    )
-            except (json.JSONDecodeError, ValueError):
-                pass
-
-            start = brace_pos + 1
-
-        return None

@@ -63,14 +63,11 @@ vertex = ["google-cloud-aiplatform>=1.38.0"]
 steering = ["wisent>=0.1.0", "torch>=2.0.0", "transformers>=4.36.0"]
 memory = ["cognee>=0.1.0"]
 crypto = ["web3>=6.0.0", "eth-account>=0.10.0"]
-service = ["fastapi>=0.100.0", "uvicorn>=0.20.0", "httpx>=0.24.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
-    "fastapi>=0.100.0",
-    "httpx>=0.24.0",
 ]
 
 [project.urls]
@@ -80,7 +77,7 @@ Repository = "https://github.com/wisent-ai/singularity"
 Issues = "https://github.com/wisent-ai/singularity/issues"
 
 [project.scripts]
-singularity = "singularity.autonomous_agent:entry_point"
+singularity = "singularity.autonomous_agent:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -89,12 +86,7 @@ where = ["."]
 line-length = 100
 target-version = ["py310", "py311", "py312"]
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-
 [tool.ruff]
 line-length = 100
 select = ["E", "F", "I", "W"]
 ignore = ["E501"]
-

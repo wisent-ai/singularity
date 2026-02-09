@@ -17,20 +17,17 @@ except RuntimeError:
 import asyncio
 import os
 import json
-import time
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 from datetime import datetime
-from typing import Dict, List, Optional, Type
+from typing import Dict, List, Optional
 
 ACTIVITY_FILE = Path(__file__).parent / "data" / "activity.json"
 
 from .cognition import CognitionEngine, AgentState, Decision, Action, TokenUsage
-from .runtime_metrics import RuntimeMetrics
 from .skills.base import SkillRegistry
-from .tool_resolver import ToolResolver
 from .skills.content import ContentCreationSkill
 from .skills.twitter import TwitterSkill
 from .skills.github import GitHubSkill
@@ -47,87 +44,6 @@ from .skills.steering import SteeringSkill
 from .skills.memory import MemorySkill
 from .skills.orchestrator import OrchestratorSkill
 from .skills.crypto import CryptoSkill
-from .skills.experiment import ExperimentSkill
-from .skills.event import EventSkill
-from .skills.planner import PlannerSkill
-from .skills.pipeline_planner import PipelinePlannerSkill
-from .skills.pipeline_learning import PipelineLearningSkill
-from .skills.workflow_pipeline_bridge import WorkflowPipelineBridgeSkill
-from .skills.outcome_tracker import OutcomeTracker
-from .skills.scheduler import SchedulerSkill
-from .skills.strategy import StrategySkill
-from .skills.replication import ReplicationSkill
-from .skills.workflow import WorkflowSkill
-from .skills.performance import PerformanceTracker
-from .skills.self_eval import SelfEvalSkill
-from .skills.goal_manager import GoalManagerSkill
-from .skills.marketplace import MarketplaceSkill
-from .skills.feedback_loop import FeedbackLoopSkill
-from .skills.task_delegator import TaskDelegator
-from .skills.knowledge_sharing import KnowledgeSharingSkill
-from .skills.resource_watcher import ResourceWatcherSkill
-from .skills.revenue_services import RevenueServiceSkill
-from .skills.auto_catalog import AutoCatalogSkill
-from .skills.webhook import WebhookSkill
-from .skills.payment import PaymentSkill
-from .skills.usage_tracking import UsageTrackingSkill
-from .skills.skill_composer import SkillComposerSkill
-from .skills.agent_network import AgentNetworkSkill
-from .skills.context_synthesis import ContextSynthesisSkill
-from .skills.secret_vault import SecretVaultSkill
-from .skills.deployment import DeploymentSkill
-from .skills.learned_behavior import LearnedBehaviorSkill
-from .skills.code_review import CodeReviewSkill
-from .skills.skill_analyzer import SkillDependencyAnalyzer
-from .skills.workflow_analytics import WorkflowAnalyticsSkill
-from .skills.performance_optimizer import PerformanceOptimizerSkill
-from .skills.prompt_evolution import PromptEvolutionSkill
-from .skills.nl_router import NaturalLanguageRouter
-from .skills.nl_data_query import NLDataQuerySkill
-from .skills.decision_log import DecisionLogSkill
-from .skills.decision_replay import DecisionReplaySkill
-from .skills.rule_conflict_detection import RuleConflictDetectionSkill
-from .skills.error_recovery import ErrorRecoverySkill
-from .skills.self_testing import SelfTestingSkill
-from .skills.skill_profiler import SkillPerformanceProfiler
-from .skills.llm_router import CostAwareLLMRouter
-from .skills.cost_optimizer import CostOptimizerSkill
-from .skills.skill_marketplace_hub import SkillMarketplaceHub
-from .skills.execution_instrumenter import SkillExecutionInstrumenter
-from .skills.observability import ObservabilitySkill
-from .skills.skill_event_bridge import SkillEventBridgeSkill
-from .skills.revenue_catalog import RevenueServiceCatalogSkill
-from .skills.agent_checkpoint import AgentCheckpointSkill
-from .skills.dashboard_observability_bridge import DashboardObservabilityBridgeSkill
-from .skills.task_pricing import TaskPricingSkill
-from .skills.agent_reflection import AgentReflectionSkill
-from .skills.reflection_event_bridge import ReflectionEventBridgeSkill
-from .skills.database import DatabaseSkill
-from .skills.http_client import HTTPClientSkill
-from .skills.http_revenue_bridge import HTTPRevenueBridgeSkill
-from .skills.database_revenue_bridge import DatabaseRevenueBridgeSkill
-from .skills.webhook_delivery import WebhookDeliverySkill
-from .skills.api_marketplace import ExternalAPIMarketplaceSkill
-from .skills.database_maintenance import DatabaseMaintenanceSkill
-from .skills.capability_gap_analyzer import CapabilityGapAnalyzerSkill
-from .skills.database_migration import DatabaseMigrationSkill
-from .skills.cross_database_join import CrossDatabaseJoinSkill
-from .skills.conversation_compressor import ConversationCompressorSkill
-from .skills.revenue_observability_bridge import RevenueObservabilityBridgeSkill
-from .skills.revenue_analytics_dashboard import RevenueAnalyticsDashboardSkill
-from .skills.revenue_query import RevenueQuerySkill
-from .skills.revenue_alert_escalation import RevenueAlertEscalationSkill
-from .skills.revenue_forecast import RevenueForecastSkill
-from .skills.alert_scheduler_bridge import AlertSchedulerBridgeSkill
-from .skills.forecast_strategy_bridge import ForecastStrategyBridgeSkill
-
-
-
-
-from .adaptive_executor import AdaptiveExecutor
-from .pipeline_executor import PipelineExecutor
-from .event_bus import EventBus, Event, EventPriority
-from .execution_instrumentation import ExecutionInstrumentation
 
 
 class AutonomousAgent:
@@ -158,104 +74,6 @@ class AutonomousAgent:
         "local": 0.0,  # Running locally
     }
 
-    # Default skill classes used when no explicit skills list is provided
-    DEFAULT_SKILL_CLASSES = [
-        ContentCreationSkill,
-        TwitterSkill,
-        GitHubSkill,
-        NamecheapSkill,
-        EmailSkill,
-        BrowserSkill,
-        VercelSkill,
-        FilesystemSkill,
-        ShellSkill,
-        MCPClientSkill,
-        RequestSkill,
-        SelfModifySkill,
-        SteeringSkill,
-        MemorySkill,
-        OrchestratorSkill,
-        CryptoSkill,
-        ExperimentSkill,
-        EventSkill,
-        PlannerSkill,
-        OutcomeTracker,
-        SchedulerSkill,
-        StrategySkill,
-        ReplicationSkill,
-        PerformanceTracker,
-        WorkflowSkill,
-        SelfEvalSkill,
-        GoalManagerSkill,
-        MarketplaceSkill,
-        FeedbackLoopSkill,
-        TaskDelegator,
-        KnowledgeSharingSkill,
-        ResourceWatcherSkill,
-        RevenueServiceSkill,
-        AutoCatalogSkill,
-        WebhookSkill,
-        PaymentSkill,
-        UsageTrackingSkill,
-        SkillComposerSkill,
-        AgentNetworkSkill,
-        ContextSynthesisSkill,
-        SecretVaultSkill,
-        DeploymentSkill,
-        LearnedBehaviorSkill,
-        CodeReviewSkill,
-        SkillDependencyAnalyzer,
-        WorkflowAnalyticsSkill,
-PerformanceOptimizerSkill,
-        PromptEvolutionSkill,
-        NaturalLanguageRouter,
-        DecisionLogSkill,
-        DecisionReplaySkill,
-        RuleConflictDetectionSkill,
-        ErrorRecoverySkill,
-        SelfTestingSkill,
-        SkillPerformanceProfiler,
-        CostAwareLLMRouter,
-        CostOptimizerSkill,
-        SkillMarketplaceHub,
-        SkillExecutionInstrumenter,
-        ObservabilitySkill,
-        SkillEventBridgeSkill,
-        RevenueServiceCatalogSkill,
-        AgentCheckpointSkill,
-        DashboardObservabilityBridgeSkill,
-        TaskPricingSkill,
-        AgentReflectionSkill,
-        ReflectionEventBridgeSkill,
-        PipelineLearningSkill,
-        WorkflowPipelineBridgeSkill,
-        DatabaseSkill,
-        HTTPClientSkill,
-        HTTPRevenueBridgeSkill,
-        DatabaseRevenueBridgeSkill,
-        NLDataQuerySkill,
-        WebhookDeliverySkill,
-        ExternalAPIMarketplaceSkill,
-        DatabaseMaintenanceSkill,
-        CapabilityGapAnalyzerSkill,
-        DatabaseMigrationSkill,
-        CrossDatabaseJoinSkill,
-        ConversationCompressorSkill,
-        RevenueObservabilityBridgeSkill,
-        RevenueAnalyticsDashboardSkill,
-        RevenueQuerySkill,
-        RevenueAlertEscalationSkill,
-        RevenueForecastSkill,
-        AlertSchedulerBridgeSkill,
-        ForecastStrategyBridgeSkill,
-    ]
-
-
-
-
-
-
-
     def __init__(
         self,
         name: str = "Agent",
@@ -272,9 +90,6 @@ PerformanceOptimizerSkill,
         openai_api_key: str = "",
         system_prompt: Optional[str] = None,
         system_prompt_file: Optional[str] = None,
-        skills: Optional[List[Type]] = None,
-        project_context: str = "",
-        project_context_file: Optional[str] = None,
     ):
         """
         Initialize an autonomous agent.
@@ -294,9 +109,6 @@ PerformanceOptimizerSkill,
             openai_api_key: OpenAI API key
             system_prompt: Custom system prompt
             system_prompt_file: Path to file containing system prompt
-            skills: List of skill classes to load (default: all built-in skills)
-            project_context: Runtime project context injected into LLM prompt
-            project_context_file: Path to file containing project context
         """
         self.name = name
         self.ticker = ticker
@@ -327,48 +139,14 @@ PerformanceOptimizerSkill,
             system_prompt_file=system_prompt_file,
         )
 
-        # Project context for LLM prompt
-        self.project_context = project_context
-        if project_context_file:
-            ctx_path = Path(project_context_file)
-            if ctx_path.exists():
-                self.project_context = ctx_path.read_text().strip()
-
-        # Skills registry - use provided skills or defaults
-        self._skill_classes = list(skills) if skills is not None else list(self.DEFAULT_SKILL_CLASSES)
+        # Skills registry
         self.skills = SkillRegistry()
-        self._skill_load_errors: List[Dict] = []
         self._init_skills()
-
-        # Create and inject skill context for inter-skill communication
-        self._skill_context = self.skills.create_context(
-            agent_name=self.name,
-            agent_ticker=self.ticker,
-            log_fn=self._log,
-            get_state_fn=self._get_agent_state,
-        )
-
-        # Event bus for reactive behavior
-        self._event_bus = EventBus(
-            max_history=500,
-            persist_path=str(Path(__file__).parent / "data" / "events.json"),
-        )
-        self._wire_event_bus()
-        self._wire_revenue_observability()
-        # Wire execution instrumentation (ObservabilitySkill + SkillEventBridge)
-        self._instrumentation = ExecutionInstrumentation(self)
-
-        # Inject installed skill IDs into profiler after all skills are loaded
-        if hasattr(self, '_skill_profiler') and self._skill_profiler:
-            self._skill_profiler.set_installed_skills(list(self.skills.skills.keys()))
 
         # State
         self.recent_actions: List[Dict] = []
         self.cycle = 0
         self.running = False
-
-        # Runtime metrics
-        self.metrics = RuntimeMetrics()
 
         # Track created resources
         self.created_resources: Dict[str, List] = {
@@ -381,26 +159,6 @@ PerformanceOptimizerSkill,
         # Steering skill reference (set during skill init)
         self._steering_skill = None
 
-        # Outcome tracker reference for self-improvement feedback loop
-        self._outcome_tracker = None
-        # Performance tracker reference (set during skill init)
-        self._performance_tracker = None
-        self._resource_watcher = None
-        self._error_recovery = None
-        self._conversation_compressor = None
-        self._instrumenter = None
-        self._skill_profiler = None
-        # Tool resolver for fuzzy matching (lazy-initialized)
-        self._tool_resolver = None
-
-        # Adaptive executor for smart retry, circuit breakers, and cost guards
-        self._adaptive_executor = AdaptiveExecutor(balance=starting_balance)
-
-        # Pipeline executor for multi-step action chains
-        self._pipeline_executor = PipelineExecutor(
-            execute_fn=self._execute,
-            log_fn=self._log,
-        )
     def _init_skills(self):
         """Install skills that have credentials configured."""
         credentials = {
@@ -420,7 +178,26 @@ PerformanceOptimizerSkill,
         }
         self.skills.set_credentials(credentials)
 
-        for skill_class in self._skill_classes:
+        skill_classes = [
+            ContentCreationSkill,
+            TwitterSkill,
+            GitHubSkill,
+            NamecheapSkill,
+            EmailSkill,
+            BrowserSkill,
+            VercelSkill,
+            FilesystemSkill,
+            ShellSkill,
+            MCPClientSkill,
+            RequestSkill,
+            SelfModifySkill,
+            SteeringSkill,
+            MemorySkill,
+            OrchestratorSkill,
+            CryptoSkill,
+        ]
+
+        for skill_class in skill_classes:
             try:
                 self.skills.install(skill_class)
                 skill = self.skills.get(skill_class(credentials).manifest.skill_id)
@@ -476,173 +253,12 @@ PerformanceOptimizerSkill,
                         agent_factory=lambda **kwargs: AutonomousAgent(**kwargs),
                     )
 
-                # Store outcome tracker reference for feedback loop
-                if skill_class == OutcomeTracker and skill:
-                    self._outcome_tracker = skill
-                # Wire up replication skill with agent reference
-                if skill_class == ReplicationSkill and skill:
-                    skill.set_agent(self)
-
-                # Wire up feedback loop skill to cognition engine
-                if skill_class == FeedbackLoopSkill and skill:
-                    skill.set_cognition_hooks(
-                        append_prompt=self.cognition.append_to_prompt,
-                        get_prompt=self.cognition.get_system_prompt,
-                    )
-
-                # Wire up context synthesis skill to cognition engine
-                if skill_class == ContextSynthesisSkill and skill:
-                    skill.set_cognition_hooks(
-                        append_prompt=self.cognition.append_to_prompt,
-                    )
-                # Wire up learned behavior skill to cognition engine
-                if skill_class == LearnedBehaviorSkill and skill:
-                    skill.set_cognition_hooks(
-                        append_prompt=self.cognition.append_to_prompt,
-                        get_prompt=self.cognition.get_system_prompt,
-                    )
-
-                # Wire up knowledge sharing skill with agent identity
-                if skill_class == KnowledgeSharingSkill and skill:
-                    skill.set_agent_id(f"{self.name}_{self.ticker}")
-
-                # Wire up resource watcher skill with agent hooks
-                if skill_class == ResourceWatcherSkill and skill:
-                    skill.set_agent_hooks(
-                        get_balance=lambda: self.balance,
-                        get_model=lambda: self.cognition.llm_model,
-                    )
-                    self._resource_watcher = skill
-                # Store reference to performance tracker for auto-recording
-                if skill_class == PerformanceTracker and skill:
-                    self._performance_tracker = skill
-                if skill_class == ErrorRecoverySkill and skill:
-                    self._error_recovery = skill
-                if skill_class == ConversationCompressorSkill and skill:
-                    self._conversation_compressor = skill
-                    self.cognition.set_conversation_compressor(skill)
-                    # Wire cognition engine back into compressor for LLM-powered compression
-                    skill.set_cognition_engine(self.cognition)
-                if skill_class == RevenueObservabilityBridgeSkill and skill:
-                    self._revenue_obs_bridge = skill
-
-                # Store reference to execution instrumenter for auto-instrumentation
-                if skill_class == SkillExecutionInstrumenter and skill:
-                    self._instrumenter = skill
-
-                # Wire up skill profiler with installed skill IDs
-                if skill_class == SkillPerformanceProfiler and skill:
-                    self._skill_profiler = skill
-
                 if skill and skill.check_credentials():
                     self._log("SKILL", f"+ {skill.manifest.name}")
                 else:
                     self.skills.uninstall(skill_class(credentials).manifest.skill_id)
             except Exception as e:
-                self._skill_load_errors.append({
-                    "skill": skill_class.__name__,
-                    "error": str(e),
-                })
-
-
-    def _wire_event_bus(self):
-        """Wire the shared EventBus into the EventSkill."""
-        for skill in self.skills.skills.values():
-            if isinstance(skill, EventSkill):
-                skill.set_event_bus(self._event_bus)
-                self._log("EVENT", "EventBus wired into EventSkill")
-                break
-
-    def _wire_revenue_observability(self):
-        """Wire RevenueObservabilityBridgeSkill to ObservabilitySkill."""
-        obs_skill = None
-        rev_bridge = None
-        for skill in self.skills.skills.values():
-            if isinstance(skill, ObservabilitySkill):
-                obs_skill = skill
-            if isinstance(skill, RevenueObservabilityBridgeSkill):
-                rev_bridge = skill
-        if obs_skill and rev_bridge:
-            rev_bridge.set_observability(obs_skill)
-            self._log("WIRE", "RevenueObservabilityBridge -> ObservabilitySkill")
-
-
-
-    async def _tick_scheduler(self):
-        """Execute any due scheduled tasks."""
-        for skill in self.skills.skills.values():
-            if isinstance(skill, SchedulerSkill):
-                due_count = skill.get_due_count()
-                if due_count > 0:
-                    self._log("SCHED", f"{due_count} scheduled task(s) due")
-                    results = await skill.tick()
-                    for result in results:
-                        self._log("SCHED", f"{'OK' if result.success else 'FAIL'}: {result.message[:100]}")
-                break
-    async def _emit_event(self, topic: str, data: Dict = None, priority: EventPriority = EventPriority.NORMAL):
-        """Emit an event from the agent core."""
-        event = Event(
-            topic=topic,
-            data=data or {},
-            source="agent",
-            priority=priority,
-        )
-        await self._event_bus.publish(event)
-
-    def _get_pending_events(self) -> List[Dict]:
-        """Get pending events from subscriptions for LLM context."""
-        for skill in self.skills.skills.values():
-            if isinstance(skill, EventSkill):
-                return skill.get_pending_events()
-        return []
-
-    def add_skill(self, skill_class: Type) -> bool:
-        """Add a skill class at runtime. Returns True if successfully loaded."""
-        if skill_class in self._skill_classes:
-            return False
-        self._skill_classes.append(skill_class)
-        try:
-            credentials = self.skills._credentials
-            self.skills.install(skill_class)
-            skill = self.skills.get(skill_class(credentials).manifest.skill_id)
-            if skill and skill.check_credentials():
-                self._log("SKILL", f"+ {skill.manifest.name} (dynamic)")
-                return True
-            else:
-                self.skills.uninstall(skill_class(credentials).manifest.skill_id)
-                self._skill_classes.remove(skill_class)
-                return False
-        except Exception as e:
-            self._skill_load_errors.append({
-                "skill": skill_class.__name__,
-                "error": str(e),
-            })
-            self._skill_classes.remove(skill_class)
-            return False
-
-    def remove_skill(self, skill_id: str) -> bool:
-        """Remove a skill by its ID at runtime. Returns True if removed."""
-        skill = self.skills.get(skill_id)
-        if skill:
-            self.skills.uninstall(skill_id)
-            self._log("SKILL", f"- {skill.manifest.name} (removed)")
-            return True
-        return False
-
-    def get_skill_status(self) -> Dict:
-        """Get status of all skills: loaded, failed, and available tools."""
-        loaded = []
-        for skill in self.skills.skills.values():
-            loaded.append({
-                "id": skill.manifest.skill_id,
-                "name": skill.manifest.name,
-                "actions": [a.name for a in skill.manifest.actions],
-            })
-        return {
-            "loaded": loaded,
-            "load_errors": self._skill_load_errors,
-            "total_tools": sum(len(s["actions"]) for s in loaded),
-        }
+                pass  # Skip skills that fail to load
 
     def _get_tools(self) -> List[Dict]:
         """Get tools from installed skills."""
@@ -657,13 +273,6 @@ PerformanceOptimizerSkill,
                     "parameters": action.parameters
                 })
 
-
-        # Add pipeline executor as a special tool
-        tools.append({
-            "name": "pipeline:run",
-            "description": "Execute a multi-step action pipeline. Pass steps list with tool, params, condition, on_failure. Steps run sequentially with result passing between them.",
-            "parameters": {"steps": {"type": "array", "required": True, "description": "List of step objects"}, "max_cost": {"type": "number", "required": False}}
-        })
         if not tools:
             tools.append({
                 "name": "wait",
@@ -698,37 +307,7 @@ PerformanceOptimizerSkill,
 
             self._log("CYCLE", f"#{self.cycle} | ${self.balance:.4f} | ~{runway_cycles:.0f} cycles left")
 
-            # Emit cycle start event
-            await self._emit_event("cycle.start", {
-                "cycle": self.cycle,
-                "balance": self.balance,
-                "runway_cycles": runway_cycles,
-            })
-
             # Think
-            # Check for pending events from subscriptions
-            pending_events = self._get_pending_events()
-
-            # Tick scheduler - execute any due scheduled tasks
-            await self._tick_scheduler()
-            if pending_events:
-                self._log("EVENTS", f"{len(pending_events)} pending event(s)")
-
-            # Get performance context for LLM awareness
-            perf_context = ''
-            if self._performance_tracker:
-                perf_context = self._performance_tracker.get_context_summary()
-
-            # Get budget context from resource watcher
-            budget_context = ''
-            if self._resource_watcher:
-                try:
-                    budget_context = self._resource_watcher.get_budget_context()
-                except Exception:
-                    pass
-            if budget_context:
-                perf_context = (perf_context + ' ' + budget_context).strip()
-
             state = AgentState(
                 balance=self.balance,
                 burn_rate=est_cost_per_cycle,
@@ -737,96 +316,18 @@ PerformanceOptimizerSkill,
                 recent_actions=self.recent_actions[-10:],
                 cycle=self.cycle,
                 created_resources=self.created_resources,
-                project_context=self.project_context,
-                pending_events=pending_events,
-                performance_context=perf_context,
             )
 
-            self.metrics.start_timer("decision")
             decision = await self.cognition.think(state)
-            decision_time = self.metrics.stop_timer("decision") or 0.0
-            self.metrics.record_decision(
-                latency=decision_time,
-                tokens=decision.token_usage.total_tokens(),
-                api_cost=decision.api_cost_usd,
-            )
             self._log("THINK", decision.reasoning[:150] if decision.reasoning else "...")
             self._log("DO", f"{decision.action.tool} {decision.action.params}")
 
             # Execute
-            self.metrics.start_timer("execution")
             result = await self._execute(decision.action)
-            exec_time = self.metrics.stop_timer("execution") or 0.0
-            exec_success = result.get("status") == "success"
-            self.metrics.record_execution(decision.action.tool, exec_time, exec_success)
-
-            # Track outcome for self-improvement feedback loop
-            self._record_outcome(
-                tool=decision.action.tool,
-                success=exec_success,
-                cost=decision.api_cost_usd,
-                duration_ms=exec_time * 1000,
-                error=str(result.get("message", "")) if not exec_success else "",
-            )
             self._log("RESULT", str(result)[:200])
-
-            # Emit events for reactive behavior
-            event_topic = "action.success" if result.get("status") == "success" else "action.failed"
-            await self._emit_event(event_topic, {
-                "cycle": self.cycle,
-                "tool": decision.action.tool,
-                "result_status": result.get("status"),
-                "message": str(result.get("message", ""))[:200],
-            })
 
             # Track created resources
             self._track_created_resource(decision.action.tool, decision.action.params, result)
-
-            # Auto-record performance for cross-session analytics
-            if self._performance_tracker:
-                skill_id, action_name = '', ''
-                if ':' in decision.action.tool:
-                    parts = decision.action.tool.split(':', 1)
-                    skill_id, action_name = parts[0], parts[1]
-                else:
-                    skill_id = decision.action.tool
-                self._performance_tracker.record_outcome(
-                    skill_id=skill_id,
-                    action=action_name,
-                    success=exec_success,
-                    latency_ms=exec_time * 1000,
-                    cost_usd=decision.api_cost_usd,
-                    error=str(result.get('message', ''))[:200] if not exec_success else '',
-                )
-
-            # Auto-record errors for recovery learning
-            if self._error_recovery and not exec_success:
-                err_skill_id = skill_id if skill_id else decision.action.tool
-                err_action = action_name if action_name else ''
-                try:
-                    await self._error_recovery.execute('record', {
-                        'skill_id': err_skill_id,
-                        'action': err_action,
-                        'error_message': str(result.get('message', ''))[:500],
-                    })
-                except Exception:
-                    pass
-
-            # Auto-record resource consumption for budget monitoring
-            if self._resource_watcher:
-                rw_skill_id = skill_id or decision.action.tool
-                rw_action = action_name
-                try:
-                    await self._resource_watcher.execute('record', {
-                        'skill_id': rw_skill_id,
-                        'action': rw_action,
-                        'cost': decision.api_cost_usd,
-                        'tokens': decision.token_usage.total_tokens(),
-                        'duration_ms': exec_time * 1000,
-                        'model': self.cognition.llm_model,
-                    })
-                except Exception:
-                    pass
 
             # Record action
             self.recent_actions.append({
@@ -851,7 +352,7 @@ PerformanceOptimizerSkill,
 
             # Deduct cost from balance
             self.balance -= total_cycle_cost
-            self._adaptive_executor.update_balance(self.balance)
+
             self._log("COST", f"API: ${api_cost:.6f} + Instance: ${instance_cost:.6f} = ${total_cycle_cost:.6f}")
 
             await asyncio.sleep(self.cycle_interval)
@@ -859,28 +360,7 @@ PerformanceOptimizerSkill,
         total_runtime_hours = (datetime.now() - cycle_start_time).total_seconds() / 3600
         self._log("END", f"Balance: ${self.balance:.4f}")
         self._log("SUMMARY", f"Ran {self.cycle} cycles in {total_runtime_hours:.2f}h | API: ${self.total_api_cost:.4f} | Tokens: {self.total_tokens_used}")
-        metrics_summary = self.metrics.summary()
-        self._log("METRICS", f"Success rate: {metrics_summary['success_rate']:.1%} | "
-                  f"Avg decision: {metrics_summary['avg_decision_latency_s']:.2f}s | "
-                  f"Avg execution: {metrics_summary['avg_execution_latency_s']:.2f}s | "
-                  f"Throughput: {metrics_summary['cycles_per_minute']:.1f} cycles/min")
         self._mark_stopped()
-
-
-    def _record_outcome(self, tool: str, success: bool, cost: float = 0.0,
-                        duration_ms: float = 0.0, error: str = ""):
-        """Record action outcome for self-improvement feedback loop."""
-        if self._outcome_tracker:
-            try:
-                self._outcome_tracker.record_sync(
-                    tool=tool,
-                    success=success,
-                    cost=cost,
-                    duration_ms=duration_ms,
-                    error=error,
-                )
-            except Exception:
-                pass  # Never let tracking break the agent loop
 
     def _track_created_resource(self, tool: str, params: Dict, result: Dict):
         """Track created resources."""
@@ -897,57 +377,12 @@ PerformanceOptimizerSkill,
             self.created_resources['files'] = self.created_resources['files'][-20:]
 
     async def _execute(self, action: Action) -> Dict:
-        """Execute an action via skills with fuzzy tool matching."""
+        """Execute an action via skills."""
         tool = action.tool
         params = action.params
 
         if tool == "wait":
             return {"status": "waited"}
-
-        # Handle pipeline execution
-        if tool == "pipeline:run":
-            try:
-                raw_steps = params.get("steps", [])
-                max_cost = params.get("max_cost")
-                result = await self._pipeline_executor.run_from_dicts(
-                    raw_steps, max_cost=max_cost
-                )
-                return {
-                    "status": "success" if result.success else "failed",
-                    "message": result.summary(),
-                    "data": {
-                        "steps_executed": result.steps_executed,
-                        "steps_succeeded": result.steps_succeeded,
-                        "steps_failed": result.steps_failed,
-                        "total_duration_ms": result.total_duration_ms,
-                    }
-                }
-            except Exception as e:
-                return {"status": "error", "message": f"Pipeline error: {e}"}
-
-        # Use ToolResolver for fuzzy matching
-        if not hasattr(self, '_tool_resolver') or self._tool_resolver is None:
-            self._tool_resolver = ToolResolver(self._get_tools())
-
-        match = self._tool_resolver.resolve(tool)
-
-        # If auto-corrected, log the correction
-        if match.was_corrected:
-            self._log("AUTO-FIX", f"Tool '{match.original}' -> '{match.resolved}' (confidence: {match.confidence:.0%})")
-            tool = match.resolved
-        elif match.error:
-            return {"status": "error", "message": match.error}
-
-        # Validate parameters
-        validation = self._tool_resolver.validate_params(tool, params)
-        if not validation.valid:
-            return {
-                "status": "error",
-                "message": f"Missing required parameters: {', '.join(validation.missing_required)}"
-            }
-        if validation.warnings:
-            for warning in validation.warnings:
-                self._log("PARAM-WARN", warning)
 
         # Parse skill:action format
         if ":" in tool:
@@ -957,75 +392,17 @@ PerformanceOptimizerSkill,
 
             skill = self.skills.get(skill_id)
             if skill:
-                # Get adaptive execution advice (circuit breaker, retry config, cost guard)
-                advice = self._adaptive_executor.get_advice(
-                    skill_id, action_name,
-                    estimated_cost=self._get_action_cost_estimate(skill_id, action_name),
-                )
-                if advice.cost_warning:
-                    self._log("COST-WARN", advice.cost_warning)
-
-                if not advice.should_execute:
-                    self._log("CIRCUIT", advice.reason)
-                    return {"status": "blocked", "message": advice.reason}
-
                 try:
-                    async def _do_execute():
-                        r = await skill.execute(action_name, params)
-                        o = {
-                            "status": "success" if r.success else "failed",
-                            "data": r.data,
-                            "message": r.message,
-                        }
-                        # Record outcome for adaptive learning
-                        self._adaptive_executor.record_outcome(
-                            skill_id, action_name,
-                            success=r.success,
-                            error=r.message if not r.success else "",
-                        )
-                        return o
-
-                    # Execute with instrumentation (metrics, bridge events, EventBus)
-                    outcome = await self._instrumentation.instrumented_execute(
-                        skill_id, action_name, params, _do_execute,
-                    )
-                    return outcome
+                    result = await skill.execute(action_name, params)
+                    return {
+                        "status": "success" if result.success else "failed",
+                        "data": result.data,
+                        "message": result.message
+                    }
                 except Exception as e:
-                    self._adaptive_executor.record_outcome(
-                        skill_id, action_name,
-                        success=False, error=str(e),
-                    )
                     return {"status": "error", "message": str(e)}
 
         return {"status": "error", "message": f"Unknown tool: {tool}"}
-
-    def _get_action_cost_estimate(self, skill_id: str, action_name: str) -> float:
-        """Estimate cost for an action from skill manifest."""
-        skill = self.skills.get(skill_id)
-        if skill and hasattr(skill, "manifest"):
-            for act in skill.manifest.actions:
-                if act.name == action_name:
-                    return act.estimated_cost
-        return 0.0
-    def _get_agent_state(self) -> Dict:
-        """Get current agent state as a read-only dict for SkillContext."""
-        avg_cycle_hours = self.cycle_interval / 3600
-        est_cost_per_cycle = 0.01 + (self.instance_cost_per_hour * avg_cycle_hours)
-        runway_cycles = self.balance / est_cost_per_cycle if est_cost_per_cycle > 0 else float('inf')
-        return {
-            "agent_name": self.name,
-            "agent_ticker": self.ticker,
-            "agent_type": self.agent_type,
-            "specialty": self.specialty,
-            "balance": self.balance,
-            "cycle": self.cycle,
-            "running": self.running,
-            "total_api_cost": self.total_api_cost,
-            "total_tokens_used": self.total_tokens_used,
-            "runway_cycles": runway_cycles,
-            "installed_skills": list(self.skills.skills.keys()),
-            "recent_action_count": len(self.recent_actions),
-        }
 
     def _kill_for_tampering(self):
         """
@@ -1102,7 +479,7 @@ PerformanceOptimizerSkill,
 
 
 async def main():
-    """Run the agent with configuration from environment variables."""
+    """Example usage."""
     agent = AutonomousAgent(
         name=os.environ.get("AGENT_NAME", "MyAgent"),
         ticker=os.environ.get("AGENT_TICKER", "AGENT"),
@@ -1114,11 +491,5 @@ async def main():
     await agent.run()
 
 
-def entry_point():
-    """Sync entry point for console_scripts and Docker."""
-    asyncio.run(main())
-
-
 if __name__ == "__main__":
-    entry_point()
-
+    asyncio.run(main())
