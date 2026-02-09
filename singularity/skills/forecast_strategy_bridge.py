@@ -34,7 +34,7 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, Optional
 
 from .base import Skill, SkillAction, SkillManifest, SkillResult
 
@@ -236,7 +236,7 @@ class ForecastStrategyBridgeSkill(Skill):
 
         # Extract data from forecast state
         series = forecast_data.get("time_series", [])
-        forecasts = forecast_data.get("forecasts", [])
+        _forecasts = forecast_data.get("forecasts", [])  # noqa: F841
         backtest = forecast_data.get("backtest_results", {})
         stats = forecast_data.get("stats", {})
         config = forecast_data.get("config", {})
@@ -269,7 +269,7 @@ class ForecastStrategyBridgeSkill(Skill):
 
         if values:
             latest_value = values[-1] if values else 0
-            avg_value = sum(values) / len(values) if values else 0
+
 
             if latest_value > 0:
                 score += 10
@@ -478,7 +478,7 @@ class ForecastStrategyBridgeSkill(Skill):
 
     async def _analyze(self, params: Dict) -> SkillResult:
         """Deep analysis combining forecast + strategy for action plan."""
-        include_scenarios = params.get("include_scenarios", True)
+        _include_scenarios = params.get("include_scenarios", True)  # noqa: F841
         cost_override = params.get("cost_per_period")
 
         # Read both data sources
@@ -611,7 +611,7 @@ class ForecastStrategyBridgeSkill(Skill):
             risk_factors.append({
                 "risk": "deep_loss",
                 "severity": "high",
-                "detail": f"Revenue less than 50% of costs - significant cash burn",
+                "detail": "Revenue less than 50% of costs - significant cash burn",
             })
 
         analysis["action_plan"] = action_plan

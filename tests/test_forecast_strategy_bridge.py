@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 """Tests for ForecastStrategyBridgeSkill."""
 
-import json
 import pytest
 import asyncio
-from pathlib import Path
 from unittest.mock import patch
 
 from singularity.skills.forecast_strategy_bridge import (
     ForecastStrategyBridgeSkill,
-    STATE_FILE,
-    FORECAST_FILE,
-    STRATEGY_FILE,
-    DATA_DIR,
 )
 
 
