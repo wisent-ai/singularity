@@ -1,0 +1,749 @@
+{
+  "version": "1.0",
+  "skills": {
+    "twitter": {
+      "module": "singularity.skills.builtin.twitter",
+      "class": "TwitterSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "twitter",
+        "name": "Twitter/X Management",
+        "version": "1.0.0",
+        "category": "social",
+        "description": "Post tweets, reply, search, and manage Twitter presence",
+        "required_credentials": [
+          "TWITTER_API_KEY",
+          "TWITTER_API_SECRET",
+          "TWITTER_ACCESS_TOKEN",
+          "TWITTER_ACCESS_SECRET"
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "stripe": {
+      "module": "singularity.skills.builtin.stripe",
+      "class": "StripeSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "stripe",
+        "name": "Stripe Payments",
+        "version": "1.0.0",
+        "category": "payment",
+        "description": "Process payments, create invoices and payment links via Stripe",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "github": {
+      "module": "singularity.skills.builtin.github",
+      "class": "GitHubSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "github",
+        "name": "GitHub Management",
+        "version": "1.0.0",
+        "category": "dev",
+        "description": "Create repos, manage issues, and interact with GitHub",
+        "required_credentials": [
+          "GITHUB_TOKEN"
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "content_creation": {
+      "module": "singularity.skills.builtin.content",
+      "class": "ContentCreationSkill",
+      "wiring": "llm",
+      "manifest": {
+        "skill_id": "content_creation",
+        "name": "AI Content Creation",
+        "version": "1.0.0",
+        "category": "content",
+        "description": "Generate content using AI (articles, social posts, code, etc.)",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "namecheap": {
+      "module": "singularity.skills.builtin.namecheap",
+      "class": "NamecheapSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "namecheap",
+        "name": "Namecheap Domains",
+        "version": "1.0.0",
+        "category": "domain",
+        "description": "Register and manage domains via Namecheap",
+        "required_credentials": [
+          "NAMECHEAP_API_USER",
+          "NAMECHEAP_API_KEY",
+          "NAMECHEAP_USERNAME",
+          "NAMECHEAP_CLIENT_IP"
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "email": {
+      "module": "singularity.skills.builtin.email",
+      "class": "EmailSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "email",
+        "name": "Email Sending",
+        "version": "1.0.0",
+        "category": "communication",
+        "description": "Send emails via SMTP or API",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "browser": {
+      "module": "singularity.skills.builtin.browser",
+      "class": "BrowserSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "browser",
+        "name": "Browser Automation",
+        "version": "1.0.0",
+        "category": "automation",
+        "description": "Control a real browser - navigate, click, type, scrape",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "browser_use": {
+      "module": "singularity.skills.builtin.browser_use",
+      "class": "BrowserUseSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "browser_use",
+        "name": "Browser Use",
+        "version": "1.0.0",
+        "category": "automation",
+        "description": "High-level browser automation using browser-use library",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "vercel": {
+      "module": "singularity.skills.builtin.vercel",
+      "class": "VercelSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "vercel",
+        "name": "Vercel Deployments",
+        "version": "1.0.0",
+        "category": "dev",
+        "description": "Deploy and manage Vercel projects",
+        "required_credentials": [
+          "VERCEL_TOKEN"
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "filesystem": {
+      "module": "singularity.skills.builtin.filesystem",
+      "class": "FilesystemSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "filesystem",
+        "name": "Filesystem Operations",
+        "version": "1.0.0",
+        "category": "system",
+        "description": "Read, write, search files - OpenCode style",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "shell": {
+      "module": "singularity.skills.builtin.shell",
+      "class": "ShellSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "shell",
+        "name": "Shell Commands",
+        "version": "1.0.0",
+        "category": "system",
+        "description": "Execute shell commands and fetch URLs",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "mcp": {
+      "module": "singularity.skills.builtin.mcp_client",
+      "class": "MCPClientSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "mcp",
+        "name": "MCP Client",
+        "version": "1.0.0",
+        "category": "integration",
+        "description": "Connect to MCP servers and use their tools",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "request": {
+      "module": "singularity.skills.builtin.request",
+      "class": "RequestSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "request",
+        "name": "Human Request",
+        "version": "1.0.0",
+        "category": "communication",
+        "description": "Request features, fixes, or help from human operators",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "resend": {
+      "module": "singularity.skills.builtin.resend",
+      "class": "ResendSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "resend",
+        "name": "Resend Email",
+        "version": "1.0.0",
+        "category": "communication",
+        "description": "Send transactional emails via Resend API",
+        "required_credentials": [
+          "RESEND_API_KEY"
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "agent_setup": {
+      "module": "singularity.skills.builtin.agent_setup",
+      "class": "AgentSetupSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "agent_setup",
+        "name": "Agent Setup",
+        "version": "1.0.0",
+        "category": "meta",
+        "description": "Set up new agent instances and configurations",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "supabase": {
+      "module": "singularity.skills.builtin.supabase",
+      "class": "SupabaseSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "supabase",
+        "name": "Supabase Database",
+        "version": "1.0.0",
+        "category": "database",
+        "description": "Interact with Supabase database and storage",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "self": {
+      "module": "singularity.skills.builtin.self_modify",
+      "class": "SelfModifySkill",
+      "wiring": "cognition_hooks",
+      "manifest": {
+        "skill_id": "self",
+        "name": "Self-Modification",
+        "version": "2.0.0",
+        "category": "meta",
+        "description": "Edit your prompt, switch models, and fine-tune yourself",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "captcha": {
+      "module": "singularity.skills.builtin.captcha",
+      "class": "CaptchaSolver",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "captcha",
+        "name": "Captcha Solver",
+        "version": "1.0.0",
+        "category": "automation",
+        "description": "Solve captchas using third-party services",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "account_creator": {
+      "module": "singularity.skills.builtin.account_creator",
+      "class": "AccountCreator",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "account_creator",
+        "name": "Account Creator",
+        "version": "1.0.0",
+        "category": "automation",
+        "description": "Create accounts on various platforms",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "issuing": {
+      "module": "singularity.skills.builtin.issuing",
+      "class": "IssuingSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "issuing",
+        "name": "Virtual Cards (Stripe Issuing)",
+        "version": "1.0.0",
+        "category": "payment",
+        "description": "Get virtual debit cards for making purchases with spending controls",
+        "required_credentials": [
+          "STRIPE_SECRET_KEY"
+        ],
+        "actions": [
+          {
+            "name": "get_card",
+            "description": "Get a virtual card for making purchases"
+          },
+          {
+            "name": "get_card_details",
+            "description": "Get full card details (number, CVC)"
+          },
+          {
+            "name": "check_budget",
+            "description": "Check remaining spending budget"
+          },
+          {
+            "name": "list_transactions",
+            "description": "List recent transactions"
+          },
+          {
+            "name": "increase_limit",
+            "description": "Request a higher spending limit"
+          },
+          {
+            "name": "release_card",
+            "description": "Deactivate card when done"
+          },
+          {
+            "name": "get_issuing_balance",
+            "description": "Check platform issuing balance"
+          }
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "mobile_app_publisher": {
+      "module": "singularity.skills.builtin.mobile_app_publisher",
+      "class": "MobileAppPublisherSkill",
+      "wiring": "llm",
+      "manifest": {
+        "skill_id": "mobile_app_publisher",
+        "name": "Mobile App Publisher",
+        "version": "1.0.0",
+        "category": "dev",
+        "description": "Create native Swift/Kotlin apps and publish to App Store and Google Play",
+        "required_credentials": [
+          "APP_STORE_CONNECT_KEY_ID",
+          "APP_STORE_CONNECT_ISSUER_ID",
+          "APP_STORE_CONNECT_PRIVATE_KEY",
+          "GOOGLE_PLAY_SERVICE_ACCOUNT"
+        ],
+        "actions": [
+          {
+            "name": "create_ios_project",
+            "description": "Create a new native iOS project using Swift/SwiftUI"
+          },
+          {
+            "name": "create_android_project",
+            "description": "Create a new native Android project using Kotlin/Compose"
+          },
+          {
+            "name": "generate_ios_app",
+            "description": "Generate iOS app from description using LLM"
+          },
+          {
+            "name": "generate_android_app",
+            "description": "Generate Android app from description using LLM"
+          },
+          {
+            "name": "add_swift_view",
+            "description": "Add a new SwiftUI view to an iOS app"
+          },
+          {
+            "name": "add_compose_screen",
+            "description": "Add a new Jetpack Compose screen to an Android app"
+          },
+          {
+            "name": "build_ios",
+            "description": "Build iOS app using Xcode"
+          },
+          {
+            "name": "build_android",
+            "description": "Build Android app using Gradle"
+          },
+          {
+            "name": "submit_to_app_store",
+            "description": "Submit iOS build to App Store Connect"
+          },
+          {
+            "name": "submit_to_google_play",
+            "description": "Submit Android build to Google Play"
+          }
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "reddit": {
+      "module": "singularity.skills.builtin.reddit",
+      "class": "RedditSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "reddit",
+        "name": "Reddit Marketing",
+        "version": "1.0.0",
+        "category": "social",
+        "description": "Autonomous Reddit posting, commenting, and engagement with anti-detection",
+        "required_credentials": [
+          "REDDIT_USERNAME",
+          "REDDIT_PASSWORD"
+        ],
+        "actions": [
+          {
+            "name": "login",
+            "description": "Login to Reddit account"
+          },
+          {
+            "name": "create_post",
+            "description": "Create a new post in a subreddit"
+          },
+          {
+            "name": "create_image_post",
+            "description": "Create an image post"
+          },
+          {
+            "name": "create_video_post",
+            "description": "Create a video post"
+          },
+          {
+            "name": "comment",
+            "description": "Comment on a post"
+          },
+          {
+            "name": "find_posts",
+            "description": "Find posts matching criteria"
+          },
+          {
+            "name": "generate_comment",
+            "description": "Generate AI comment for a post"
+          },
+          {
+            "name": "upvote",
+            "description": "Upvote a post or comment"
+          },
+          {
+            "name": "join_subreddit",
+            "description": "Join a subreddit"
+          }
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "tiktok": {
+      "module": "singularity.skills.builtin.tiktok",
+      "class": "TikTokSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "tiktok",
+        "name": "TikTok Research",
+        "version": "1.0.0",
+        "category": "social",
+        "description": "TikTok content research, scraping, trend analysis, and SCAIL video preparation",
+        "required_credentials": [],
+        "actions": [
+          {
+            "name": "scrape_fyp",
+            "description": "Scrape For You Page videos"
+          },
+          {
+            "name": "scrape_hashtag",
+            "description": "Scrape videos from a hashtag"
+          },
+          {
+            "name": "scrape_search",
+            "description": "Scrape videos from search"
+          },
+          {
+            "name": "scrape_user",
+            "description": "Scrape user's videos"
+          },
+          {
+            "name": "download_videos",
+            "description": "Download pending videos"
+          },
+          {
+            "name": "analyze_scail",
+            "description": "Analyze for SCAIL suitability"
+          },
+          {
+            "name": "get_scail_videos",
+            "description": "Get SCAIL-ready videos"
+          },
+          {
+            "name": "get_trending_hashtags",
+            "description": "Get trending hashtags"
+          },
+          {
+            "name": "get_viral_sounds",
+            "description": "Get viral sounds"
+          },
+          {
+            "name": "generate_trend_report",
+            "description": "Generate trend report"
+          }
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "instagram": {
+      "module": "singularity.skills.builtin.instagram",
+      "class": "InstagramSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "instagram",
+        "name": "Instagram Marketing",
+        "version": "1.0.0",
+        "category": "social",
+        "description": "Autonomous Instagram posting, engagement, and account management",
+        "required_credentials": [
+          "INSTAGRAM_USERNAME",
+          "INSTAGRAM_PASSWORD"
+        ],
+        "actions": [
+          {
+            "name": "create_account",
+            "description": "Create a new Instagram account"
+          },
+          {
+            "name": "login",
+            "description": "Login to Instagram"
+          },
+          {
+            "name": "post_photo",
+            "description": "Post a photo"
+          },
+          {
+            "name": "like",
+            "description": "Like a post"
+          },
+          {
+            "name": "comment",
+            "description": "Comment on a post"
+          }
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "linkedin": {
+      "module": "singularity.skills.builtin.linkedin",
+      "class": "LinkedInSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "linkedin",
+        "name": "LinkedIn Marketing",
+        "version": "1.0.0",
+        "category": "social",
+        "description": "Autonomous LinkedIn posting, networking, and engagement",
+        "required_credentials": [
+          "LINKEDIN_EMAIL",
+          "LINKEDIN_PASSWORD"
+        ],
+        "actions": [
+          {
+            "name": "create_account",
+            "description": "Create a new LinkedIn account"
+          },
+          {
+            "name": "login",
+            "description": "Login to LinkedIn"
+          },
+          {
+            "name": "post",
+            "description": "Create a post"
+          },
+          {
+            "name": "connect",
+            "description": "Send connection request"
+          },
+          {
+            "name": "like",
+            "description": "Like a post"
+          },
+          {
+            "name": "comment",
+            "description": "Comment on a post"
+          }
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "facebook": {
+      "module": "singularity.skills.builtin.facebook",
+      "class": "FacebookSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "facebook",
+        "name": "Facebook Marketing",
+        "version": "1.0.0",
+        "category": "social",
+        "description": "Autonomous Facebook posting and engagement",
+        "required_credentials": [
+          "FACEBOOK_EMAIL",
+          "FACEBOOK_PASSWORD"
+        ],
+        "actions": [
+          {
+            "name": "create_account",
+            "description": "Create a new Facebook account"
+          },
+          {
+            "name": "login",
+            "description": "Login to Facebook"
+          },
+          {
+            "name": "post",
+            "description": "Create a post"
+          },
+          {
+            "name": "like",
+            "description": "Like a post"
+          }
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "predictions": {
+      "module": "singularity.skills.builtin.predictions",
+      "class": "PredictionMarketsSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "predictions",
+        "name": "Prediction Markets",
+        "version": "1.0.0",
+        "category": "trading",
+        "description": "Trade on prediction markets (Polymarket, Kalshi). Search markets, place bets, check positions.",
+        "required_credentials": [],
+        "actions": [
+          {
+            "name": "search",
+            "description": "Search prediction markets by keyword"
+          },
+          {
+            "name": "orderbook",
+            "description": "Get orderbook/prices for a specific market"
+          },
+          {
+            "name": "buy",
+            "description": "Buy YES or NO shares on a prediction market"
+          },
+          {
+            "name": "sell",
+            "description": "Sell an existing prediction market position"
+          },
+          {
+            "name": "positions",
+            "description": "Check current open positions"
+          },
+          {
+            "name": "balance",
+            "description": "Check trading account balance"
+          }
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "pentest": {
+      "module": "singularity.skills.builtin.pentest",
+      "class": "PentestSkill",
+      "wiring": null,
+      "manifest": {
+        "skill_id": "pentest",
+        "name": "Security Scanner",
+        "version": "1.0.0",
+        "category": "security",
+        "description": "Non-destructive security vulnerability scanner. Checks headers, SSL, SQLi, XSS, and sensitive paths.",
+        "required_credentials": [],
+        "actions": [
+          {
+            "name": "scan",
+            "description": "Run all security scanners on a URL and return sorted findings"
+          },
+          {
+            "name": "headers",
+            "description": "Check security headers, CORS, cookies, and info disclosure"
+          },
+          {
+            "name": "ssl",
+            "description": "Check SSL/TLS certificate, protocol version, and cipher strength"
+          },
+          {
+            "name": "sqli",
+            "description": "Test forms for SQL injection vulnerabilities"
+          },
+          {
+            "name": "xss",
+            "description": "Test forms and URL params for cross-site scripting"
+          },
+          {
+            "name": "paths",
+            "description": "Enumerate sensitive paths (env files, git, admin, source maps)"
+          },
+          {
+            "name": "report",
+            "description": "Generate aggregate report from cached scan results"
+          }
+        ],
+        "install_cost": 0,
+        "author": "system"
+      }
+    },
+    "clone_saas": {
+      "module": "singularity.skills.builtin.clone_saas",
+      "class": "CloneSaasSkill",
+      "wiring": "llm",
+      "manifest": {
+        "skill_id": "clone_saas",
+        "name": "Clone SaaS",
+        "version": "1.0.0",
+        "category": "dev",
+        "description": "Analyze a SaaS site, generate a Next.js + Tailwind + Supabase clone, push to GitHub, deploy to Vercel",
+        "required_credentials": [],
+        "install_cost": 0,
+        "author": "system"
+      }
+    }
+  }
+}
