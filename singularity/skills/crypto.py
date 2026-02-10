@@ -553,9 +553,9 @@ class CryptoSkill(Skill):
                 "address": address,
                 "name": name,
                 "is_active": self._active_wallet == address,
-                # WARNING: In production, never expose private keys in results
-                # This is for agent self-management only
-                "_private_key": private_key,
+                # Private key is stored securely in self._wallets but NOT
+                # returned in result data. Result data flows into LLM context
+                # and activity logs, which would leak the key to third parties.
             }
         )
 

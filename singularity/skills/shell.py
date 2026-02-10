@@ -99,16 +99,28 @@ class ShellSkill(Skill):
         except Exception as e:
             return SkillResult(success=False, message=str(e))
 
+    def _check_dangerous_command(self, command: str) -> Optional[str]:
+        """Check if a command matches known dangerous patterns.
+
+        Returns an error message if the command is dangerous, None if safe.
+        Applied to both interactive (_bash) and background (_spawn) execution
+        to prevent bypassing safety checks via background processes.
+        """
+        dangerous = ['rm -rf /', 'mkfs', ':(){:|:&};:', 'dd if=/dev/zero']
+        for d in dangerous:
+            if d in command:
+                return f"Blocked dangerous command: matches '{d}'"
+        return None
+
     async def _bash(self, command: str, timeout: int = 30, cwd: Optional[str] = None) -> SkillResult:
         """Execute bash command"""
         if not command:
             return SkillResult(success=False, message="No command provided")
 
         # Security: block dangerous commands
-        dangerous = ['rm -rf /', 'mkfs', ':(){:|:&};:', 'dd if=/dev/zero']
-        for d in dangerous:
-            if d in command:
-                return SkillResult(success=False, message=f"Blocked dangerous command")
+        blocked = self._check_dangerous_command(command)
+        if blocked:
+            return SkillResult(success=False, message=blocked)
 
         work_dir = cwd or self.cwd
 
@@ -190,6 +202,11 @@ class ShellSkill(Skill):
         """Spawn background process"""
         if not command:
             return SkillResult(success=False, message="No command provided")
+
+        # Security: block dangerous commands (same checks as _bash)
+        blocked = self._check_dangerous_command(command)
+        if blocked:
+            return SkillResult(success=False, message=blocked)
 
         work_dir = cwd or self.cwd
 

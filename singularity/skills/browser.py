@@ -81,6 +81,7 @@ class BrowserSkill(Skill):
 
     def __init__(self, credentials: Dict[str, str] = None, stealth: bool = True, proxy: Dict = None):
         super().__init__(credentials)
+        self._playwright = None  # Playwright instance; set in _ensure_browser()
         self.browser = None
         self.context = None
         self.page = None
@@ -230,13 +231,15 @@ class BrowserSkill(Skill):
                 await self.page.add_init_script(STEALTH_SCRIPTS)
 
     async def _close_browser(self):
-        """Close browser"""
+        """Close browser and playwright instance."""
         if self.browser:
             await self.browser.close()
-            await self._playwright.stop()
             self.browser = None
             self.context = None
             self.page = None
+        if self._playwright:
+            await self._playwright.stop()
+            self._playwright = None
 
     async def execute(self, action: str, params: Dict) -> SkillResult:
         if not HAS_PLAYWRIGHT:

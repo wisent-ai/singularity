@@ -170,6 +170,7 @@ class ContentCreationSkill(Skill):
         else:
             self.llm = None
             self.llm_type = "none"
+            self.model = None
 
     def set_llm(self, llm, llm_type: str, model: str):
         """Inject LLM after initialization"""
