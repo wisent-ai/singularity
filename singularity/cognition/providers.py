@@ -111,6 +111,8 @@ async def generate_with_messages(
             None,
             lambda: engine.llm.generate([prompt], engine.sampling_params)
         )
+        if not outputs or not outputs[0].outputs:
+            return "", TokenUsage()
         output = outputs[0].outputs[0]
         usage = TokenUsage(
             input_tokens=len(outputs[0].prompt_token_ids),
@@ -135,6 +137,8 @@ async def generate_with_messages(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens
         )
+        if not response.content:
+            return "", usage
         return response.content[0].text, usage
 
     elif engine.llm_type == "vertex":
@@ -149,6 +153,8 @@ async def generate_with_messages(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens
         )
+        if not response.content:
+            return "", usage
         return response.content[0].text, usage
 
     elif engine.llm_type == "vertex_gemini":
@@ -180,7 +186,9 @@ async def generate_with_messages(
             input_tokens=response.usage.prompt_tokens if response.usage else 0,
             output_tokens=response.usage.completion_tokens if response.usage else 0
         )
-        return response.choices[0].message.content, usage
+        if not response.choices:
+            return "", usage
+        return response.choices[0].message.content or "", usage
 
     return "", TokenUsage()
 

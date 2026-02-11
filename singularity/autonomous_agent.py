@@ -174,6 +174,9 @@ class AutonomousAgent:
             skill = self.skills.get(skill_id)
             if skill:
                 try:
+                    if not skill.initialized:
+                        if not await skill.initialize():
+                            return {"status": "error", "message": f"Skill '{skill_id}' failed to initialize: missing {skill.get_missing_credentials()}"}
                     result = await skill.execute(action_name, action.params)
                     return {"status": "success" if result.success else "failed",
                             "data": result.data, "message": result.message}
@@ -189,7 +192,11 @@ class AutonomousAgent:
     def _save_activity(self, tag, msg):
         try:
             ACTIVITY_FILE.parent.mkdir(parents=True, exist_ok=True)
-            data = json.load(open(ACTIVITY_FILE)) if ACTIVITY_FILE.exists() else {"status": "stopped", "logs": [], "state": {}}
+            if ACTIVITY_FILE.exists():
+                with open(ACTIVITY_FILE) as f:
+                    data = json.load(f)
+            else:
+                data = {"status": "stopped", "logs": [], "state": {}}
             avg_hours = self.cycle_interval / 3600
             est_cost = 0.01 + (self.instance_cost_per_hour * avg_hours)
             data["status"] = "running" if self.running else "stopped"
@@ -209,7 +216,8 @@ class AutonomousAgent:
     def _mark_stopped(self):
         try:
             if ACTIVITY_FILE.exists():
-                data = json.load(open(ACTIVITY_FILE))
+                with open(ACTIVITY_FILE) as f:
+                    data = json.load(f)
                 data["status"] = "stopped"
                 data["state"]["updated_at"] = datetime.now().isoformat()
                 with open(ACTIVITY_FILE, 'w') as f: json.dump(data, f, indent=2)
