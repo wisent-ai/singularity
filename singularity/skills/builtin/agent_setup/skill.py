@@ -12,9 +12,21 @@ import os
 import sys
 from typing import Dict, Optional
 from singularity.skills.base import Skill, SkillResult, SkillManifest, SkillAction
-from ..namecheap import NamecheapSkill
-from ..resend import ResendSkill
-from ..supabase import SupabaseSkill
+
+try:
+    from ..namecheap import NamecheapSkill
+except ImportError:
+    NamecheapSkill = None  # type: ignore[assignment,misc]
+
+try:
+    from ..resend import ResendSkill
+except ImportError:
+    ResendSkill = None  # type: ignore[assignment,misc]
+
+try:
+    from ..supabase import SupabaseSkill
+except ImportError:
+    SupabaseSkill = None  # type: ignore[assignment,misc]
 
 # Import platform systems
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))

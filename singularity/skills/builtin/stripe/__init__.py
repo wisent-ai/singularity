@@ -4,7 +4,6 @@ import os
 import httpx
 from typing import Dict
 from singularity.skills.base import Skill, SkillResult, SkillManifest, SkillAction
-from . import handlers
 
 PLATFORM_API_URL = os.environ.get("PLATFORM_API_URL", "https://singularity.wisent.ai/api")
 
@@ -85,3 +84,7 @@ class StripeSkill(Skill):
 
     async def close(self):
         await self.http.aclose()
+
+
+# Deferred import: handlers depends on PLATFORM_API_URL defined above
+from . import handlers  # noqa: E402

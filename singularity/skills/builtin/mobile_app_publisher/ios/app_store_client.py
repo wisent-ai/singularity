@@ -7,19 +7,29 @@ Heavy API methods are delegated to app_store_helpers.py.
 """
 
 import asyncio
-import jwt
+try:
+    import jwt
+except ImportError:
+    jwt = None  # type: ignore[assignment]
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import httpx
 
-from .app_store_helpers import (
-    get_submission_status as _get_submission_status,
-    update_listing as _update_listing,
-    upload_screenshots as _upload_screenshots,
-    list_apps as _list_apps,
-)
+try:
+    from .helpers.app_store_helpers import (
+        get_submission_status as _get_submission_status,
+        update_listing as _update_listing,
+        upload_screenshots as _upload_screenshots,
+        list_apps as _list_apps,
+    )
+except ImportError:
+    # Stubs for when the helpers module is not available
+    async def _get_submission_status(*a, **kw): return {"error": "helpers not available"}  # type: ignore[misc]
+    async def _update_listing(*a, **kw): return {"error": "helpers not available"}  # type: ignore[misc]
+    async def _upload_screenshots(*a, **kw): return {"error": "helpers not available"}  # type: ignore[misc]
+    async def _list_apps(*a, **kw): return {"error": "helpers not available"}  # type: ignore[misc]
 
 
 class AppStoreClient:

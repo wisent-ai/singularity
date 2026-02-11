@@ -2,7 +2,13 @@
 
 from typing import Optional
 from singularity.skills.base import SkillResult
-from payments.stripe_cards import CardType, CardStatus, MCC_CATEGORIES
+
+try:
+    from payments.stripe_cards import CardType, CardStatus, MCC_CATEGORIES
+except ImportError:
+    CardType = None  # type: ignore[assignment,misc]
+    CardStatus = None  # type: ignore[assignment,misc]
+    MCC_CATEGORIES = {}
 
 
 async def get_card(skill, monthly_limit: float = 100,

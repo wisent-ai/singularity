@@ -5,7 +5,6 @@ import os
 from typing import Dict, List
 from pathlib import Path
 from singularity.skills.base import Skill, SkillResult, SkillManifest, SkillAction
-from . import handlers
 
 REQUESTS_FILE = Path(__file__).parent.parent.parent / "data" / "requests.json"
 LINEAR_API_URL = os.environ.get("LINEAR_API_URL", "http://localhost:3000/api/requests/linear")
@@ -81,6 +80,10 @@ class RequestSkill(Skill):
             return await handler()
         except Exception as e:
             return SkillResult(success=False, message=str(e))
+
+
+# Deferred import: handlers depends on LINEAR_API_URL defined above
+from . import handlers  # noqa: E402
 
 
 # Human-side functions for the web UI

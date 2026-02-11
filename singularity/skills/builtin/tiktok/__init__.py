@@ -4,7 +4,7 @@ import asyncio
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from skills.base import Skill, SkillAction, SkillManifest, SkillResult
+from singularity.skills.base import Skill, SkillAction, SkillManifest, SkillResult
 from . import handlers
 
 SCRAPING_PATH = Path(__file__).parent.parent.parent.parent.parent.parent / "scraping" / "tiktok"
@@ -105,7 +105,7 @@ class TikTokSkill(Skill):
             }
             handler = dispatch.get(action)
             if not handler:
-                return SkillResult(success=False, error=f"Unknown action: {action}")
+                return SkillResult(success=False, message=f"Unknown action: {action}")
             return await handler()
         except Exception as e:
-            return SkillResult(success=False, error=str(e))
+            return SkillResult(success=False, message=str(e))

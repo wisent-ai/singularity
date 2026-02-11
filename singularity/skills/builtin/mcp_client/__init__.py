@@ -3,7 +3,6 @@
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from singularity.skills.base import Skill, SkillResult, SkillManifest, SkillAction
-from . import handlers
 
 try:
     from mcp import ClientSession, StdioServerParameters
@@ -97,6 +96,10 @@ class MCPClientSkill(Skill):
     async def close(self):
         for name in list(self.sessions.keys()):
             await handlers.disconnect(self, name)
+
+
+# Deferred import: handlers depends on MCPServer and HAS_MCP_HTTP defined above
+from . import handlers  # noqa: E402
 
 
 def get_mcp_tools_for_agent(mcp_skill: MCPClientSkill) -> List[Dict]:

@@ -4,10 +4,20 @@ import os
 import sys
 from typing import Dict, Optional
 from singularity.skills.base import Skill, SkillResult, SkillManifest, SkillAction
-from . import handlers
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
-from payments.stripe_cards import StripeCardManager, StripeCard, CardType, CardStatus, MCC_CATEGORIES, StripeCardError
+try:
+    from payments.stripe_cards import StripeCardManager, StripeCard, CardType, CardStatus, MCC_CATEGORIES, StripeCardError
+    HAS_PAYMENTS = True
+except ImportError:
+    HAS_PAYMENTS = False
+    StripeCardManager = None  # type: ignore[assignment,misc]
+    StripeCard = None  # type: ignore[assignment,misc]
+    CardType = None  # type: ignore[assignment,misc]
+    CardStatus = None  # type: ignore[assignment,misc]
+    MCC_CATEGORIES = {}
+    class StripeCardError(Exception):  # type: ignore[no-redef]
+        pass
 
 
 def _a(n, d, p=None, prob=0.95, dur=5):
@@ -96,3 +106,7 @@ class IssuingSkill(Skill):
                 await self.manager.deactivate_card(self._active_card.id)
             except Exception:
                 pass
+
+
+# Deferred import: handlers depends on payments module
+from . import handlers  # noqa: E402

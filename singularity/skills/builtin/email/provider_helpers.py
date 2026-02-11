@@ -11,7 +11,7 @@ import xml.etree.ElementTree as ET
 import asyncio
 
 from singularity.skills.base import SkillResult
-from . import (
+from .constants import (
     NAMECHEAP_API_URL,
     NAMECHEAP_XML_NS,
     REQUIRED_NAMECHEAP_CREDENTIALS,

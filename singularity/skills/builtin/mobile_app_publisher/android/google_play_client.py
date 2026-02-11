@@ -10,12 +10,19 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .google_play_helpers import (
-    get_submission_status,
-    update_listing,
-    upload_screenshots,
-    list_tracks,
-)
+try:
+    from .helpers.google_play_helpers import (
+        get_submission_status,
+        update_listing,
+        upload_screenshots,
+        list_tracks,
+    )
+except ImportError:
+    # Stubs for when the helpers module is not available
+    async def get_submission_status(*a, **kw): return {"error": "helpers not available"}  # type: ignore[misc]
+    async def update_listing(*a, **kw): return {"error": "helpers not available"}  # type: ignore[misc]
+    async def upload_screenshots(*a, **kw): return {"error": "helpers not available"}  # type: ignore[misc]
+    async def list_tracks(*a, **kw): return {"error": "helpers not available"}  # type: ignore[misc]
 
 
 class GooglePlayClient:

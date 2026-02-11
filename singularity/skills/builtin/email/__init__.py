@@ -5,19 +5,22 @@ Constants and helpers for email domain management.
 Re-exports EmailSkill for backward compatibility.
 """
 
+# Import constants first (no circular dependency)
+from .constants import (
+    NAMECHEAP_API_URL,
+    NAMECHEAP_XML_NS,
+    REQUIRED_NAMECHEAP_CREDENTIALS,
+    RESEND_API_BASE,
+)
+
+# Now safe to import EmailSkill (which imports provider_helpers,
+# which imports constants from .constants instead of from .)
 from .skill import EmailSkill
 
-# Namecheap API constants
-NAMECHEAP_API_URL = "https://api.namecheap.com/xml.response"
-NAMECHEAP_XML_NS = {"ns": "http://api.namecheap.com/xml.response"}
-REQUIRED_NAMECHEAP_CREDENTIALS = [
-    "NAMECHEAP_API_KEY",
-    "NAMECHEAP_API_USER",
-    "NAMECHEAP_USERNAME",
-    "NAMECHEAP_CLIENT_IP",
+__all__ = [
+    "EmailSkill",
+    "NAMECHEAP_API_URL",
+    "NAMECHEAP_XML_NS",
+    "REQUIRED_NAMECHEAP_CREDENTIALS",
+    "RESEND_API_BASE",
 ]
-
-# Resend API constants
-RESEND_API_BASE = "https://api.resend.com"
-
-__all__ = ["EmailSkill"]

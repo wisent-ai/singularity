@@ -12,10 +12,29 @@ import string
 from datetime import datetime
 from typing import Dict, List, Optional
 from singularity.skills.base import Skill, SkillResult, SkillManifest, SkillAction
-from ..browser import BrowserSkill
-from ..captcha import CaptchaSolver, get_enabled_sites, get_site_config, SITE_CONFIGS
-from ..proxy import ProxySkill
-from ..resend import ResendSkill
+
+try:
+    from ..browser import BrowserSkill
+except ImportError:
+    BrowserSkill = None  # type: ignore[assignment,misc]
+
+try:
+    from ..captcha import CaptchaSolver, get_enabled_sites, get_site_config, SITE_CONFIGS
+except ImportError:
+    CaptchaSolver = None  # type: ignore[assignment,misc]
+    get_enabled_sites = None  # type: ignore[assignment]
+    get_site_config = None  # type: ignore[assignment]
+    SITE_CONFIGS = {}
+
+try:
+    from ..proxy import ProxySkill
+except ImportError:
+    ProxySkill = None  # type: ignore[assignment,misc]
+
+try:
+    from ..resend import ResendSkill
+except ImportError:
+    ResendSkill = None  # type: ignore[assignment,misc]
 
 
 def generate_username(prefix: str = "") -> str:
