@@ -73,4 +73,5 @@ Thumbs.db
 
 # Project specific
 wisentbot/data/
+singularity/data/*.json
 *.log
