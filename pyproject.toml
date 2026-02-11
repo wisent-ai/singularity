@@ -76,6 +76,7 @@ Issues = "https://github.com/wisent-ai/singularity/issues"
 
 [project.scripts]
 singularity = "singularity.autonomous_agent:main"
+singularity-cli = "singularity.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
