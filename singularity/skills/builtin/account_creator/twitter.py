@@ -26,7 +26,7 @@ async def create_twitter_account(skill, username: str, email: str,
             await page.get_by_role("button", name="Create account").click()
             await asyncio.sleep(3)
             status = "create_clicked"
-        except:
+        except Exception:
             pass
 
         # Step 2: Click "Use email instead"
@@ -35,7 +35,7 @@ async def create_twitter_account(skill, username: str, email: str,
             if await email_link.count() > 0:
                 await email_link.click()
                 await asyncio.sleep(2)
-        except:
+        except Exception:
             pass
 
         # Step 3: Fill form
@@ -45,7 +45,7 @@ async def create_twitter_account(skill, username: str, email: str,
             if await name_field.count() > 0:
                 await name_field.fill(display_name)
                 status = "name_filled"
-        except:
+        except Exception:
             pass
 
         try:
@@ -53,7 +53,7 @@ async def create_twitter_account(skill, username: str, email: str,
             if await email_field.count() > 0:
                 await email_field.fill(email)
                 status = "email_filled"
-        except:
+        except Exception:
             pass
 
         await asyncio.sleep(1)
@@ -84,7 +84,7 @@ async def create_twitter_account(skill, username: str, email: str,
                     await next_btn.click()
                     await asyncio.sleep(2)
                     status = "next_clicked"
-            except:
+            except Exception:
                 break
 
         # Step 6: Click "Sign up" to trigger CAPTCHA
@@ -94,7 +94,7 @@ async def create_twitter_account(skill, username: str, email: str,
                 await signup_btn.click()
                 await asyncio.sleep(5)
                 status = "signup_clicked"
-        except:
+        except Exception:
             pass
 
         # Step 7: Extract and solve FunCaptcha
@@ -151,7 +151,7 @@ async def create_twitter_account(skill, username: str, email: str,
                     try:
                         await inp.fill(code)
                         break
-                    except:
+                    except Exception:
                         continue
                 await asyncio.sleep(1)
                 try:
@@ -160,7 +160,7 @@ async def create_twitter_account(skill, username: str, email: str,
                         await next_btn.click()
                         await asyncio.sleep(3)
                         status = "email_verified"
-                except:
+                except Exception:
                     pass
 
         # Step 9: Set password if prompted
@@ -174,7 +174,7 @@ async def create_twitter_account(skill, username: str, email: str,
                     await next_btn.click()
                     await asyncio.sleep(3)
                     status = "password_set"
-        except:
+        except Exception:
             pass
 
         # Check final status

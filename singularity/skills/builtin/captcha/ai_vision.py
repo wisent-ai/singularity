@@ -118,11 +118,11 @@ async def solve_recaptcha_in_iframe(solver, page, max_attempts=5) -> SkillResult
 
 async def _ev(frame, script):
     try: return await frame.evaluate(script)
-    except: return None
+    except Exception: return None
 
 async def _relocate_bframe(handle, frame, parent):
     try: await frame.evaluate('()=>1'); return handle, frame
-    except: pass
+    except Exception: pass
     h = await parent.query_selector('iframe[src*="bframe"]')
     if h:
         f = await h.content_frame()
@@ -132,15 +132,15 @@ async def _relocate_bframe(handle, frame, parent):
 async def _bframe_screenshot(handle, page) -> Optional[str]:
     try:
         try: await handle.scroll_into_view_if_needed()
-        except: pass
+        except Exception: pass
         await asyncio.sleep(0.5)
         return base64.standard_b64encode(await handle.screenshot()).decode('utf-8')
-    except:
+    except Exception:
         try:
             box = await handle.bounding_box()
             if box and page:
                 return base64.standard_b64encode(await page.screenshot(clip=box)).decode('utf-8')
-        except: pass
+        except Exception: pass
     return None
 
 async def _grid_size(bframe) -> int:
@@ -162,7 +162,7 @@ async def _find_bframe(page):
                 for inner in await of.query_selector_all('iframe'):
                     src = await inner.get_attribute('src') or ''
                     if 'bframe' in src: return await inner.content_frame(), inner
-        except: continue
+        except Exception: continue
     return None, None
 
 async def _check_solved(page) -> Optional[str]:
@@ -208,7 +208,7 @@ def _parse_positions(answer: str) -> Optional[List]:
     try:
         p = json.loads(answer)
         if isinstance(p, list) and all(isinstance(x, int) for x in p): return p
-    except: pass
+    except (json.JSONDecodeError, ValueError, TypeError): pass
     nums = [int(x) for x in re.findall(r'\d+', answer)]
     return nums if nums else None
 

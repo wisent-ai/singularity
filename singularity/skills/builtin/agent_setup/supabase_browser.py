@@ -73,7 +73,7 @@ async def browser_signup(agent_email: str, supabase_password: str,
         except Exception as e:
             try:
                 await page.screenshot(path="screenshots/supabase_error.png")
-            except:
+            except Exception:
                 pass
             await context.close()
             result["error"] = str(e)
@@ -94,14 +94,14 @@ async def _do_signup(page, email: str, password: str):
             if await page.query_selector(s):
                 await page.fill(s, email)
                 break
-        except:
+        except Exception:
             continue
     for s in ['input[type="password"]', 'input[name="password"]', '#password']:
         try:
             if await page.query_selector(s):
                 await page.fill(s, password)
                 break
-        except:
+        except Exception:
             continue
     for s in ['button[type="submit"]', 'button:has-text("Sign up")',
               'button:has-text("Sign Up")', 'button:has-text("Create account")']:
@@ -110,7 +110,7 @@ async def _do_signup(page, email: str, password: str):
             if btn:
                 await btn.click()
                 break
-        except:
+        except Exception:
             continue
     await asyncio.sleep(3)
 
@@ -168,14 +168,14 @@ async def _try_sign_in(page, email: str, password: str):
             if await page.query_selector(s):
                 await page.fill(s, email)
                 break
-        except:
+        except Exception:
             continue
     for s in ['input[type="password"]', 'input[name="password"]']:
         try:
             if await page.query_selector(s):
                 await page.fill(s, password)
                 break
-        except:
+        except Exception:
             continue
     for s in ['button[type="submit"]', 'button:has-text("Sign in")',
               'button:has-text("Sign In")']:
@@ -184,7 +184,7 @@ async def _try_sign_in(page, email: str, password: str):
             if btn:
                 await btn.click()
                 break
-        except:
+        except Exception:
             continue
     await asyncio.sleep(3)
 

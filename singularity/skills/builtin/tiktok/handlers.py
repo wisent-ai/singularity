@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import Dict, Any
-from skills.base import SkillResult
+from singularity.skills.base import SkillResult
 
 
 def _video_summary(v, fields=("video_id", "url", "author", "views", "caption", "hashtags")):
@@ -82,7 +82,7 @@ async def get_scail_videos(skill, params: Dict[str, Any]) -> SkillResult:
              "views": v.get("views", 0), "duration": v.get("duration_seconds"),
              "local_path": v.get("local_video_path")} for v in videos]})
     except Exception as e:
-        return SkillResult(success=False, error=str(e))
+        return SkillResult(success=False, message=str(e))
 
 
 async def get_trending_hashtags(skill, params: Dict[str, Any]) -> SkillResult:
@@ -112,7 +112,7 @@ async def analyze_hooks(skill, params: Dict[str, Any]) -> SkillResult:
         report = extractor.generate_hook_report()
         return SkillResult(success=True, data={"report": report})
     except Exception as e:
-        return SkillResult(success=False, error=str(e))
+        return SkillResult(success=False, message=str(e))
 
 
 async def get_stats(skill, params: Dict[str, Any]) -> SkillResult:
@@ -132,7 +132,7 @@ async def get_stats(skill, params: Dict[str, Any]) -> SkillResult:
                       "scail_ready_total": file_stats.get("scail_ready_total", 0),
                       "by_type": file_stats.get("scail_ready_by_type", {})}})
     except Exception as e:
-        return SkillResult(success=False, error=str(e))
+        return SkillResult(success=False, message=str(e))
 
 
 async def close(skill, params: Dict[str, Any]) -> SkillResult:
