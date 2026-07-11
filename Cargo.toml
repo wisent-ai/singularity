@@ -1,0 +1,37 @@
+[package]
+name = "singularity"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Rust runtime for autonomous Wisent agents"
+license = "MIT"
+repository = "https://github.com/wisent-ai/singularity"
+homepage = "https://singularity.wisent.com"
+
+[lib]
+name = "singularity"
+path = "src/lib.rs"
+
+[[bin]]
+name = "singularity"
+path = "bin/singularity.rs"
+
+[dependencies]
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+hex = "0.4"
+hmac = "0.12"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rust_decimal = { version = "1", features = ["serde"] }
+secrecy = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2"
+uuid = { version = "1", features = ["serde", "v4"] }
