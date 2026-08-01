@@ -1,5 +1,14 @@
 # Singularity
 
+<!-- wisent-readme-signals:start -->
+[![CI](https://github.com/wisent-ai/singularity/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wisent-ai/singularity/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/wisent-ai/singularity?display_name=tag&sort=semver)](https://github.com/wisent-ai/singularity/releases)
+[![Downloads](https://img.shields.io/github/downloads/wisent-ai/singularity/total)](https://github.com/wisent-ai/singularity/releases)
+[![License](https://img.shields.io/github/license/wisent-ai/singularity)](https://github.com/wisent-ai/singularity)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Wisent-5865F2?logo=discord&logoColor=white)](https://discord.gg/qRjpkthq54)
+<!-- wisent-readme-signals:end -->
+
+
 Singularity is the native Rust runtime for autonomous Wisent agents. It runs an auditable model-and-tool loop while delegating platform concerns to the existing Wisent services instead of copying them into this repository.
 
 The repository contains no Python runtime, Python package, dynamic Python skills, direct model-provider implementations, or local model server.
