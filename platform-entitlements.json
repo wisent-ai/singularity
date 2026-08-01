@@ -1,0 +1,11 @@
+{
+  "schema": "wisent.product-entitlements.current",
+  "product": "singularity",
+  "organization_id": "WISENT_ORGANIZATION_ID",
+  "principal_id": "authenticated agent owner or operator identity",
+  "community": ["singularity.local"],
+  "managed": ["singularity.managed", "singularity.organization-governance"],
+  "managed_failure": "managed execution, governance, and retained evidence fail closed",
+  "community_failure": "the auditable local runtime remains available",
+  "billing_unit": "active agent or developer seat"
+}
