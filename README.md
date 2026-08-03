@@ -8,147 +8,263 @@
 [![Discord](https://img.shields.io/badge/Discord-Join%20Wisent-5865F2?logo=discord&logoColor=white)](https://discord.gg/qRjpkthq54)
 <!-- wisent-readme-signals:end -->
 
+**Singularity is an auditable Rust runtime for autonomous Wisent agents that
+bounds model/tool cycles, cost, state, and external effects while reusing the
+Wisent platform contracts that own inference, tools, credentials, and messaging.**
 
-Singularity is the native Rust runtime for autonomous Wisent agents. It runs an auditable model-and-tool loop while delegating platform concerns to the existing Wisent services instead of copying them into this repository.
+[Quick start](#quick-start) · [Commands](#primary-interfaces) ·
+[Configuration](#configuration) ·
+[Canonical repository](https://github.com/wisent-ai/singularity)
 
-The repository contains no Python runtime, Python package, dynamic Python skills, direct model-provider implementations, or local model server.
+Version `0.3.0` is a public development runtime. It can execute effectful tools
+and send messages when enrolled; inspect configuration and tool authority before
+using it with production systems.
 
-## Architecture
+## Problem and intended users
+
+An autonomous loop is easy to demonstrate and difficult to operate safely. It
+must preserve typed tool calls, reject malformed results, charge each cycle once,
+retain recoverable state, bound execution, distinguish ambiguous remote failure
+from a safe retry, and keep provider or service credentials outside the model
+transcript.
+
+Singularity serves:
+
+- **agent developers** building a native local runtime around existing Wisent
+  services;
+- **operators** running bounded agents with explicit identities, budgets,
+  required tool surfaces, and owner-controlled state;
+- **reviewers** inspecting a versioned snapshot and append-only activity journal;
+- **platform teams** integrating Brama, Las, Most, Stado, Skarbiec, Weles,
+  Probierz, Echo, and other canonical services without duplicating them.
+
+## Product boundaries
+
+### Included
+
+- a Rust model-and-tool loop with sequential validated tool execution;
+- native OpenAI-compatible completion calls to Brama with exact-body HMAC;
+- dynamic namespaced MCP discovery through a supervised Las child process;
+- native Most health, chat-creation, and text-message tools;
+- token and instance cost accounting with a starting balance;
+- bounded tool rounds, cycle interval, cancellation, and budget exhaustion;
+- atomic versioned `state.json` snapshots and append-only `activity.jsonl`;
+- owner-only state and credential-file boundaries on Unix;
+- `run`, `once`, `doctor`, and `tools` operator commands.
+
+### Explicit non-goals
+
+- Singularity does not implement model providers, local model serving,
+  subscription routing, provider retries, or reauthentication; Brama owns those.
+- It does not implement a credential vault; Skarbiec owns credentials.
+- It does not copy child MCP services; Las federates their canonical contracts.
+- It does not implement Apple/Twilio transports, worker affinity, or messaging
+  storage; Most owns those.
+- It does not provide a Python runtime, Python package, dynamic Python skills,
+  compatibility shim, self-modifying agent, crypto wallet, or skill marketplace.
+- Effectful remote calls are not automatically retried after ambiguous network or
+  protocol failure.
+- A healthy process without an active backend is not treated as send-ready.
+- Higher-risk capabilities require their own approval gate; installing the local
+  runtime is not blanket authority to spend, communicate, deploy, or alter data.
+
+### Supported environment and current capability
+
+| Surface | Requirement | Current state |
+|---|---|---|
+| Runtime and CLI | Rust 1.85+ compatible with `Cargo.lock` | Implemented |
+| Brama inference | reachable compatible endpoint and HMAC identity | Required to run a cycle |
+| Las tools | executable entrypoint and selected child surfaces | Required according to policy |
+| Most messaging | service origin and scoped token file | Native optional tools |
+| Local state and audit | owner-writable state directory | Implemented |
+| Python API / direct provider SDK | — | Removed / not supported |
+| Managed autonomous operation | explicit organization enrollment | Separate operated capability |
+
+## Core use cases
+
+### Inspect runtime readiness
+
+- **Actor:** an operator preparing an enrolled agent.
+- **Initial state:** configuration points to Brama, Las, Most, state, and
+  owner-only secret files.
+- **Outcome:** `doctor` reports model availability, message-send readiness, Las
+  federation, and required MCP surfaces.
+- **Boundary:** readiness does not authorize a subsequent effectful tool call.
+
+### Run one bounded cycle
+
+- **Actor:** an agent developer or operator.
+- **Initial state:** identity, budget, model, required surfaces, and tool-round
+  bound are explicit.
+- **Outcome:** `once` performs one cycle and prints a JSON report; the runtime
+  persists state and one corresponding activity sequence.
+- **Boundary:** tools may have external effects. Use only scoped test resources or
+  an explicitly authorized production policy.
+
+### Operate a recurring agent
+
+- **Actor:** an organization operator.
+- **Initial state:** the same enrollment is production-approved, monitored, and
+  funded.
+- **Outcome:** `run` repeats bounded cycles until cancellation or budget
+  exhaustion.
+- **Boundary:** organization scheduling, retained evidence, service availability,
+  and human approval remain managed control-plane responsibilities.
+
+### Audit and recover an agent
+
+- **Actor:** an operator or reviewer.
+- **Initial state:** the owner-only state directory is available.
+- **Outcome:** `state.json` shows the current versioned identity, budget,
+  transcript, actions, and created Most resources; `activity.jsonl` shows
+  lifecycle, cost, model, and tool outcomes.
+- **Boundary:** unsupported schemas and corrupted state fail closed; the journal
+  is operational evidence, not proof that every downstream system committed an
+  ambiguous request.
+
+## How Singularity works
 
 ```mermaid
 flowchart LR
-    CLI[Singularity CLI] --> Agent[Rust agent runtime]
-    Agent -->|OpenAI-compatible HTTP with exact-body HMAC| Brama
+    CLI[Singularity CLI] --> Agent[Bounded Rust agent runtime]
+    Agent -->|exact-body HMAC completion| Brama
     Agent -->|line-delimited MCP over stdio| Las
-    Las --> Probierz
-    Las --> Skarbiec
-    Las --> Weles
-    Las --> Stado
-    Las --> Echo
-    Las --> Other[Other Wisent surfaces]
-    Agent -->|native HTTP API| Most
-    Agent --> State[Owner-only state and activity journal]
+    Las --> Children[Probierz / Skarbiec / Weles / Stado / Echo / other surfaces]
+    Agent -->|native HTTP tools| Most
+    Agent --> State[owner-only state.json + activity.jsonl]
 ```
 
-- **Brama** owns provider selection, subscription routing, retry chains, credential brokering, reauthentication, and local or cloud inference. Singularity sends native OpenAI function definitions and consumes native tool calls.
-- **Las** owns federation of Wisent MCP surfaces. Singularity starts it as a supervised child process, discovers the current namespaced tool catalog, and routes calls without changing names, schemas, or responses.
-- **Probierz** remains the source of truth for web, mobile, Electron, and native desktop test execution and analysis. Its tools are consumed through Las.
-- **Skarbiec** remains the credential vault. Its model-facing tools are consumed through Las; bootstrap credentials for Brama and Most are materialized before Singularity starts and passed as owner-only file paths.
-- **Most** remains the communication service. Singularity exposes native tools for health, chat creation, and text-message sending; it does not duplicate Apple, Twilio, worker affinity, storage, or webhook transport logic.
+Each cycle appends current budget and recent outcomes, asks Brama for a typed
+completion, validates and executes native tool calls sequentially, returns every
+success or failure as a structurally valid tool message, charges configured
+rates exactly once, atomically saves state, appends activity, and stops on a
+final response, bound, exhaustion, or cancellation.
 
-## Runtime
+Canonical ownership stays outside this repository:
 
-Each cycle:
+- **Brama:** provider/model selection, subscription routing, retry chains,
+  credential brokering, reauthentication, and inference;
+- **Las:** current namespaced tool catalogue and MCP child supervision;
+- **Most:** communication transport, workers, storage, and webhook logic;
+- **Skarbiec:** secret custody and scoped materialization;
+- **child products:** their own policy, evidence, and side effects.
 
-- appends the current budget and recent outcomes to the conversation;
-- sends the typed transcript and merged tool catalog to Brama;
-- validates and executes native tool calls sequentially;
-- feeds every success or failure back as a structurally valid tool message;
-- charges configured token and instance rates exactly once;
-- atomically saves versioned state and appends an activity event;
-- stops on a final model response, the configured tool-round bound, budget exhaustion, or cancellation.
+## Quick start
 
-Effectful remote calls are never automatically retried after an ambiguous network or protocol failure.
+This safe path builds the runtime and prints its command contract. It invokes no
+model and executes no tool.
 
-## Build and install
+### Prerequisites
+
+- Git;
+- Rust 1.85 or newer;
+- a Unix-like host for the documented owner-only permission behavior.
 
 ```bash
+git clone https://github.com/wisent-ai/singularity.git
+cd singularity
 cargo build --locked
-cargo install --path . --locked
+cargo run --locked -- --help
 ```
 
-The installed executable is `singularity`.
+Expected result: Cargo builds the `singularity` binary and the second command
+prints `run`, `once`, `doctor`, and `tools`. No production enrollment is bundled.
 
-## Commands
+Install the source build:
 
 ```bash
-singularity run
-singularity once
-singularity doctor
-singularity tools
+cargo install --path . --locked
+singularity --help
 ```
 
-- `run` executes cycles until cancellation or budget exhaustion.
-- `once` executes one bounded cycle and prints a JSON report.
-- `doctor` verifies configuration, Brama readiness and model availability, Most send readiness, Las federation, and required MCP surfaces.
-- `tools` prints the merged dynamic Las and native Most tool catalog without invoking a model.
+Before a real cycle, provision separate scoped identities and run
+`singularity doctor`. `doctor`, `tools`, `once`, and `run` may contact configured
+services; review their endpoints and authority first.
+
+## Primary interfaces
+
+```text
+singularity run       # recurring cycles until cancellation or budget exhaustion
+singularity once      # one bounded cycle with a JSON report
+singularity doctor    # configuration and service readiness
+singularity tools     # merged Las and native Most tool catalogue
+```
+
+Las tools retain canonical `<surface>__<tool>` names. If a required child is
+unavailable, startup fails rather than substituting another implementation.
 
 ## Configuration
 
-### Agent and state
+### Agent, budget, and state
 
 | Variable | Purpose |
 |---|---|
-| `SINGULARITY_AGENT_NAME` | Agent display name |
-| `SINGULARITY_AGENT_TICKER` | Stable agent ticker |
-| `SINGULARITY_AGENT_TYPE` | Agent category |
-| `SINGULARITY_SPECIALTY` | Preferred domain |
-| `SINGULARITY_STATE_DIR` | Owner-only state and activity directory |
-| `SINGULARITY_STARTING_BALANCE_USD` | Initial budget |
-| `SINGULARITY_INSTANCE_USD_PER_HOUR` | Instance cost rate |
-| `SINGULARITY_CYCLE_INTERVAL_SECS` | Pause between cycles |
-| `SINGULARITY_MAX_TOOL_ROUNDS` | Bound on model and tool rounds per cycle |
+| `SINGULARITY_AGENT_NAME` | agent display name |
+| `SINGULARITY_AGENT_TICKER` | stable agent ticker |
+| `SINGULARITY_AGENT_TYPE` | agent category |
+| `SINGULARITY_SPECIALTY` | preferred domain |
+| `SINGULARITY_STATE_DIR` | owner-only state and activity directory |
+| `SINGULARITY_STARTING_BALANCE_USD` | initial budget |
+| `SINGULARITY_INSTANCE_USD_PER_HOUR` | instance cost rate |
+| `SINGULARITY_CYCLE_INTERVAL_SECS` | pause between cycles |
+| `SINGULARITY_MAX_TOOL_ROUNDS` | per-cycle model/tool bound |
 
 ### Brama
 
 | Variable | Purpose |
 |---|---|
 | `BRAMA_BASE_URL` | Brama service origin |
-| `BRAMA_MODEL` | Model or selector such as `any` or `task:<name>` |
-| `BRAMA_AGENT_ID` | Identity included in HMAC headers |
-| `BRAMA_HMAC_SECRET_FILE` | Owner-only file containing the matching agent HMAC value |
-| `BRAMA_MAX_TOKENS` | Completion output bound |
-| `BRAMA_TEMPERATURE` | Sampling temperature |
-| `BRAMA_INPUT_PRICE_USD_PER_MILLION` | Budget rate for prompt tokens |
-| `BRAMA_OUTPUT_PRICE_USD_PER_MILLION` | Budget rate for completion tokens |
+| `BRAMA_MODEL` | model or selector such as `any` or `task:<name>` |
+| `BRAMA_AGENT_ID` | HMAC identity |
+| `BRAMA_HMAC_SECRET_FILE` | owner-only file containing the matching secret |
+| `BRAMA_MAX_TOKENS` | completion output bound |
+| `BRAMA_TEMPERATURE` | sampling temperature |
+| `BRAMA_INPUT_PRICE_USD_PER_MILLION` | prompt-token budget rate |
+| `BRAMA_OUTPUT_PRICE_USD_PER_MILLION` | completion-token budget rate |
 
-Singularity serializes a completion request once, hashes and signs those exact bytes, and sends the same byte buffer. It never copies Brama provider credentials into the transcript or activity log.
+The completion request is serialized once, signed over those exact bytes, and
+sent from the same byte buffer. Provider credentials never enter the transcript
+or activity journal.
 
-### Las and ecosystem surfaces
-
-| Variable | Purpose |
-|---|---|
-| `LAS_COMMAND` | Executable used to start Las |
-| `LAS_MCP_ENTRYPOINT` | Path to the Las MCP entrypoint |
-| `LAS_ONLY` | Surfaces enabled for the session |
-| `LAS_SKIP` | Optional surfaces excluded from the session |
-| `SINGULARITY_REQUIRED_SURFACES` | Prefixes that must be present after discovery |
-| `SINGULARITY_MCP_TIMEOUT_SECS` | Request deadline enforced around Las |
-
-Las tools retain their canonical `<surface>__<tool>` names. If a required child is unavailable, startup fails instead of silently substituting another implementation.
-
-### Most
+### Las, Most, and operations
 
 | Variable | Purpose |
 |---|---|
+| `LAS_COMMAND` / `LAS_MCP_ENTRYPOINT` | supervised Las process |
+| `LAS_ONLY` / `LAS_SKIP` | selected or excluded surfaces |
+| `SINGULARITY_REQUIRED_SURFACES` | prefixes required after discovery |
+| `SINGULARITY_MCP_TIMEOUT_SECS` | Las request deadline |
 | `MOST_BASE_URL` | Most service origin |
-| `MOST_SERVICE_TOKEN_FILE` | Owner-only file containing the service bearer |
-
-Singularity uses the native Most response shape. A healthy process with no active backend is not considered send-ready. Unsupported capabilities and pinned-worker outages remain visible to the model and operator.
-
-### Operational settings
-
-| Variable | Purpose |
-|---|---|
+| `MOST_SERVICE_TOKEN_FILE` | owner-only Most bearer file |
 | `SINGULARITY_HTTP_TIMEOUT_SECS` | Brama and Most request deadline |
-| `SINGULARITY_SHUTDOWN_GRACE_SECS` | Graceful Las shutdown period |
+| `SINGULARITY_SHUTDOWN_GRACE_SECS` | graceful Las shutdown period |
 | `RUST_LOG` | Rust tracing filter |
 
-## State and audit
+## Operational model
 
-The state directory contains:
+- **State:** atomic `state.json` plus append-only `activity.jsonl` under the
+  configured owner-only directory.
+- **Credentials:** secret file paths are bootstrap inputs; raw values are not
+  serialized into state or model context.
+- **Observability:** structured cycle reports, tracing, readiness checks, budget,
+  state versions, and activity events.
+- **Recovery:** unsupported versions or corruption fail closed; restore the prior
+  owner-controlled snapshot and reconcile ambiguous downstream effects before
+  replaying work.
+- **Cost:** configured model-token and instance rates are charged by the local
+  runtime; hosted models, compute, messaging, storage, and retained evidence are
+  separate operated costs.
 
-- `state.json`, an atomically replaced, versioned snapshot containing identity, budget, transcript, actions, and created Most resource identifiers;
-- `activity.jsonl`, an append-only operational journal containing lifecycle, cost, model, and tool outcome events.
+## Project status and support
 
-The directory and files are owner-only on Unix. State corruption and unsupported schema versions fail closed. Raw bootstrap credentials are never serialized.
-
-## Breaking cutover
-
-The former `singularity-ai` Python distribution and `from singularity import ...` API no longer exist. There are no compatibility shims. Install and operate the Rust binary or consume the Rust library crate.
-
-The previous README-only claims around automatic self-modification, persistent Cognee memory, life creation, crypto wallets, direct providers, and Python skill marketplaces are intentionally absent because they were not complete executable contracts in the repository.
-
-## License
-
-MIT
+- **Maturity:** public development runtime, version `0.3.0`.
+- **Release:** source and release badges report repository publication; they do
+  not promise a hosted SLA or production enrollment.
+- **Breaking cutover:** the former `singularity-ai` Python distribution and
+  `from singularity import ...` API no longer exist; no compatibility shim is
+  retained.
+- **Issues:** [`wisent-ai/singularity`](https://github.com/wisent-ai/singularity/issues).
+- **Security:** use private GitHub Security Advisories; never attach state,
+  transcripts, credentials, organization policy, or production endpoints to a
+  public issue.
+- **License:** MIT; see [`LICENSE`](LICENSE).
