@@ -4,6 +4,7 @@ pub mod brama;
 pub mod config;
 pub mod domain;
 pub mod error;
+pub mod onboarding;
 #[path = "platform/mcp.rs"]
 pub mod mcp;
 #[path = "platform/most.rs"]

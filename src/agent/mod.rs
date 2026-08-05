@@ -8,13 +8,14 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use crate::brama::BramaClient;
-use crate::config::{Command, CommonArgs, OutputFormat, RuntimeConfig, ToolsArgs};
+use crate::config::{Command, CommonArgs, OnboardingArgs, OutputFormat, RuntimeConfig, ToolsArgs};
 use crate::domain::{
     ActivityEvent, ActivityStore, AgentState, AgentStatus, Budget, ChatMessage, Role,
 };
 use crate::error::{AppError, ErrorClass};
 use crate::mcp::LasSupervisor;
 use crate::most::MostClient;
+use crate::onboarding;
 use crate::tools::{ToolCatalog, ToolStatus};
 
 #[derive(Debug, Serialize)]
@@ -214,6 +215,16 @@ impl Agent {
         while self.state.budget.can_call() && !cancellation.is_cancelled() {
             match self.run_once().await {
                 Ok(report) => {
+                    if let Err(error) = onboarding::record_agent_result(
+                        &self.config.identity.name,
+                        report.cycle,
+                        report.final_content.as_deref(),
+                        &report.actions,
+                    )
+                    .await
+                    {
+                        tracing::warn!(%error, "could not persist first-use result");
+                    }
                     tracing::info!(cycle = report.cycle, status = %report.status, remaining = %report.remaining_usd, "cycle finished")
                 }
                 Err(
@@ -284,17 +295,40 @@ pub async fn execute(command: Command, cancellation: CancellationToken) -> Resul
             result.and(shutdown)
         }
         Command::Once(args) => {
+            let subject = args.agent_name.clone();
             let mut agent = Agent::bootstrap(RuntimeConfig::from_args(&args)?).await?;
             let result = agent.run_once().await;
             let shutdown = agent.shutdown().await;
             let report = result?;
+            if let Err(error) = onboarding::record_agent_result(
+                &subject,
+                report.cycle,
+                report.final_content.as_deref(),
+                &report.actions,
+            )
+            .await
+            {
+                tracing::warn!(%error, "could not persist first-use result");
+            }
             shutdown?;
             println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }
         Command::Doctor(args) => doctor(&args).await,
         Command::Tools(args) => list_tools(&args).await,
+        Command::Onboarding(args) => onboarding_command(&args).await,
     }
+}
+
+async fn onboarding_command(args: &OnboardingArgs) -> Result<(), AppError> {
+    let payload = if args.action == "status" {
+        onboarding::show(&args.subject).await
+    } else {
+        onboarding::change_status(&args.subject, &args.action).await
+    }
+    .map_err(AppError::State)?;
+    println!("{}", serde_json::to_string_pretty(&payload)?);
+    Ok(())
 }
 
 async fn doctor(args: &CommonArgs) -> Result<(), AppError> {

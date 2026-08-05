@@ -27,6 +27,18 @@ pub enum Command {
     Once(CommonArgs),
     Doctor(CommonArgs),
     Tools(ToolsArgs),
+    Onboarding(OnboardingArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct OnboardingArgs {
+    #[arg(
+        value_parser = ["status", "reset", "resume", "skip", "abandon"],
+        default_value = "status"
+    )]
+    pub action: String,
+    #[arg(long, env = "SINGULARITY_AGENT_NAME", default_value = "MyAgent")]
+    pub subject: String,
 }
 
 #[derive(Debug, Clone, Args)]
