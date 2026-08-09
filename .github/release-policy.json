@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "releases": false,
+  "reason": "The README installs the runtime from the source checkout with cargo install --path . --locked, and the repository defines no supported automatic replacement publisher."
+}
