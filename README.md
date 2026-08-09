@@ -1,12 +1,14 @@
-# Singularity
+<!-- wisent-banner:start -->
+<p align="center">
+  <img src="assets/readme-banner.webp" alt="singularity by Wisent" width="100%">
+</p>
+<!-- wisent-banner:end -->
 
 <!-- wisent-readme-signals:start -->
-[![CI](https://github.com/wisent-ai/singularity/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wisent-ai/singularity/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/wisent-ai/singularity?display_name=tag&sort=semver)](https://github.com/wisent-ai/singularity/releases)
-[![Downloads](https://img.shields.io/github/downloads/wisent-ai/singularity/total)](https://github.com/wisent-ai/singularity/releases)
-[![License](https://img.shields.io/github/license/wisent-ai/singularity)](https://github.com/wisent-ai/singularity)
-[![Discord](https://img.shields.io/badge/Discord-Join%20Wisent-5865F2?logo=discord&logoColor=white)](https://discord.gg/qRjpkthq54)
+[![Source](https://img.shields.io/badge/GitHub-Source-181717?logo=github)](https://github.com/wisent-ai/singularity) [![Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github)](https://github.com/wisent-ai/singularity/issues) [![Wisent](https://img.shields.io/badge/Wisent-Website-0B0B0B)](https://wisent.ai) [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/qRjpkthq54) [![LinkedIn](https://img.shields.io/badge/LinkedIn-Follow-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/wisent-ai/) [![X](https://img.shields.io/badge/X-Follow-000000?logo=x&logoColor=white)](https://x.com/wisentai) [![Enterprise](https://img.shields.io/badge/Enterprise-Book%20a%20call-0B0B0B?logo=calendly)](https://calendly.com/lbartoszcze)
 <!-- wisent-readme-signals:end -->
+
+# Singularity
 
 **Singularity is an auditable Rust runtime for autonomous Wisent agents that
 bounds model/tool cycles, cost, state, and external effects while reusing the
