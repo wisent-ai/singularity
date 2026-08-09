@@ -1,0 +1,15 @@
+[automation]
+managed = true
+source_fingerprint = "55d0283a85b9c42d"
+category = "agent"
+
+[banner]
+title = "Run autonomous agents within bounds."
+description = "Auditable Rust runtime controlling agent loops, cost, state, tools, and external effects."
+product = "Wisent"
+url = "wisent.ai"
+theme = "dark"
+layout = "orbit-left"
+art_seed = "singularity"
+width = 1584
+height = 396
