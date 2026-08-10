@@ -11,3 +11,5 @@
 .vscode/
 *.swp
 *.swo
+
+/.wisent-output/

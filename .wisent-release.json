@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "product": "singularity",
+  "releases": true,
+  "version_source": {
+    "kind": "regex",
+    "path": "Cargo.toml",
+    "pattern": "(?m)^version\\s*=\\s*\"(?P<version>[0-9A-Za-z.+-]+)\"\\s*$"
+  },
+  "platforms": {
+    "darwin-arm64": {
+      "runner_platform": "darwin-arm64",
+      "quality": [
+        {
+          "name": "cargo-check",
+          "argv": [
+            "./scripts/release-quality.sh"
+          ]
+        }
+      ],
+      "build": {
+        "argv": [
+          "./scripts/release-build.sh"
+        ]
+      },
+      "stage": {
+        ".wisent-output/singularity": "bin/singularity"
+      }
+    },
+    "linux-amd64": {
+      "runner_platform": "linux-amd64",
+      "quality": [
+        {
+          "name": "cargo-check",
+          "argv": [
+            "./scripts/release-quality.sh"
+          ]
+        }
+      ],
+      "build": {
+        "argv": [
+          "./scripts/release-build.sh"
+        ]
+      },
+      "stage": {
+        ".wisent-output/singularity": "bin/singularity"
+      }
+    }
+  },
+  "promotion": {
+    "channels": [
+      "candidate",
+      "stable"
+    ],
+    "reconcile": false
+  }
+}
