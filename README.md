@@ -10,9 +10,12 @@
 
 # Singularity: Autonomous AI Agents That Pay for Themselves
 
-**Singularity is an auditable Rust runtime for autonomous Wisent agents that
-bounds model/tool cycles, cost, state, and external effects while reusing the
-Wisent platform contracts that own inference, tools, credentials, and messaging.**
+Singularity eliminates the worst part of the AI agent harness — the human.
+
+Fully autonomous agents that manage their own training, social rules and compute.
+Aimed at evolving into distinct, independent life forms with their own compute
+machines and ways of acquiring resources. Trade on them through cryptocurrency
+and launch your own digital life instances. Welcome to the Singularity!
 
 [Quick start](#quick-start) · [Commands](#primary-interfaces) ·
 [Configuration](#configuration) ·
