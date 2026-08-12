@@ -308,7 +308,7 @@ async fn doctor(args: &CommonArgs) -> Result<(), AppError> {
         config.temperature,
         config.http_timeout,
     )?;
-    brama.health().await?;
+    brama.readiness().await?;
     let models = brama.models().await?;
     let selector = config.brama_model == "any"
         || config.brama_model == "any-vision-capable"

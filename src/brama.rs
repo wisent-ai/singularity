@@ -115,10 +115,10 @@ impl BramaClient {
         })
     }
 
-    pub async fn health(&self) -> Result<(), AppError> {
+    pub async fn readiness(&self) -> Result<(), AppError> {
         let value: Value = self
             .http
-            .get(self.endpoint("health")?)
+            .get(self.endpoint("readyz")?)
             .send()
             .await
             .map_err(map_network)?
@@ -128,7 +128,7 @@ impl BramaClient {
             .await
             .map_err(map_network)?;
         if value.get("status").and_then(Value::as_str) != Some("ok") {
-            return Err(brama(ErrorClass::Permanent, "health response is not ok"));
+            return Err(brama(ErrorClass::Permanent, "readiness response is not ok"));
         }
         Ok(())
     }
