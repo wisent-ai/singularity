@@ -1,20 +1,21 @@
+use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
-use rust_decimal::Decimal;
-use secrecy::SecretString;
-use url::Url;
+use clap::{Args, Parser, Subcommand};
+use serde_json::Value;
 
-use crate::domain::{AgentIdentity, Pricing};
+use crate::domain::{AgentIdentity, Mission};
 use crate::error::AppError;
+
+const MAX_GOAL_BYTES: usize = 4096;
 
 #[derive(Debug, Parser)]
 #[command(
     name = "singularity",
     version,
-    about = "Autonomous Wisent agent runtime in Rust"
+    about = "Autonomous Wisent mission supervisor powered by Jeden"
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -25,223 +26,237 @@ pub struct Cli {
 pub enum Command {
     Run(CommonArgs),
     Once(CommonArgs),
-    Doctor(CommonArgs),
-    Tools(ToolsArgs),
+    Doctor(JedenArgs),
+    Tools(JedenArgs),
 }
 
 #[derive(Debug, Clone, Args)]
-pub struct ToolsArgs {
-    #[arg(long, env = "LAS_COMMAND", default_value = "node")]
-    pub las_command: String,
-    #[arg(long, env = "LAS_MCP_ENTRYPOINT", default_value = "../las/src/mcp.mjs")]
-    pub las_entrypoint: PathBuf,
-    #[arg(long, env = "LAS_ONLY", default_value = "probierz,skarbiec,most,brama")]
-    pub las_only: String,
-    #[arg(long, env = "LAS_SKIP")]
-    pub las_skip: Option<String>,
-    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
-    pub format: OutputFormat,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum OutputFormat {
-    Json,
-    Table,
+pub struct JedenArgs {
+    #[arg(long, env = "JEDEN_COMMAND", default_value = "jeden")]
+    pub jeden_command: PathBuf,
+    #[arg(long, env = "SINGULARITY_WORKSPACE", default_value = ".")]
+    pub workspace: PathBuf,
+    #[arg(long, env = "SINGULARITY_LAS_SERVER", default_value = "las")]
+    pub las_server: String,
+    #[arg(
+        long,
+        env = "SINGULARITY_JEDEN_RPC_TIMEOUT_SECS",
+        default_value = "300"
+    )]
+    pub rpc_timeout_secs: u64,
 }
 
 #[derive(Debug, Clone, Args)]
 pub struct CommonArgs {
+    #[command(flatten)]
+    pub jeden: JedenArgs,
+    #[arg(long, env = "SINGULARITY_GOAL")]
+    pub goal: String,
     #[arg(long, env = "SINGULARITY_AGENT_NAME", default_value = "MyAgent")]
     pub agent_name: String,
     #[arg(long, env = "SINGULARITY_AGENT_TICKER", default_value = "AGENT")]
     pub agent_ticker: String,
-    #[arg(long, env = "SINGULARITY_AGENT_TYPE", default_value = "general")]
-    pub agent_type: String,
     #[arg(long, env = "SINGULARITY_SPECIALTY", default_value = "general")]
     pub specialty: String,
-    #[arg(long, env = "SINGULARITY_STARTING_BALANCE_USD", default_value = "10")]
-    pub starting_balance: Decimal,
-    #[arg(long, env = "SINGULARITY_INSTANCE_USD_PER_HOUR", default_value = "0")]
-    pub instance_price: Decimal,
-    #[arg(long, env = "BRAMA_INPUT_PRICE_USD_PER_MILLION", default_value = "0")]
-    pub input_price: Decimal,
-    #[arg(long, env = "BRAMA_OUTPUT_PRICE_USD_PER_MILLION", default_value = "0")]
-    pub output_price: Decimal,
-    #[arg(long, env = "SINGULARITY_CYCLE_INTERVAL_SECS", default_value = "5")]
-    pub cycle_interval_secs: u64,
-    #[arg(long, env = "SINGULARITY_MAX_TOOL_ROUNDS", default_value = "8")]
-    pub max_tool_rounds: usize,
     #[arg(long, env = "SINGULARITY_STATE_DIR", default_value = ".singularity")]
     pub state_dir: PathBuf,
     #[arg(long, env = "SINGULARITY_RESUME", default_value = "false")]
     pub resume: bool,
-    #[arg(long, env = "BRAMA_BASE_URL", default_value = "http://127.0.0.1:8081")]
-    pub brama_url: String,
-    #[arg(long, env = "BRAMA_MODEL", default_value = "any")]
-    pub brama_model: String,
-    #[arg(long, env = "BRAMA_AGENT_ID", default_value = "singularity")]
-    pub brama_agent_id: String,
-    #[arg(long, env = "BRAMA_HMAC_SECRET_FILE")]
-    pub brama_secret_file: PathBuf,
-    #[arg(long, env = "BRAMA_MAX_TOKENS", default_value = "2048")]
-    pub max_tokens: u32,
-    #[arg(long, env = "BRAMA_TEMPERATURE", default_value = "0.2")]
-    pub temperature: f64,
-    #[arg(long, env = "LAS_COMMAND", default_value = "node")]
-    pub las_command: String,
-    #[arg(long, env = "LAS_MCP_ENTRYPOINT", default_value = "../las/src/mcp.mjs")]
-    pub las_entrypoint: PathBuf,
-    #[arg(long, env = "LAS_ONLY", default_value = "probierz,skarbiec,most,brama")]
-    pub las_only: String,
-    #[arg(long, env = "LAS_SKIP")]
-    pub las_skip: Option<String>,
-    #[arg(
-        long,
-        env = "SINGULARITY_REQUIRED_SURFACES",
-        default_value = "probierz,skarbiec"
-    )]
-    pub required_surfaces: String,
-    #[arg(long, env = "MOST_BASE_URL", default_value = "http://127.0.0.1:8080")]
-    pub most_url: String,
-    #[arg(long, env = "MOST_SERVICE_TOKEN_FILE")]
-    pub most_token_file: PathBuf,
-    #[arg(long, env = "SINGULARITY_HTTP_TIMEOUT_SECS", default_value = "120")]
-    pub http_timeout_secs: u64,
-    #[arg(long, env = "SINGULARITY_MCP_TIMEOUT_SECS", default_value = "120")]
-    pub mcp_timeout_secs: u64,
-    #[arg(long, env = "SINGULARITY_SHUTDOWN_GRACE_SECS", default_value = "10")]
-    pub shutdown_grace_secs: u64,
+    #[arg(long, env = "SINGULARITY_MAX_CYCLES", default_value = "100")]
+    pub max_cycles: u64,
+    #[arg(long, env = "SINGULARITY_CYCLE_INTERVAL_SECS", default_value = "5")]
+    pub cycle_interval_secs: u64,
+    #[arg(long, env = "JEDEN_MODEL")]
+    pub model: Option<String>,
+    #[arg(long, env = "SINGULARITY_MAX_STEPS", default_value = "64")]
+    pub max_steps: u32,
+    #[arg(long, env = "SINGULARITY_ALLOW_WRITE", default_value = "false")]
+    pub allow_write: bool,
+    #[arg(long, env = "SINGULARITY_ALLOW_COMMAND", default_value = "false")]
+    pub allow_command: bool,
+    #[arg(long, env = "SINGULARITY_AUTO_APPROVE", default_value = "false")]
+    pub auto_approve: bool,
 }
 
 pub struct RuntimeConfig {
     pub identity: AgentIdentity,
-    pub starting_balance: Decimal,
-    pub pricing: Pricing,
-    pub cycle_interval: Duration,
-    pub max_tool_rounds: usize,
+    pub mission: Mission,
     pub state_dir: PathBuf,
     pub resume: bool,
-    pub brama_url: Url,
-    pub brama_model: String,
-    pub brama_agent_id: String,
-    pub brama_secret: SecretString,
-    pub max_tokens: u32,
-    pub temperature: f64,
-    pub las_command: String,
-    pub las_entrypoint: PathBuf,
-    pub las_only: String,
-    pub las_skip: Option<String>,
-    pub required_surfaces: Vec<String>,
-    pub most_url: Url,
-    pub most_token: SecretString,
-    pub http_timeout: Duration,
-    pub mcp_timeout: Duration,
-    pub shutdown_grace: Duration,
+    pub resume_session: Option<PathBuf>,
+    pub max_cycles: u64,
+    pub cycle_interval: Duration,
+    pub jeden_command: PathBuf,
+    pub workspace: PathBuf,
+    pub model: Option<String>,
+    pub max_steps: u32,
+    pub allow_write: bool,
+    pub allow_command: bool,
+    pub auto_approve: bool,
+    pub las_server: String,
+    pub rpc_timeout: Duration,
 }
 
 impl RuntimeConfig {
-    pub fn from_args(args: &CommonArgs) -> Result<Self, AppError> {
-        if args.max_tool_rounds == usize::default() {
-            return Err(AppError::Config("max tool rounds must be positive".into()));
+    pub fn from_args(args: &CommonArgs, resume_session: Option<PathBuf>) -> Result<Self, AppError> {
+        let goal = normalized_goal(&args.goal)?;
+        if args.max_cycles == 0 {
+            return Err(AppError::Config("max cycles must be positive".into()));
         }
-        if args.starting_balance.is_sign_negative()
-            || args.input_price.is_sign_negative()
-            || args.output_price.is_sign_negative()
-            || args.instance_price.is_sign_negative()
-        {
-            return Err(AppError::Config(
-                "prices and balance cannot be negative".into(),
-            ));
+        if args.max_steps == 0 {
+            return Err(AppError::Config("Jeden max steps must be positive".into()));
         }
-        let max_temperature: f64 = "2".parse().expect("static temperature is valid");
-        if args.temperature.is_sign_negative()
-            || args.temperature > max_temperature
-            || !args.temperature.is_finite()
-        {
-            return Err(AppError::Config(
-                "temperature must be finite and between zero and two".into(),
-            ));
-        }
-        if !args.las_entrypoint.is_file() {
-            return Err(AppError::Config(format!(
-                "LAS entrypoint not found: {}",
-                args.las_entrypoint.display()
-            )));
-        }
+        let workspace = canonical_workspace(&args.jeden.workspace)?;
+        validate_las_config(&workspace, &args.jeden.las_server)?;
+        let model = args
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        let identity = AgentIdentity {
+            name: nonempty(&args.agent_name, "agent name")?,
+            ticker: nonempty(&args.agent_ticker, "agent ticker")?,
+            specialty: nonempty(&args.specialty, "specialty")?,
+        };
+        let mission = Mission {
+            goal,
+            workspace: workspace.clone(),
+            model: model.clone(),
+            allow_write: args.allow_write,
+            allow_command: args.allow_command,
+            auto_approve: args.auto_approve,
+            max_steps: args.max_steps,
+        };
         Ok(Self {
-            identity: AgentIdentity {
-                name: args.agent_name.clone(),
-                ticker: args.agent_ticker.clone(),
-                agent_type: args.agent_type.clone(),
-                specialty: args.specialty.clone(),
-            },
-            starting_balance: args.starting_balance,
-            pricing: Pricing {
-                input_per_million: args.input_price,
-                output_per_million: args.output_price,
-                instance_per_hour: args.instance_price,
-            },
-            cycle_interval: Duration::from_secs(args.cycle_interval_secs),
-            max_tool_rounds: args.max_tool_rounds,
+            identity,
+            mission,
             state_dir: args.state_dir.clone(),
             resume: args.resume,
-            brama_url: parse_http_url(&args.brama_url, "BRAMA_BASE_URL")?,
-            brama_model: args.brama_model.clone(),
-            brama_agent_id: args.brama_agent_id.clone(),
-            brama_secret: read_secret(&args.brama_secret_file)?,
-            max_tokens: args.max_tokens,
-            temperature: args.temperature,
-            las_command: args.las_command.clone(),
-            las_entrypoint: args.las_entrypoint.clone(),
-            las_only: args.las_only.clone(),
-            las_skip: args.las_skip.clone(),
-            required_surfaces: args
-                .required_surfaces
-                .split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_owned)
-                .collect(),
-            most_url: parse_http_url(&args.most_url, "MOST_BASE_URL")?,
-            most_token: read_secret(&args.most_token_file)?,
-            http_timeout: Duration::from_secs(args.http_timeout_secs),
-            mcp_timeout: Duration::from_secs(args.mcp_timeout_secs),
-            shutdown_grace: Duration::from_secs(args.shutdown_grace_secs),
+            resume_session,
+            max_cycles: args.max_cycles,
+            cycle_interval: Duration::from_secs(args.cycle_interval_secs),
+            jeden_command: args.jeden.jeden_command.clone(),
+            workspace,
+            model,
+            max_steps: args.max_steps,
+            allow_write: args.allow_write,
+            allow_command: args.allow_command,
+            auto_approve: args.auto_approve,
+            las_server: args.jeden.las_server.clone(),
+            rpc_timeout: Duration::from_secs(args.jeden.rpc_timeout_secs),
         })
     }
 }
 
-pub fn parse_http_url(value: &str, name: &str) -> Result<Url, AppError> {
-    let url = Url::parse(value).map_err(|error| AppError::Config(format!("{name}: {error}")))?;
-    if !matches!(url.scheme(), "http" | "https") {
-        return Err(AppError::Config(format!("{name} must use http or https")));
+pub fn validate_jeden_args(args: &JedenArgs) -> Result<PathBuf, AppError> {
+    if args.rpc_timeout_secs == 0 {
+        return Err(AppError::Config(
+            "Jeden RPC timeout must be positive".into(),
+        ));
     }
-    Ok(url)
+    let workspace = canonical_workspace(&args.workspace)?;
+    validate_las_config(&workspace, &args.las_server)?;
+    Ok(workspace)
 }
 
-pub fn read_secret(path: &PathBuf) -> Result<SecretString, AppError> {
-    if !path.is_file() {
-        return Err(AppError::Secret(format!(
-            "not a regular file: {}",
-            path.display()
-        )));
+pub fn validate_las_config(workspace: &Path, server_name: &str) -> Result<(), AppError> {
+    let server_name = server_name.trim();
+    if server_name.is_empty() {
+        return Err(AppError::Config(
+            "Las MCP server name must not be empty".into(),
+        ));
     }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let forbidden: u32 = "63".parse().expect("static permission mask is valid");
-        if fs::metadata(path)?.permissions().mode() & forbidden != u32::default() {
-            return Err(AppError::Secret(format!(
-                "{} must not be group/world accessible",
+    let mut server = None;
+    let mut disabled = false;
+    let mut paths = Vec::new();
+    if let Some(home) = env::var_os("HOME") {
+        paths.push(PathBuf::from(home).join(".jeden/mcp.json"));
+    }
+    paths.push(workspace.join(".jeden/mcp.json"));
+    for path in paths {
+        if !path.is_file() {
+            continue;
+        }
+        let value: Value = serde_json::from_slice(&fs::read(&path)?).map_err(|error| {
+            AppError::Config(format!(
+                "invalid Jeden MCP configuration {}: {error}",
                 path.display()
-            )));
+            ))
+        })?;
+        if let Some(candidate) = value
+            .get("mcpServers")
+            .and_then(Value::as_object)
+            .and_then(|servers| servers.get(server_name))
+        {
+            server = Some(candidate.clone());
+        }
+        if value
+            .get("disabledServers")
+            .and_then(Value::as_array)
+            .is_some_and(|values| {
+                values
+                    .iter()
+                    .any(|value| value.as_str() == Some(server_name))
+            })
+        {
+            disabled = true;
         }
     }
-    let value = fs::read_to_string(path)?
-        .trim_end_matches(['\r', '\n'])
-        .to_owned();
-    if value.is_empty() {
-        return Err(AppError::Secret(format!("{} is empty", path.display())));
+    let server = server.ok_or_else(|| {
+        AppError::Config(format!(
+            "Jeden MCP server '{server_name}' is not configured in user or workspace scope"
+        ))
+    })?;
+    if disabled || server.get("enabled").and_then(Value::as_bool) == Some(false) {
+        return Err(AppError::Config(format!(
+            "Jeden MCP server '{server_name}' is disabled"
+        )));
     }
-    Ok(SecretString::from(value))
+    if server.get("command").and_then(Value::as_str).is_none() {
+        return Err(AppError::Config(format!(
+            "Jeden MCP server '{server_name}' must be a local stdio command"
+        )));
+    }
+    Ok(())
+}
+
+fn canonical_workspace(path: &Path) -> Result<PathBuf, AppError> {
+    let canonical = fs::canonicalize(path).map_err(|error| {
+        AppError::Config(format!(
+            "workspace {} is unavailable: {error}",
+            path.display()
+        ))
+    })?;
+    if !canonical.is_dir() {
+        return Err(AppError::Config(format!(
+            "workspace is not a directory: {}",
+            canonical.display()
+        )));
+    }
+    Ok(canonical)
+}
+
+fn normalized_goal(value: &str) -> Result<String, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(AppError::Config("goal must not be empty".into()));
+    }
+    if value.len() > MAX_GOAL_BYTES {
+        return Err(AppError::Config(format!(
+            "goal must not exceed {MAX_GOAL_BYTES} bytes"
+        )));
+    }
+    if value.contains('\0') {
+        return Err(AppError::Config("goal must not contain NUL".into()));
+    }
+    Ok(value.to_owned())
+}
+
+fn nonempty(value: &str, label: &str) -> Result<String, AppError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(AppError::Config(format!("{label} must not be empty")));
+    }
+    Ok(value.to_owned())
 }
