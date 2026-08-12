@@ -33,6 +33,7 @@ pub struct JedenRpc {
     stdout: BufReader<ChildStdout>,
     next_id: u64,
     deadline: Duration,
+    auto_approve: bool,
 }
 
 impl JedenRpc {
@@ -62,6 +63,7 @@ impl JedenRpc {
             stdout: BufReader::new(stdout),
             next_id: 1,
             deadline,
+            auto_approve: false,
         };
         let ready = rpc.read_message().await?;
         if ready.get("type").and_then(Value::as_str) != Some("ready")
@@ -83,6 +85,7 @@ impl JedenRpc {
         &mut self,
         config: &RuntimeConfig,
     ) -> Result<SessionHandle, AppError> {
+        self.auto_approve = config.auto_approve;
         let options = json!({
             "cwd": config.workspace,
             "model": config.model,
@@ -189,7 +192,7 @@ impl JedenRpc {
                     .ok_or_else(|| AppError::Jeden("permission request omitted token".into()))?;
                 self.write_auxiliary(
                     "approval/resolve",
-                    json!({"token": token, "approved": false}),
+                    json!({"token": token, "approved": self.auto_approve}),
                 )
                 .await?;
             }
