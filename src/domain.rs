@@ -1,171 +1,31 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use chrono::{DateTime, Utc};
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::AppError;
 
-pub const STATE_SCHEMA_VERSION: &str = "rust-v1";
+pub const STATE_SCHEMA_VERSION: &str = "jeden-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    System,
-    User,
-    Assistant,
-    Tool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatMessage {
-    pub role: Role,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub content: Option<Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_call_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<ToolCall>>,
-}
-
-impl ChatMessage {
-    pub fn text(role: Role, text: impl Into<String>) -> Self {
-        Self {
-            role,
-            content: Some(Value::String(text.into())),
-            tool_call_id: None,
-            name: None,
-            tool_calls: None,
-        }
-    }
-
-    pub fn tool(call: &ToolCall, content: Value) -> Self {
-        Self {
-            role: Role::Tool,
-            content: Some(Value::String(content.to_string())),
-            tool_call_id: Some(call.id.clone()),
-            name: Some(call.function.name.clone()),
-            tool_calls: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolDefinition {
-    #[serde(rename = "type")]
-    pub kind: String,
-    pub function: ToolFunctionDefinition,
-}
-
-impl ToolDefinition {
-    pub fn function(
-        name: impl Into<String>,
-        description: impl Into<String>,
-        parameters: Value,
-    ) -> Self {
-        Self {
-            kind: "function".into(),
-            function: ToolFunctionDefinition {
-                name: name.into(),
-                description: description.into(),
-                parameters,
-            },
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolFunctionDefinition {
+pub struct AgentIdentity {
     pub name: String,
-    pub description: String,
-    pub parameters: Value,
+    pub ticker: String,
+    pub specialty: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCall {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub kind: String,
-    pub function: ToolCallFunction,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolCallFunction {
-    pub name: String,
-    pub arguments: String,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
-pub struct TokenUsage {
-    pub prompt_tokens: u64,
-    pub completion_tokens: u64,
-    pub total_tokens: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Pricing {
-    pub input_per_million: Decimal,
-    pub output_per_million: Decimal,
-    pub instance_per_hour: Decimal,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Budget {
-    pub starting: Decimal,
-    pub remaining: Decimal,
-    pub api_spent: Decimal,
-    pub instance_spent: Decimal,
-    pub total_tokens: u64,
-}
-
-impl Budget {
-    pub fn new(starting: Decimal) -> Result<Self, AppError> {
-        if starting.is_sign_negative() {
-            return Err(AppError::Config(
-                "starting balance cannot be negative".into(),
-            ));
-        }
-        Ok(Self {
-            starting,
-            remaining: starting,
-            api_spent: Decimal::ZERO,
-            instance_spent: Decimal::ZERO,
-            total_tokens: u64::default(),
-        })
-    }
-
-    pub fn can_call(&self) -> bool {
-        self.remaining > Decimal::ZERO
-    }
-
-    pub fn debit(
-        &mut self,
-        usage: TokenUsage,
-        elapsed: std::time::Duration,
-        pricing: &Pricing,
-    ) -> Decimal {
-        let million = Decimal::from_str("1000000").expect("static decimal is valid");
-        let nanos_per_hour = Decimal::from_str("3600000000000").expect("static decimal is valid");
-        let api = Decimal::from(usage.prompt_tokens) * pricing.input_per_million / million
-            + Decimal::from(usage.completion_tokens) * pricing.output_per_million / million;
-        let instance = Decimal::from_str(&elapsed.as_nanos().to_string())
-            .expect("duration is decimal")
-            * pricing.instance_per_hour
-            / nanos_per_hour;
-        let total = api + instance;
-        self.api_spent += api;
-        self.instance_spent += instance;
-        self.total_tokens = self.total_tokens.saturating_add(usage.total_tokens);
-        self.remaining -= total;
-        total
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Mission {
+    pub goal: String,
+    pub workspace: PathBuf,
+    pub model: Option<String>,
+    pub allow_write: bool,
+    pub allow_command: bool,
+    pub auto_approve: bool,
+    pub max_steps: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -173,78 +33,42 @@ impl Budget {
 pub enum AgentStatus {
     Starting,
     Running,
+    Completed,
+    CycleLimit,
     Stopping,
     Stopped,
-    Exhausted,
     Failed,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentIdentity {
-    pub name: String,
-    pub ticker: String,
-    pub agent_type: String,
-    pub specialty: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ActionRecord {
-    pub cycle: u64,
-    pub tool: String,
-    pub status: String,
-    pub at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct CreatedResources {
-    pub chat_ids: Vec<Uuid>,
-    pub message_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentState {
     pub schema_version: String,
     pub identity: AgentIdentity,
+    pub mission: Mission,
     pub status: AgentStatus,
     pub cycle: u64,
-    pub budget: Budget,
-    pub conversation: Vec<ChatMessage>,
-    pub recent_actions: Vec<ActionRecord>,
-    pub created_resources: CreatedResources,
+    pub max_cycles: u64,
+    pub jeden_session_path: Option<PathBuf>,
+    pub last_result: Option<String>,
     pub started_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 impl AgentState {
-    pub fn new(identity: AgentIdentity, budget: Budget, system_prompt: String) -> Self {
+    pub fn new(identity: AgentIdentity, mission: Mission, max_cycles: u64) -> Self {
         let now = Utc::now();
         Self {
             schema_version: STATE_SCHEMA_VERSION.into(),
             identity,
+            mission,
             status: AgentStatus::Starting,
-            cycle: u64::default(),
-            budget,
-            conversation: vec![ChatMessage::text(Role::System, system_prompt)],
-            recent_actions: vec![],
-            created_resources: CreatedResources::default(),
+            cycle: 0,
+            max_cycles,
+            jeden_session_path: None,
+            last_result: None,
             started_at: now,
             updated_at: now,
         }
-    }
-
-    pub fn record_action(&mut self, tool: impl Into<String>, status: impl Into<String>) {
-        self.recent_actions.push(ActionRecord {
-            cycle: self.cycle,
-            tool: tool.into(),
-            status: status.into(),
-            at: Utc::now(),
-        });
-        let limit: usize = "100".parse().expect("static limit is valid");
-        if self.recent_actions.len() > limit {
-            self.recent_actions
-                .drain(..self.recent_actions.len() - limit);
-        }
-        self.updated_at = Utc::now();
     }
 }
 
@@ -253,26 +77,18 @@ impl AgentState {
 pub enum ActivityEvent {
     Started {
         at: DateTime<Utc>,
+        session_path: Option<PathBuf>,
     },
     CycleStarted {
         at: DateTime<Utc>,
         cycle: u64,
     },
-    ModelCompleted {
+    JedenCompleted {
         at: DateTime<Utc>,
         cycle: u64,
-        usage: TokenUsage,
-    },
-    ToolFinished {
-        at: DateTime<Utc>,
-        cycle: u64,
-        tool: String,
-        status: String,
-    },
-    CostDebited {
-        at: DateTime<Utc>,
-        cycle: u64,
-        amount: Decimal,
+        request_id: String,
+        status: AgentStatus,
+        session_path: PathBuf,
     },
     Warning {
         at: DateTime<Utc>,
@@ -296,7 +112,7 @@ impl ActivityStore {
     pub fn open(dir: impl Into<PathBuf>) -> Result<Self, AppError> {
         let dir = dir.into();
         fs::create_dir_all(&dir)?;
-        set_mode(&dir, "448")?;
+        set_mode(&dir, 0o700)?;
         Ok(Self {
             state_path: dir.join("state.json"),
             journal_path: dir.join("activity.jsonl"),
@@ -311,7 +127,7 @@ impl ActivityStore {
         let state: AgentState = serde_json::from_slice(&fs::read(&self.state_path)?)?;
         if state.schema_version != STATE_SCHEMA_VERSION {
             return Err(AppError::State(format!(
-                "unsupported state schema {}",
+                "unsupported state schema {}; start with a new state directory",
                 state.schema_version
             )));
         }
@@ -326,7 +142,7 @@ impl ActivityStore {
         serde_json::to_writer(&mut file, event)?;
         file.write_all(b"\n")?;
         file.sync_data()?;
-        set_mode(&self.journal_path, "384")
+        set_mode(&self.journal_path, 0o600)
     }
 
     pub fn save(&self, state: &AgentState) -> Result<(), AppError> {
@@ -336,9 +152,9 @@ impl ActivityStore {
             file.write_all(&serde_json::to_vec_pretty(state)?)?;
             file.sync_all()?;
         }
-        set_mode(&tmp, "384")?;
+        set_mode(&tmp, 0o600)?;
         fs::rename(&tmp, &self.state_path)?;
-        set_mode(&self.state_path, "384")
+        set_mode(&self.state_path, 0o600)
     }
 
     pub fn state_path(&self) -> &Path {
@@ -346,13 +162,10 @@ impl ActivityStore {
     }
 }
 
-fn set_mode(path: &Path, decimal_mode: &str) -> Result<(), AppError> {
+fn set_mode(path: &Path, mode: u32) -> Result<(), AppError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mode = decimal_mode
-            .parse()
-            .map_err(|error| AppError::State(format!("invalid file mode: {error}")))?;
         fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
     }
     Ok(())
