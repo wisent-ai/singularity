@@ -289,7 +289,7 @@ mod tests {
             remote: "origin".into(),
             base_branch: "main".into(),
             branch_prefix: "proposal/".into(),
-            github_repository: "wisent-ai/wisentbot".into(),
+            github_repository: "wisent-ai/singularity".into(),
             github_head_owner: "attacker".into(),
             allowed_paths: vec![PathBuf::from("src")],
             checks: BTreeMap::new(),
