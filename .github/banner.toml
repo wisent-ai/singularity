@@ -1,13 +1,13 @@
 [automation]
 managed = true
-source_fingerprint = "55d0283a85b9c42d"
+source_fingerprint = "ab746d477567805d"
 category = "agent"
 
 [banner]
 title = "Run autonomous agents within bounds."
 description = "Auditable Rust runtime controlling agent loops, cost, state, tools, and external effects."
 product = "Wisent"
-url = "wisent.ai"
+url = "wisent.com"
 theme = "dark"
 layout = "orbit-left"
 art_seed = "singularity"
