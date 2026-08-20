@@ -124,6 +124,25 @@ singularity doctor  validate Las configuration and delegate readiness to Jeden
 singularity tools   validate Las configuration and print Jeden's tool catalogue
 ```
 
+## Policy-isolated companion binaries
+
+The crate also builds three narrow companions. They are not alternate agent
+runtimes and do not bypass Jeden:
+
+- `singularity-bootstrap` verifies an operator-signed workload manifest,
+  redeems only its declared Brama and Most capabilities through the local
+  Skarbiec broker, and starts the canonical `singularity` executable with
+  owner-only materialized inputs;
+- `singularity-repo-mcp` exposes only the repository proposal workflow allowed
+  by an owner-controlled policy and state directory;
+- `singularity-finance-mcp` exposes proposal, status and cancellation under an
+  offline-signed policy and enable lease; it has no payment credential or
+  broadcaster.
+
+Las may federate the two MCP companions as separate child processes. The
+Singularity mission supervisor still talks only to Jeden, and Jeden remains the
+sole reasoning and tool runtime.
+
 Example:
 
 ```bash

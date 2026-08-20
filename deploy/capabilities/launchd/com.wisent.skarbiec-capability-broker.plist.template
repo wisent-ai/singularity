@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.wisent.skarbiec-capability-broker</string>
+  <key>UserName</key>
+  <string>REPLACE_WITH_DEDICATED_SKARBIEC_UID</string>
+  <key>GroupName</key>
+  <string>REPLACE_WITH_DEDICATED_SKARBIEC_GID</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/wisent/libexec/capability-preflight.py</string>
+    <string>broker-macos</string>
+    <string>/Library/Application Support/Wisent/capabilities/skarbiec-broker.env</string>
+    <string>--exec</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Library/Application Support/Wisent/private/skarbiec-capability</string>
+  <key>StandardOutPath</key>
+  <string>/Library/Logs/Wisent/private/skarbiec-capability/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Library/Logs/Wisent/private/skarbiec-capability/stderr.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>KeepAlive</key>
+  <dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+</dict>
+</plist>

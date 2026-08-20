@@ -1,0 +1,55 @@
+[Unit]
+Description=Wisent capability-isolated agent %i
+After=network-online.target skarbiec-capability-broker.service
+Wants=network-online.target
+Requires=skarbiec-capability-broker.service
+ConditionPathIsExecutable=/opt/wisent/releases/singularity-bootstrap
+
+[Service]
+Type=simple
+User=wisent-agent-%i
+Group=wisent-agent-%i
+SupplementaryGroups=skarbiec-capability-clients
+UMask=0077
+EnvironmentFile=/etc/wisent/agents/%i/agent.env
+ExecStartPre=/opt/wisent/libexec/capability-preflight.py agent /etc/wisent/agents/%i/agent.env
+ExecStart=/opt/wisent/releases/singularity-bootstrap
+RuntimeDirectory=wisent-agent-%i
+RuntimeDirectoryMode=0700
+StateDirectory=wisent-agent-%i
+StateDirectoryMode=0700
+ReadWritePaths=/run/wisent-agent-%i /var/lib/wisent-agent-%i
+ReadOnlyPaths=/etc/wisent/agents/%i /opt/wisent/releases
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+SocketBindDeny=any
+AmbientCapabilities=
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProcSubset=pid
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@clock @cpu-emulation @debug @keyring @module @mount @obsolete @privileged @raw-io @reboot @resources @swap
+RestrictFileSystems=@basic-api
+KillMode=control-group
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=45s
+
+[Install]
+WantedBy=multi-user.target

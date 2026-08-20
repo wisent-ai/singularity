@@ -1,0 +1,6 @@
+# Copy to the same name without .example only after replacing documentation CIDRs
+# with the resolved, deployment-pinned Brama provider and Supabase destinations.
+[Service]
+IPAddressDeny=any
+IPAddressAllow=192.0.2.30/32
+IPAddressAllow=2001:db8::30/128

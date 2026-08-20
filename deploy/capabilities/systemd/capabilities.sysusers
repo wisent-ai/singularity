@@ -1,0 +1,14 @@
+# Dedicated identities. The target suffixes are the exact capability-contract
+# workload targets; no two consumers share a UID or primary group.
+g skarbiec-capability -
+g skarbiec-capability-clients -
+u skarbiec-capability - "Skarbiec capability broker" /var/lib/skarbiec-capability /usr/sbin/nologin
+u wisent-agent-weles - "Weles capability consumer" /var/lib/wisent-agent-weles /usr/sbin/nologin
+u wisent-agent-most-service - "Most capability consumer" /var/lib/wisent-agent-most-service /usr/sbin/nologin
+u wisent-agent-brama - "Brama capability consumer" /var/lib/wisent-agent-brama /usr/sbin/nologin
+u wisent-agent-singularity-bootstrap - "Singularity bootstrap capability consumer" /var/lib/wisent-agent-singularity-bootstrap /usr/sbin/nologin
+m skarbiec-capability skarbiec-capability-clients
+m wisent-agent-weles skarbiec-capability-clients
+m wisent-agent-most-service skarbiec-capability-clients
+m wisent-agent-brama skarbiec-capability-clients
+m wisent-agent-singularity-bootstrap skarbiec-capability-clients

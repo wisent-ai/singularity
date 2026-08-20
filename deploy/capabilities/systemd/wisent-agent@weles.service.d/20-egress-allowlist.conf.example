@@ -1,0 +1,6 @@
+# Copy to the same name without .example only after replacing documentation CIDRs
+# with the resolved, deployment-pinned Weles destinations. Never allow 0.0.0.0/0 or ::/0.
+[Service]
+IPAddressDeny=any
+IPAddressAllow=192.0.2.10/32
+IPAddressAllow=2001:db8::10/128

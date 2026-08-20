@@ -10,6 +10,8 @@ pub enum AppError {
     Jeden(String),
     #[error("runtime: {0}")]
     Runtime(String),
+    #[error("credential: {0}")]
+    Secret(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -22,7 +24,7 @@ impl AppError {
             Self::Config(_) => 2,
             Self::Jeden(_) => 3,
             Self::State(_) | Self::Io(_) => 4,
-            Self::Runtime(_) | Self::Json(_) => 5,
+            Self::Runtime(_) | Self::Secret(_) | Self::Json(_) => 5,
         }
     }
 }

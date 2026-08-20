@@ -8,7 +8,6 @@ use serde_json::Value;
 
 use crate::domain::{AgentIdentity, Mission};
 use crate::error::AppError;
-
 const MAX_GOAL_BYTES: usize = 4096;
 
 #[derive(Debug, Parser)]
@@ -58,6 +57,7 @@ pub struct CommonArgs {
     pub agent_ticker: String,
     #[arg(long, env = "SINGULARITY_SPECIALTY", default_value = "general")]
     pub specialty: String,
+
     #[arg(long, env = "SINGULARITY_STATE_DIR", default_value = ".singularity")]
     pub state_dir: PathBuf,
     #[arg(long, env = "SINGULARITY_RESUME", default_value = "false")]

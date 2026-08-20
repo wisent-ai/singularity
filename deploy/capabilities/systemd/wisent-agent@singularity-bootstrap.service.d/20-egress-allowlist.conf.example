@@ -1,0 +1,6 @@
+# Copy to the same name without .example only after replacing documentation CIDRs
+# with the resolved, deployment-pinned Brama and Most bootstrap destinations.
+[Service]
+IPAddressDeny=any
+IPAddressAllow=192.0.2.40/32
+IPAddressAllow=2001:db8::40/128

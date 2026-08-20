@@ -1,0 +1,15 @@
+d /etc/wisent/capabilities 0700 skarbiec-capability skarbiec-capability -
+d /etc/wisent/agents 0755 root root -
+d /etc/wisent/agents/weles 0700 wisent-agent-weles wisent-agent-weles -
+d /etc/wisent/agents/most-service 0700 wisent-agent-most-service wisent-agent-most-service -
+d /etc/wisent/agents/brama 0700 wisent-agent-brama wisent-agent-brama -
+d /etc/wisent/agents/singularity-bootstrap 0700 wisent-agent-singularity-bootstrap wisent-agent-singularity-bootstrap -
+d /run/skarbiec-capability 0750 skarbiec-capability skarbiec-capability-clients -
+d /var/lib/skarbiec-capability 0700 skarbiec-capability skarbiec-capability -
+d /var/lib/skarbiec-worm-staging 0700 skarbiec-capability skarbiec-capability -
+d /var/log/skarbiec-capability 0700 skarbiec-capability skarbiec-capability -
+d /var/log/skarbiec-capability/audit 0700 skarbiec-capability skarbiec-capability -
+d /var/lib/wisent-agent-weles 0700 wisent-agent-weles wisent-agent-weles -
+d /var/lib/wisent-agent-most-service 0700 wisent-agent-most-service wisent-agent-most-service -
+d /var/lib/wisent-agent-brama 0700 wisent-agent-brama wisent-agent-brama -
+d /var/lib/wisent-agent-singularity-bootstrap 0700 wisent-agent-singularity-bootstrap wisent-agent-singularity-bootstrap -

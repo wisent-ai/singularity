@@ -1,0 +1,6 @@
+# Copy to the same name without .example only after replacing documentation CIDRs
+# with the resolved, deployment-pinned Most service/database/provider destinations.
+[Service]
+IPAddressDeny=any
+IPAddressAllow=192.0.2.20/32
+IPAddressAllow=2001:db8::20/128

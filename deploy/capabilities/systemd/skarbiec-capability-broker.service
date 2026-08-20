@@ -1,0 +1,55 @@
+[Unit]
+Description=Skarbiec capability broker
+After=local-fs.target
+Before=wisent-agent@.service
+ConditionPathIsExecutable=/opt/wisent/releases/skarbiec-entitlements-router
+
+[Service]
+Type=simple
+User=skarbiec-capability
+Group=skarbiec-capability-clients
+UMask=0077
+EnvironmentFile=/etc/wisent/capabilities/skarbiec-broker.env
+ExecStartPre=/opt/wisent/libexec/capability-preflight.py broker-linux /etc/wisent/capabilities/skarbiec-broker.env
+ExecStart=/opt/wisent/releases/skarbiec-entitlements-router capability-serve
+RuntimeDirectory=skarbiec-capability
+RuntimeDirectoryMode=0750
+StateDirectory=skarbiec-capability
+StateDirectoryMode=0700
+LogsDirectory=skarbiec-capability/audit
+LogsDirectoryMode=0700
+ReadWritePaths=/run/skarbiec-capability /var/lib/skarbiec-capability /var/log/skarbiec-capability/audit /var/lib/skarbiec-worm-staging
+ReadOnlyPaths=/etc/wisent/capabilities /opt/wisent/releases
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProcSubset=pid
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@clock @cpu-emulation @debug @keyring @module @mount @obsolete @privileged @raw-io @reboot @resources @swap
+RestrictFileSystems=@basic-api
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+SocketBindDeny=any
+RestrictNetworkInterfaces=lo
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target
