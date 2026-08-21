@@ -54,6 +54,15 @@ struct Execute {
     transaction_id: String,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExecutionResponse {
+    executor_id: String,
+    executor_reference_hash: String,
+    executor_signature_hex: String,
+    worm_receipt_file: PathBuf,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OwnerEvent {
@@ -365,7 +374,7 @@ impl FinanceService {
                 .beneficiaries
                 .get(&tx.intent.beneficiary_id)
                 .ok_or_else(|| SurfaceError::policy("beneficiary is absent from policy"))?;
-            json!({
+            let request = json!({
                 "version": "singularity.finance.execute.v1",
                 "transaction_id": tx.transaction_id,
                 "intent_hash": tx.intent_hash,
@@ -378,7 +387,22 @@ impl FinanceService {
                 "expires_at": tx.intent.expires_at,
                 "policy_id": tx.policy_id,
                 "policy_version": tx.policy_version,
-            })
+            });
+            tx.reconciliation_required = true;
+            transition(
+                &mut tx,
+                TransactionStatus::Indeterminate,
+                "finance_executor_dispatch",
+                None,
+            );
+            let commit_id = format!("execute_dispatch_{}", tx.transaction_id);
+            self.state.commit(
+                &commit_id,
+                &tx,
+                None,
+                json!({"type":"execution_dispatched","transaction_id":tx.transaction_id,"intent_hash":tx.intent_hash}),
+            )?;
+            request
         };
         let mut child = Command::new(&self.executor)
             .stdin(Stdio::piped())
@@ -412,20 +436,53 @@ impl FinanceService {
                 "executor response exceeds size limit",
             ));
         }
-        let response: Value = serde_json::from_slice(&output.stdout).map_err(|error| {
-            SurfaceError::internal(format!("executor returned invalid JSON: {error}"))
-        })?;
-        let event_file = response
-            .get("signed_owner_event_file")
-            .and_then(Value::as_str)
-            .map(PathBuf::from)
-            .filter(|path| path.is_absolute())
-            .ok_or_else(|| {
-                SurfaceError::internal(
-                    "executor response must name an absolute signed_owner_event_file",
-                )
+        let response: ExecutionResponse =
+            serde_json::from_slice(&output.stdout).map_err(|error| {
+                SurfaceError::internal(format!("executor returned invalid JSON: {error}"))
             })?;
-        self.ingest_owner_event(&event_file)
+        require_hash(&response.executor_reference_hash)?;
+        let occurred_at = Utc::now();
+        let _lock = self.state.lock()?;
+        let mut tx = self.state.load_transaction(&input.transaction_id)?;
+        if tx.status != TransactionStatus::Indeterminate || !tx.reconciliation_required {
+            return Err(SurfaceError::conflict(
+                "execution response does not match dispatched state",
+            ));
+        }
+        verify_role(
+            &self.policy.custody_authorities.executors,
+            "submission",
+            &self.policy,
+            &tx,
+            &response.executor_id,
+            &response.executor_reference_hash,
+            &response.executor_signature_hex,
+        )?;
+        let receipt_hash = verify_worm_receipt(
+            &self.policy,
+            &tx,
+            "submitted",
+            &response.executor_reference_hash,
+            &occurred_at,
+            &response.worm_receipt_file,
+        )?;
+        let worm = json!({"type":"submission","worm_sink_id":self.policy.worm_sink_id,"worm_receipt_hash":receipt_hash,"transaction_id":tx.transaction_id,"intent_hash":tx.intent_hash,"executor_reference_hash":response.executor_reference_hash,"at":occurred_at});
+        self.state.append_worm(&self.policy.worm_sink_dir, &worm)?;
+        tx.reconciliation_required = false;
+        transition(
+            &mut tx,
+            TransactionStatus::Submitted,
+            "isolated_executor",
+            Some(response.executor_reference_hash),
+        );
+        let commit_id = format!("execute_submitted_{}", tx.transaction_id);
+        self.state.commit(
+            &commit_id,
+            &tx,
+            None,
+            json!({"type":"execution_submitted","transaction_id":tx.transaction_id,"intent_hash":tx.intent_hash}),
+        )?;
+        Ok(public_status(&tx))
     }
 
     fn refresh_time(&self, tx: &mut Transaction) -> SurfaceResult<()> {

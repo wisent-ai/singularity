@@ -90,11 +90,12 @@ signed transaction with no unresolved reconciliation requirement, then sends
 the exact canonical intent over stdin to the absolute executable named by
 `SINGULARITY_FINANCE_EXECUTOR`.
 
-The isolated executor owns signing and network credentials. It performs the real
-operation and returns an absolute `signed_owner_event_file`; the finance service
-verifies that signed event, its executor authority and its WORM receipt before
-recording submission. Singularity can cause a real financial effect, but its
-model process never receives the signing key.
+Before starting the isolated executor, the finance service durably marks the
+transaction indeterminate so a timeout or crash cannot trigger a duplicate
+effect. The executor owns signing and network credentials, performs the real
+operation, and returns its signed reference plus WORM receipt. The finance
+service verifies the configured executor authority and receipt before recording
+submission. The model process never receives the signing key.
 
 Required finance environment:
 
