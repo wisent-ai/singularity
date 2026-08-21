@@ -35,7 +35,7 @@ pub struct Agent {
     store: ActivityStore,
     brama: BramaClient,
     las: LasSupervisor,
-    most: MostClient,
+    most: Option<MostClient>,
     catalog: ToolCatalog,
 }
 
@@ -100,18 +100,18 @@ impl Agent {
             config.mcp_timeout,
         )
         .await?;
-        let catalog = match ToolCatalog::build(las.tools()) {
+        let catalog = match ToolCatalog::build(las.tools(), config.most_token.is_some()) {
             Ok(value) => value,
             Err(error) => {
                 let _ = las.shutdown(config.shutdown_grace).await;
                 return Err(error);
             }
         };
-        let most = MostClient::new(
-            config.most_url.clone(),
-            config.most_token.clone(),
-            config.http_timeout,
-        )?;
+        let most = config
+            .most_token
+            .clone()
+            .map(|token| MostClient::new(config.most_url.clone(), token, config.http_timeout))
+            .transpose()?;
         let mut agent = Self {
             config,
             state,
@@ -146,6 +146,14 @@ impl Agent {
         self.state
             .conversation
             .push(ChatMessage::text(Role::User, cycle_message(&self.state)));
+        if self.state.cycle == 1 {
+            if let Some(stimulus) = self.config.stimulus.as_deref() {
+                self.state.conversation.push(ChatMessage::text(
+                    Role::User,
+                    format!("External observation for this cycle: {stimulus}"),
+                ));
+            }
+        }
         self.store.save(&self.state)?;
         let mut round = usize::default();
         let mut actions = Vec::new();
@@ -196,9 +204,10 @@ impl Agent {
                     .execute(
                         &call,
                         &mut self.las,
-                        &self.most,
+                        self.most.as_ref(),
                         &mut self.state,
                         &mut self.brama,
+                        &self.config.workspace,
                         &self.config.state_dir,
                     )
                     .await;
@@ -359,18 +368,19 @@ async fn doctor(args: &CommonArgs) -> Result<(), AppError> {
             config.brama_model
         )));
     }
-    let most = MostClient::new(
-        config.most_url.clone(),
-        config.most_token.clone(),
-        config.http_timeout,
-    )?;
-    let health = most.health().await?;
-    if health.backends.trim().is_empty() || health.backends == "none" {
-        return Err(AppError::Most {
-            class: ErrorClass::Permanent,
-            message: "Most has no send-capable backend".into(),
-        });
-    }
+    let health = if let Some(token) = config.most_token.clone() {
+        let most = MostClient::new(config.most_url.clone(), token, config.http_timeout)?;
+        let health = most.health().await?;
+        if health.backends.trim().is_empty() || health.backends == "none" {
+            return Err(AppError::Most {
+                class: ErrorClass::Permanent,
+                message: "Most has no send-capable backend".into(),
+            });
+        }
+        Some(health)
+    } else {
+        None
+    };
     let mut las = LasSupervisor::spawn(
         &config.las_command,
         &config.las_entrypoint,
@@ -419,7 +429,7 @@ async fn list_tools(args: &ToolsArgs) -> Result<(), AppError> {
         deadline,
     )
     .await?;
-    let catalog = ToolCatalog::build(las.tools())?;
+    let catalog = ToolCatalog::build(las.tools(), false)?;
     match args.format {
         OutputFormat::Json => println!("{}", serde_json::to_string_pretty(catalog.definitions())?),
         OutputFormat::Table => {

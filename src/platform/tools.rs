@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,8 @@ const SELF_SET_PROMPT: &str = "singularity_self_set_prompt";
 const SELF_ADD_RULE: &str = "singularity_self_add_rule";
 const SELF_ADD_LEARNING: &str = "singularity_self_add_learning";
 const SELF_SWITCH_MODEL: &str = "singularity_self_switch_model";
+const FILE_READ: &str = "singularity_file_read";
+const FILE_WRITE: &str = "singularity_file_write";
 const SPAWN_CHILD: &str = "singularity_spawn_child";
 const MAX_MODEL_OUTPUT_BYTES: usize = 64 * 1024;
 const MAX_MODEL_OUTPUT_DEPTH: usize = 8;
@@ -54,6 +56,8 @@ enum ToolOrigin {
     SelfAddRule,
     SelfAddLearning,
     SelfSwitchModel,
+    FileRead,
+    FileWrite,
     SpawnChild,
 }
 
@@ -170,7 +174,7 @@ pub struct ToolCatalog {
 }
 
 impl ToolCatalog {
-    pub fn build(las_tools: &[McpTool]) -> Result<Self, AppError> {
+    pub fn build(las_tools: &[McpTool], most_enabled: bool) -> Result<Self, AppError> {
         let mut definitions = Vec::new();
         let mut origins = HashMap::new();
         for tool in las_tools {
@@ -262,7 +266,33 @@ impl ToolCatalog {
                 ),
                 ToolOrigin::SpawnChild,
             ),
+            (
+                ToolDefinition::function(
+                    FILE_READ,
+                    "Read one UTF-8 file inside the configured workspace",
+                    json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}),
+                ),
+                ToolOrigin::FileRead,
+            ),
+            (
+                ToolDefinition::function(
+                    FILE_WRITE,
+                    "Atomically create or replace one UTF-8 file inside the configured workspace",
+                    json!({"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"],"additionalProperties":false}),
+                ),
+                ToolOrigin::FileWrite,
+            ),
         ] {
+            if !most_enabled
+                && matches!(
+                    origin,
+                    ToolOrigin::MostHealth
+                        | ToolOrigin::MostCreateChat
+                        | ToolOrigin::MostSendMessage
+                )
+            {
+                continue;
+            }
             register(&mut definitions, &mut origins, definition, origin)?;
         }
         Ok(Self {
@@ -279,9 +309,10 @@ impl ToolCatalog {
         &self,
         call: &ToolCall,
         las: &mut LasSupervisor,
-        most: &MostClient,
+        most: Option<&MostClient>,
         state: &mut AgentState,
         brama: &mut BramaClient,
+        workspace: &Path,
         state_dir: &Path,
     ) -> ToolOutcome {
         let parsed = serde_json::from_str::<Value>(&call.function.arguments);
@@ -329,16 +360,19 @@ impl ToolCatalog {
                     message_id: None,
                 },
             },
-            ToolOrigin::MostHealth => match most.health().await {
-                Ok(value) => success(
-                    serde_json::to_value(value).unwrap_or(Value::Null),
-                    None,
-                    None,
-                ),
-                Err(error) => external_failure(error),
+            ToolOrigin::MostHealth => match most {
+                Some(most) => match most.health().await {
+                    Ok(value) => success(
+                        serde_json::to_value(value).unwrap_or(Value::Null),
+                        None,
+                        None,
+                    ),
+                    Err(error) => external_failure(error),
+                },
+                None => failed("most_unavailable", "Most credential is not configured"),
             },
-            ToolOrigin::MostCreateChat => match parse_create(arguments) {
-                Ok(args) => match most
+            ToolOrigin::MostCreateChat => match (most, parse_create(arguments)) {
+                (Some(most), Ok(args)) => match most
                     .create_chat(
                         &args.from,
                         &args.to,
@@ -350,17 +384,19 @@ impl ToolCatalog {
                     Ok(value) => success(value.value, value.chat_id, value.message_id),
                     Err(error) => external_failure(error),
                 },
-                Err(error) => failed("invalid_arguments", &error),
+                (None, _) => failed("most_unavailable", "Most credential is not configured"),
+                (_, Err(error)) => failed("invalid_arguments", &error),
             },
-            ToolOrigin::MostSendMessage => match parse_send(arguments) {
-                Ok(args) => match most
+            ToolOrigin::MostSendMessage => match (most, parse_send(arguments)) {
+                (Some(most), Ok(args)) => match most
                     .send_message(args.chat_id, &args.text, args.preferred_service.as_deref())
                     .await
                 {
                     Ok(value) => success(value.value, value.chat_id, value.message_id),
                     Err(error) => external_failure(error),
                 },
-                Err(error) => failed("invalid_arguments", &error),
+                (None, _) => failed("most_unavailable", "Most credential is not configured"),
+                (_, Err(error)) => failed("invalid_arguments", &error),
             },
             ToolOrigin::MemoryRemember => remember(state, arguments),
             ToolOrigin::MemoryRecall => recall(state, arguments),
@@ -369,6 +405,8 @@ impl ToolCatalog {
             ToolOrigin::SelfAddLearning => add_learning(state, arguments),
             ToolOrigin::SelfSwitchModel => switch_model(state, brama, arguments).await,
             ToolOrigin::SpawnChild => spawn_child(state, state_dir, arguments).await,
+            ToolOrigin::FileRead => file_read(workspace, arguments),
+            ToolOrigin::FileWrite => file_write(workspace, arguments),
         }
     }
 }
@@ -479,6 +517,86 @@ async fn switch_model(
         Ok(_) => failed("model_unavailable", "Brama does not advertise that model"),
         Err(error) => external_failure(error),
     }
+}
+
+fn relative_path(arguments: &Map<String, Value>) -> Result<PathBuf, ToolOutcome> {
+    let value = required_text(arguments, "path", 4 * 1024)?;
+    let path = PathBuf::from(value);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(failed(
+            "invalid_path",
+            "path must contain only relative normal components",
+        ));
+    }
+    Ok(path)
+}
+
+fn file_read(workspace: &Path, arguments: Map<String, Value>) -> ToolOutcome {
+    let relative = match relative_path(&arguments) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let path = workspace.join(&relative);
+    let resolved = match std::fs::canonicalize(&path) {
+        Ok(value) if value.starts_with(workspace) => value,
+        Ok(_) => return failed("workspace_boundary", "path leaves the workspace"),
+        Err(error) => return failed("file_read", &error.to_string()),
+    };
+    let metadata = match std::fs::symlink_metadata(&resolved) {
+        Ok(value) if value.is_file() && value.len() <= 2 * 1024 * 1024 => value,
+        Ok(_) => return failed("file_read", "path is not a bounded regular file"),
+        Err(error) => return failed("file_read", &error.to_string()),
+    };
+    let _ = metadata;
+    match std::fs::read_to_string(resolved) {
+        Ok(content) => success(json!({"path":relative,"content":content}), None, None),
+        Err(error) => failed("file_read", &error.to_string()),
+    }
+}
+
+fn file_write(workspace: &Path, arguments: Map<String, Value>) -> ToolOutcome {
+    let relative = match relative_path(&arguments) {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let content = match arguments.get("content").and_then(Value::as_str) {
+        Some(value) if value.len() <= 2 * 1024 * 1024 && !value.contains('\0') => value,
+        _ => return failed("invalid_arguments", "content is invalid or too large"),
+    };
+    let path = workspace.join(&relative);
+    let Some(parent) = path.parent() else {
+        return failed("invalid_path", "path has no parent");
+    };
+    if let Err(error) = std::fs::create_dir_all(parent) {
+        return failed("file_write", &error.to_string());
+    }
+    let resolved_parent = match std::fs::canonicalize(parent) {
+        Ok(value) if value.starts_with(workspace) => value,
+        Ok(_) => return failed("workspace_boundary", "path leaves the workspace"),
+        Err(error) => return failed("file_write", &error.to_string()),
+    };
+    let Some(name) = path.file_name() else {
+        return failed("invalid_path", "path has no file name");
+    };
+    let destination = resolved_parent.join(name);
+    if destination
+        .symlink_metadata()
+        .is_ok_and(|metadata| metadata.file_type().is_symlink() || !metadata.is_file())
+    {
+        return failed("file_write", "destination is not a regular file");
+    }
+    let temporary = resolved_parent.join(format!(".singularity-{}.tmp", Uuid::new_v4()));
+    let result =
+        std::fs::write(&temporary, content).and_then(|_| std::fs::rename(&temporary, &destination));
+    if let Err(error) = result {
+        let _ = std::fs::remove_file(&temporary);
+        return failed("file_write", &error.to_string());
+    }
+    success(json!({"path":relative,"bytes":content.len()}), None, None)
 }
 
 async fn spawn_child(
@@ -618,7 +736,7 @@ mod tests {
                 description: String::new(),
                 input_schema: json!({}),
             });
-        let catalog = ToolCatalog::build(&offered).unwrap();
+        let catalog = ToolCatalog::build(&offered, false).unwrap();
         let names: Vec<_> = catalog
             .definitions()
             .iter()

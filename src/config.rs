@@ -65,6 +65,8 @@ pub enum OutputFormat {
 
 #[derive(Debug, Clone, Args)]
 pub struct CommonArgs {
+    #[arg(long, env = "SINGULARITY_STIMULUS")]
+    pub stimulus: Option<String>,
     #[arg(long, env = "SINGULARITY_AGENT_ID")]
     pub agent_id: String,
     #[arg(long, env = "SINGULARITY_AGENT_NAME", default_value = "MyAgent")]
@@ -107,6 +109,8 @@ pub struct CommonArgs {
     pub max_tool_rounds: usize,
     #[arg(long, env = "SINGULARITY_STATE_DIR", default_value = ".singularity")]
     pub state_dir: PathBuf,
+    #[arg(long, env = "SINGULARITY_WORKSPACE", default_value = ".")]
+    pub workspace: PathBuf,
     #[arg(long, env = "SINGULARITY_RESUME", default_value = "false")]
     pub resume: bool,
     #[arg(long, env = "BRAMA_BASE_URL", default_value = "http://127.0.0.1:8081")]
@@ -114,7 +118,7 @@ pub struct CommonArgs {
     #[arg(long, env = "BRAMA_MODEL", default_value = "any")]
     pub brama_model: String,
     #[arg(long, env = "BRAMA_HMAC_SECRET_FILE")]
-    pub brama_secret_file: PathBuf,
+    pub brama_secret_file: Option<PathBuf>,
     #[arg(long, env = "BRAMA_MAX_TOKENS", default_value = "2048")]
     pub max_tokens: u32,
     #[arg(long, env = "BRAMA_TEMPERATURE", default_value = "0.2")]
@@ -148,7 +152,7 @@ pub struct CommonArgs {
     #[arg(long, env = "MOST_BASE_URL", default_value = "http://127.0.0.1:8080")]
     pub most_url: String,
     #[arg(long, env = "MOST_SERVICE_TOKEN_FILE")]
-    pub most_token_file: PathBuf,
+    pub most_token_file: Option<PathBuf>,
     #[arg(long, env = "SINGULARITY_HTTP_TIMEOUT_SECS", default_value = "120")]
     pub http_timeout_secs: u64,
     #[arg(long, env = "SINGULARITY_MCP_TIMEOUT_SECS", default_value = "120")]
@@ -159,10 +163,12 @@ pub struct CommonArgs {
 
 pub struct RuntimeConfig {
     pub identity: AgentIdentity,
+    pub stimulus: Option<String>,
     pub starting_balance: Decimal,
     pub pricing: Pricing,
     pub cycle_interval: Duration,
     pub max_tool_rounds: usize,
+    pub workspace: PathBuf,
     pub state_dir: PathBuf,
     pub resume: bool,
     pub brama_url: Url,
@@ -178,9 +184,9 @@ pub struct RuntimeConfig {
     pub las_release_manifest_signature: PathBuf,
     pub las_release_trust_store: PathBuf,
     pub las_release_watermark: PathBuf,
+    pub most_token: Option<SecretString>,
     pub required_surfaces: Vec<String>,
     pub most_url: Url,
-    pub most_token: SecretString,
     pub http_timeout: Duration,
     pub mcp_timeout: Duration,
     pub shutdown_grace: Duration,
@@ -188,6 +194,25 @@ pub struct RuntimeConfig {
 
 impl RuntimeConfig {
     pub fn from_args(args: &CommonArgs) -> Result<Self, AppError> {
+        let stimulus = args
+            .stimulus
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        if stimulus
+            .as_deref()
+            .is_some_and(|value| value.len() > 64 * 1024 || value.contains('\0'))
+        {
+            return Err(AppError::Config(
+                "stimulus must be at most 65536 bytes and contain no NUL".into(),
+            ));
+        }
+        let workspace = std::fs::canonicalize(&args.workspace)
+            .map_err(|error| AppError::Config(format!("workspace: {error}")))?;
+        if !workspace.is_dir() {
+            return Err(AppError::Config("workspace must be a directory".into()));
+        }
         if args.max_tool_rounds == usize::default() {
             return Err(AppError::Config("max tool rounds must be positive".into()));
         }
@@ -262,6 +287,7 @@ impl RuntimeConfig {
                 policy_digest: args.policy_digest.clone(),
                 policy_sequence: args.policy_sequence,
             },
+            stimulus,
             starting_balance: args.starting_balance,
             pricing: Pricing {
                 input_per_million: args.input_price,
@@ -270,11 +296,22 @@ impl RuntimeConfig {
             },
             cycle_interval: Duration::from_secs(args.cycle_interval_secs),
             max_tool_rounds: args.max_tool_rounds,
+            workspace,
             state_dir: args.state_dir.clone(),
             resume: args.resume,
             brama_url: parse_http_url(&args.brama_url, "BRAMA_BASE_URL")?,
             brama_model: args.brama_model.clone(),
-            brama_secret: read_secret(&args.brama_secret_file)?,
+            brama_secret: match args.brama_secret_file.as_ref() {
+                Some(path) => read_secret(path)?,
+                None => SecretString::from(std::env::var("WISENT_APP_AGENT_AUTH_SECRET").map_err(
+                    |_| {
+                        AppError::Secret(
+                            "BRAMA_HMAC_SECRET_FILE or WISENT_APP_AGENT_AUTH_SECRET is required"
+                                .into(),
+                        )
+                    },
+                )?),
+            },
             max_tokens: args.max_tokens,
             temperature: args.temperature,
             las_command: args.las_command.clone(),
@@ -287,7 +324,7 @@ impl RuntimeConfig {
             las_release_watermark: args.las_release_watermark.clone(),
             required_surfaces,
             most_url: parse_http_url(&args.most_url, "MOST_BASE_URL")?,
-            most_token: read_secret(&args.most_token_file)?,
+            most_token: args.most_token_file.as_ref().map(read_secret).transpose()?,
             http_timeout: Duration::from_secs(args.http_timeout_secs),
             mcp_timeout: Duration::from_secs(args.mcp_timeout_secs),
             shutdown_grace: Duration::from_secs(args.shutdown_grace_secs),
