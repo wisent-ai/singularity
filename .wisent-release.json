@@ -27,7 +27,8 @@
         ".wisent-output/singularity": "bin/singularity",
         ".wisent-output/singularity-bootstrap": "bin/singularity-bootstrap",
         ".wisent-output/singularity-repo-mcp": "bin/singularity-repo-mcp",
-        ".wisent-output/singularity-finance-mcp": "bin/singularity-finance-mcp"
+        ".wisent-output/singularity-finance-mcp": "bin/singularity-finance-mcp",
+        ".wisent-output/singularity-finance-executor-http": "bin/singularity-finance-executor-http"
       }
     },
     "linux-amd64": {
@@ -49,7 +50,8 @@
         ".wisent-output/singularity": "bin/singularity",
         ".wisent-output/singularity-bootstrap": "bin/singularity-bootstrap",
         ".wisent-output/singularity-repo-mcp": "bin/singularity-repo-mcp",
-        ".wisent-output/singularity-finance-mcp": "bin/singularity-finance-mcp"
+        ".wisent-output/singularity-finance-mcp": "bin/singularity-finance-mcp",
+        ".wisent-output/singularity-finance-executor-http": "bin/singularity-finance-executor-http"
       }
     }
   },

@@ -1509,6 +1509,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "hmac",
+ "libc",
  "reqwest",
  "rust_decimal",
  "secrecy",

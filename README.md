@@ -97,6 +97,12 @@ operation, and returns its signed reference plus WORM receipt. The finance
 service verifies the configured executor authority and receipt before recording
 submission. The model process never receives the signing key.
 
+
+The release includes `singularity-finance-executor-http`, a concrete executor
+adapter. It forwards the canonical intent to a credential-free HTTPS custody
+URL using an owner-only bearer file, disables ambient proxies and redirects,
+and validates the executor ID, signed reference and WORM receipt path before
+returning them to `singularity-finance-mcp`.
 Required finance environment:
 
 ```text
@@ -106,6 +112,8 @@ SINGULARITY_FINANCE_STATE_DIR
 SINGULARITY_FINANCE_VERIFY_KEY_HEX
 SINGULARITY_FINANCE_BINARY_SHA256
 SINGULARITY_FINANCE_EXECUTOR
+SINGULARITY_FINANCE_CUSTODY_URL
+SINGULARITY_FINANCE_CUSTODY_TOKEN_FILE
 ```
 
 ## Child beings
@@ -193,8 +201,8 @@ the old Python runtime are not compatibility paths.
 cargo build --locked
 cargo install --path . --locked
 ```
-
 The package builds `singularity`, `singularity-bootstrap`,
-`singularity-repo-mcp` and `singularity-finance-mcp`.
+`singularity-repo-mcp`, `singularity-finance-mcp`, and
+`singularity-finance-executor-http`.
 
 License: MIT.
