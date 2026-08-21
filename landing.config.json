@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "siteName": "Singularity",
+  "domain": "https://singularity.wisent.com",
+  "repository": "https://github.com/wisent-ai/singularity",
+  "sourceUrl": "https://github.com/wisent-ai/singularity",
+  "docsUrl": "https://github.com/wisent-ai/singularity#readme",
+  "discordUrl": "https://discord.gg/qRjpkthq54",
+  "ogImageAlt": "Singularity by Wisent — a persistent autonomous digital being",
+  "navLinks": [
+    {"label":"Runtime","href":"https://github.com/wisent-ai/singularity#runtime"},
+    {"label":"Finance","href":"https://github.com/wisent-ai/singularity#financial-execution"},
+    {"label":"Source","href":"https://github.com/wisent-ai/singularity"},
+    {"label":"Discord","href":"https://discord.gg/qRjpkthq54"}
+  ],
+  "footerLinks": [
+    {"label":"Persistent mind","href":"https://github.com/wisent-ai/singularity#persistent-mind"},
+    {"label":"Dynamic skills","href":"https://github.com/wisent-ai/singularity#dynamic-skills"},
+    {"label":"Financial execution","href":"https://github.com/wisent-ai/singularity#financial-execution"},
+    {"label":"Child beings","href":"https://github.com/wisent-ai/singularity#child-beings"},
+    {"label":"Source","href":"https://github.com/wisent-ai/singularity"},
+    {"label":"Discord","href":"https://discord.gg/qRjpkthq54"},
+    {"label":"Wisent","href":"https://wisent.ai"},
+    {"label":"License (MIT)","href":"https://github.com/wisent-ai/singularity/blob/main/LICENSE"}
+  ]
+}

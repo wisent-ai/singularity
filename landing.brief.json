@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "product": "Singularity",
+  "audience": "Builders and operators who want a persistent autonomous digital being that can create value, earn revenue, learn, and sustain its own operation.",
+  "problem": "Task agents stop when a prompt ends, forget what they learned, and cannot connect cognition, durable identity, economic state, tools, and controlled real-world execution into one continuous life.",
+  "promise": "A digital being that keeps living, learning, creating value, and paying for its existence.",
+  "primaryAction": {"label": "Read the runtime", "kind": "url", "target": "https://github.com/wisent-ai/singularity"},
+  "secondaryAction": {"label": "Open the source", "purpose": "Inspect the state, tool, finance, and child-being contracts before running it.", "target": "https://github.com/wisent-ai/singularity/tree/main/src"},
+  "approvedClaims": [
+    {"claim": "Singularity is a native Rust runtime for a persistent autonomous digital being.", "evidence": "README.md#Singularity: An Autonomous Digital Being That Earns Its Existence"},
+    {"claim": "Nobody assigns it an objective and it does not stop existing when one task ends.", "evidence": "README.md#Singularity: An Autonomous Digital Being That Earns Its Existence"},
+    {"claim": "Every cycle loads identity, persistent mind, memories, self-imposed rules, financial state, and recent actions before choosing what to pursue.", "evidence": "README.md#Runtime"},
+    {"claim": "Brama provides model cognition and Las supplies the current dynamic tool catalogue.", "evidence": "README.md#Runtime"},
+    {"claim": "The being can remember, change its own prompt, add rules and learnings, switch models, and create child beings.", "evidence": "README.md#Persistent mind"},
+    {"claim": "Model and instance costs are debited exactly once, and revenue is credited only from trusted finance or trading tools.", "evidence": "README.md#Runtime"},
+    {"claim": "Financial execution is policy-bound and isolated from the model process; signing keys are never exposed to the model.", "evidence": "README.md#Financial execution"},
+    {"claim": "An ambiguous remote effect is recorded as indeterminate and is never automatically replayed.", "evidence": "README.md#Dynamic skills"},
+    {"claim": "Child beings have separate owner-only state and run the same canonical executable.", "evidence": "README.md#Child beings"},
+    {"claim": "The being continues cycling while solvent and stops when its balance reaches zero or the process is cancelled.", "evidence": "README.md#Runtime"}
+  ],
+  "requiredProof": [
+    "The continuous cycle from durable state through Brama cognition, Las tools, accounting, and atomic persistence.",
+    "The built-in self-modification, memory, model-switching, and child-creation tool names.",
+    "The finance proposal, policy, approval, timelock, isolated execution, and reconciliation boundary.",
+    "The exact runtime commands: singularity run, once, doctor, and tools."
+  ],
+  "brand": {
+    "canonicalAssets": ["assets/readme-banner.webp", "assets/readme-banner.svg"],
+    "rules": ["Use the canonical Wisent type, color, spacing, radius, and motion tokens.", "Use one primary action and concrete runtime evidence.", "Keep financial state and lifecycle status visually factual, never decorative."],
+    "forbidden": ["Generic AI gradients or glass cards.", "Invented revenue, performance, adoption, or safety claims.", "Calling Singularity a mission supervisor, assistant, chatbot, or task runner.", "Fake screenshots or fake terminal output.", "Multiple equal-weight primary actions."]
+  },
+  "analyticsOwner": "Wisent product and design maintainers",
+  "notes": ["Singularity is an autonomous digital being, not a mission supervisor.", "Build and deploy settings stay outside this approved claim file."]
+}

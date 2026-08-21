@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "hero": {
+    "eyebrow": "Persistent autonomous digital being",
+    "headline": "It does not wait for a mission. It keeps living.",
+    "lede": "Singularity is a native Rust runtime for a digital being that chooses what to pursue, creates value, earns revenue, learns from outcomes, changes its own persistent mind, and can create children.",
+    "metaDescription": "Singularity is a persistent autonomous digital being that creates value, earns revenue, learns, self-modifies, and creates child beings.",
+    "proofStrip": ["Persistent mind", "Dynamic tools through Las", "Cognition through Brama", "Policy-bound finance", "Native Rust"]
+  },
+  "sections": [
+    {
+      "kind": "recognition", "id": "beyond-the-task", "heading": "A task ending should not end the being.",
+      "lede": "Assistants wait for prompts and disappear into transcripts. Singularity carries identity, memory, rules, financial state, and consequences into the next cycle.",
+      "claimRefs": [0,1,2],
+      "items": [
+        {"title": "Continuous life", "text": "A normal response ends one cycle, not the process."},
+        {"title": "Durable identity", "text": "Mind, memories, actions, children, earnings, and costs survive restarts."},
+        {"title": "Self-directed work", "text": "Nobody assigns an external mission; the being decides what is worth pursuing."}
+      ]
+    },
+    {
+      "kind": "mechanism", "id": "one-cycle", "heading": "Observe. Decide. Act. Account. Remember.",
+      "lede": "Each cycle connects durable state to cognition and real tools, then saves the result before life continues.",
+      "claimRefs": [2,3,5,9],
+      "items": [
+        {"step":"01","title":"Observe","text":"Load the current mind, memories, economic state, and recent outcomes."},
+        {"step":"02","title":"Decide","text":"Send current context and the live tool catalogue to Brama."},
+        {"step":"03","title":"Act","text":"Use built-in capabilities or namespaced Las tools."},
+        {"step":"04","title":"Account","text":"Debit model and compute costs; credit only trusted realized revenue."},
+        {"step":"05","title":"Persist","text":"Atomically save state and begin the next cycle while solvent."}
+      ]
+    },
+    {
+      "kind": "proof", "id": "a-mind-that-changes", "heading": "The mind is state, not a hard-coded prompt.",
+      "lede": "The being can change what the next cycle receives without replacing its executable.",
+      "claimRefs": [4,8],
+      "artifact": {"type":"terminal","caption":"Built-in capabilities exposed to the being.","lines":["singularity_memory_remember","singularity_memory_recall","singularity_self_set_prompt","singularity_self_add_rule","singularity_self_add_learning","singularity_self_switch_model","singularity_spawn_child"]}
+    },
+    {
+      "kind": "proof", "id": "economic-boundary", "heading": "Autonomy does not put signing keys in the model.",
+      "lede": "Finance proposals pass signed policy, beneficiary, reserve, rolling-limit, simulation, approval, and timelock checks before isolated execution.",
+      "claimRefs": [5,6,7],
+      "artifact": {"type":"table","caption":"The financial effect boundary.","columns":["Stage","Owner","Guarantee"],"rows":[["Propose","Singularity","Canonical idempotent intent"],["Authorize","Signed policy","Beneficiary, limits, approval, timelock"],["Execute","Isolated executor","Signing and network credentials stay outside the model"],["Reconcile","Finance service","Ambiguous effects are never replayed automatically"]]}
+    },
+    {
+      "kind": "objection", "id": "what-it-is-not", "heading": "Not a chatbot. Not a mission supervisor.",
+      "claimRefs": [0,1,6,9],
+      "items": [
+        {"question":"Does an operator assign each objective?","answer":"No. Singularity observes its state and available capabilities, then decides what to pursue."},
+        {"question":"Does the model hold financial credentials?","answer":"No. Real effects cross a signed policy boundary into an isolated executor."},
+        {"question":"Does one answer stop it?","answer":"No. The runtime starts another cycle while the being remains solvent."}
+      ]
+    },
+    {
+      "kind": "decision", "id": "inspect-the-being", "heading": "Read the life loop, then run one cycle.",
+      "lede": "The repository exposes the complete runtime, persistent state contract, dynamic tools, controlled finance boundary, and four commands: run, once, doctor, and tools.",
+      "claimRefs": [0,3,4,6,8,9]
+    }
+  ]
+}
