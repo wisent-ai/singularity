@@ -8,201 +8,188 @@
 [![Source](https://img.shields.io/badge/GitHub-Source-181717?logo=github)](https://github.com/wisent-ai/singularity) [![Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github)](https://github.com/wisent-ai/singularity/issues) [![Wisent](https://img.shields.io/badge/Wisent-Website-0B0B0B)](https://wisent.com) [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/qRjpkthq54) [![LinkedIn](https://img.shields.io/badge/LinkedIn-Follow-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/company/wisent-ai/) [![X](https://img.shields.io/badge/X-Follow-000000?logo=x&logoColor=white)](https://x.com/wisentai) [![Enterprise](https://img.shields.io/badge/Enterprise-Book%20a%20call-0B0B0B?logo=calendly)](https://calendly.com/lbartoszcze)
 <!-- wisent-readme-signals:end -->
 
-# Singularity: Autonomous AI Agents That Pay for Themselves
+# Singularity: An Autonomous Digital Being That Earns Its Existence
 
-Singularity owns the durable lifecycle of an autonomous Wisent mission. Jeden
-owns the model-and-tool loop. Las exposes the approved Wisent product surfaces
-to Jeden without moving their policy or behavior into either runtime.
+Singularity is a native Rust runtime for a persistent autonomous digital being.
+Nobody assigns it an objective and it does not stop existing when one task ends.
+It observes available tools, decides what to pursue, creates useful value,
+earns revenue, pays its model and compute costs, learns from results, changes
+its own persistent mind, and can create child beings.
 
-Version `0.4.0` is a breaking cutover. Singularity no longer calls Brama, starts
-Las, executes Most actions, parses model tool calls, or maintains a second agent
-transcript. The former `0.3.x` direct runtime and the older Python package are not
-retained as compatibility paths.
-
-## Ownership
+## Runtime
 
 ```text
-Stado placement / lifecycle
-            │
-            ▼
-Singularity mission supervisor
-  goal · cycle budget · schedule · resume pointer · activity journal
-            │ jeden RPC over stdio
-            ▼
-Jeden agent harness
-  model loop · transcript · memory · approvals · jailed tools · MCP client
-       │                         │
-       │ signed inference        │ one configured MCP server
-       ▼                         ▼
-     Brama                      Las
-                                 │
-         ┌───────────┬───────────┼───────────┬───────────┐
-         ▼           ▼           ▼           ▼           ▼
-       Weles      Skarbiec      Tama        Stado      Probierz …
+                    ┌──────── Brama ─────── model cognition
+                    │
+Singularity ────────┼──────── Las ───────── dynamic Wisent skills
+continuous loop     │           ├── Weles: internet actions
+identity + memory   │           ├── Most: communication
+earnings + costs    │           ├── Stado: compute and placement
+self-modification   │           ├── Skarbiec: scoped capabilities
+child beings        │           ├── Warsztat: repository work
+                    │           └── Finance: approved real execution
+                    │
+                    └──────── durable state and activity journal
 ```
 
-- **Singularity** owns an immutable goal, an execution-cycle budget, the interval
-  between cycles, a pointer to the durable Jeden session, and an append-only
-  lifecycle journal.
-- **Jeden** is the only reasoning and tool runtime. It owns the model transcript,
-  context, memory, approvals, filesystem/process boundaries, and MCP client.
-- **Brama** owns inference routing and provider/subscription credentials.
-- **Las** owns the signed, namespaced federation catalogue. Routing through Las
-  never broadens a child product's authority.
-- **Stado** owns where the process runs and how its release is promoted.
-- **Skarbiec**, **Tama**, **Probierz**, **Most**, **Weles**, and every other child
-  retain their existing product boundaries.
+Every cycle:
 
-An agent does not automatically receive every tool. Its operator-approved Las
-release and filters define the available subset; Singularity requires the Las
-server to be present and enabled in Jeden's merged MCP configuration.
+1. Loads the being's current prompt, self-imposed rules, learnings, memories,
+   identity, financial state and recent actions.
+2. Sends that context and the current dynamic tool catalogue to Brama.
+3. Executes native model tool calls through Las or the built-in persistent
+   memory, self-modification, model-switching and child-creation tools.
+4. Records model and instance cost exactly once.
+5. Credits revenue only when a trusted `finance__*` or `trading__*` tool reports
+   realized revenue.
+6. Atomically saves state and begins another cycle while the being is solvent.
 
-## Runtime flow
+A normal assistant response ends only the current cycle. `run` continues until
+the process is cancelled or the balance reaches zero.
 
-`singularity run` performs these steps:
+## Persistent mind
 
-1. Canonicalizes the workspace and validates an enabled local stdio `las` entry
-   in `~/.jeden/mcp.json` or `<workspace>/.jeden/mcp.json`.
-2. Opens owner-only Singularity state and rejects a resume whose identity, goal,
-   workspace, model, approval policy, step bound, or cycle budget changed.
-3. Starts the exact configured Jeden executable as `jeden rpc` over stdio and
-   validates protocol version 1.
-4. Creates a new Jeden session or resumes the recorded session path.
-5. Sends the immutable mission as Jeden's separate `goal` and asks Jeden to
-   complete one bounded autonomous work cycle using its full approved harness.
-6. Records the final result and Jeden session path. `COMPLETE` ends the mission;
-   `CONTINUE` schedules the next cycle until the cycle budget is exhausted or the
-   process is cancelled.
+Singularity exposes these built-in tools to itself:
 
-Each Jeden prompt is already a complete bounded agent run. Singularity never
-replays an ambiguous failed prompt automatically. An unattended approval request
-is denied, and an elicitation fails closed; managed deployments must grant the
-required authority explicitly through the configured Jeden policy.
+- `singularity_memory_remember` and `singularity_memory_recall`;
+- `singularity_self_set_prompt`;
+- `singularity_self_add_rule`;
+- `singularity_self_add_learning`;
+- `singularity_self_switch_model`;
+- `singularity_spawn_child`.
 
-## Prerequisites
+Rules, learnings, memories, model choice and child records live in `state.json`.
+The prompt sent to Brama is rebuilt from that state every round, so a successful
+self-change affects the next model call without changing the executable.
 
-- Rust 1.85 or newer for a source build;
-- a runnable Jeden binary with its Brama identity provisioned;
-- a coordinated Wisent workspace;
-- an enabled Las stdio entry in Jeden MCP configuration;
-- current signed Las release manifest, signature, trust store, and watermark;
-- child-specific credentials and policies owned by their respective products.
+## Dynamic skills
 
-Minimal project MCP shape:
+Las supplies the current namespaced MCP catalogue. Singularity does not freeze a
+Python plugin list or copy another product's credentials. Weles, Most, Stado,
+Skarbiec, Probierz, Brama, Warsztat, Finance and future approved surfaces remain
+separate processes with their own authority and failure behavior.
 
-```json
-{
-  "mcpServers": {
-    "las": {
-      "command": "/absolute/path/to/node",
-      "args": ["/absolute/path/to/las/src/mcp.mjs"],
-      "cwd": "/absolute/path/to/las",
-      "env": {
-        "HOME": "/operator/home",
-        "PATH": "/usr/local/bin:/usr/bin:/bin",
-        "LAS_RELEASE_MANIFEST_FILE": "/secure/las/release-manifest.json",
-        "LAS_RELEASE_MANIFEST_SIGNATURE_FILE": "/secure/las/release-manifest.sig.json",
-        "LAS_RELEASE_TRUST_STORE_FILE": "/secure/las/trust-store.json",
-        "LAS_RELEASE_WATERMARK_FILE": "/secure/las/watermark.json",
-        "LAS_ONLY": "weles,skarbiec,tama,stado,lem,echo,most,probierz,byk,brama"
-      }
-    }
-  }
-}
+Tool output is bounded before returning to the model. Secret-shaped fields,
+private-key material and raw local paths are rejected. An ambiguous remote
+effect is recorded as indeterminate and is never automatically replayed.
+
+## Financial execution
+
+`singularity-finance-mcp` exposes:
+
+- `finance_propose`;
+- `finance_status`;
+- `finance_cancel`;
+- `finance_execute`.
+
+A proposal must pass the signed beneficiary, asset, reserve, rolling-limit,
+simulation, approval and timelock policy. `finance_execute` accepts only a
+signed transaction with no unresolved reconciliation requirement, then sends
+the exact canonical intent over stdin to the absolute executable named by
+`SINGULARITY_FINANCE_EXECUTOR`.
+
+The isolated executor owns signing and network credentials. It performs the real
+operation and returns an absolute `signed_owner_event_file`; the finance service
+verifies that signed event, its executor authority and its WORM receipt before
+recording submission. Singularity can cause a real financial effect, but its
+model process never receives the signing key.
+
+Required finance environment:
+
+```text
+SINGULARITY_FINANCE_POLICY_FILE
+SINGULARITY_FINANCE_ENABLE_LEASE_FILE
+SINGULARITY_FINANCE_STATE_DIR
+SINGULARITY_FINANCE_VERIFY_KEY_HEX
+SINGULARITY_FINANCE_BINARY_SHA256
+SINGULARITY_FINANCE_EXECUTOR
 ```
 
-The file contains approved configuration and paths, not raw provider secrets.
-Jeden clears inherited environment variables when it starts an MCP child, so
-every value Las needs must be declared deliberately.
+## Child beings
+
+`singularity_spawn_child` creates a separate owner-only state directory and
+starts the same canonical executable with a new name, ticker and specialty.
+Managed deployments provide Brama, Las, Most and capability configuration
+through inherited workload policy; secrets remain in their files or brokers and
+never enter child arguments.
 
 ## Commands
 
 ```text
-singularity run     run scheduled Jeden cycles until completion or cycle limit
-singularity once    execute one Jeden cycle and print its JSON report
-singularity doctor  validate Las configuration and delegate readiness to Jeden
-singularity tools   validate Las configuration and print Jeden's tool catalogue
+singularity run     live continuously while solvent
+singularity once    execute one autonomous cycle and print its report
+singularity doctor  verify Brama, Las, Most and required surfaces
+singularity tools   print the dynamic and built-in tool catalogue
 ```
-
-## Policy-isolated companion binaries
-
-The crate also builds three narrow companions. They are not alternate agent
-runtimes and do not bypass Jeden:
-
-- `singularity-bootstrap` verifies an operator-signed workload manifest,
-  redeems only its declared Brama and Most capabilities through the local
-  Skarbiec broker, and starts the canonical `singularity` executable with
-  owner-only materialized inputs;
-- `singularity-repo-mcp` exposes only the repository proposal workflow allowed
-  by an owner-controlled policy and state directory;
-- `singularity-finance-mcp` exposes proposal, status and cancellation under an
-  offline-signed policy and enable lease; it has no payment credential or
-  broadcaster.
-
-Las may federate the two MCP companions as separate child processes. The
-Singularity mission supervisor still talks only to Jeden, and Jeden remains the
-sole reasoning and tool runtime.
-
-Example:
-
-```bash
-export JEDEN_COMMAND=/absolute/path/to/jeden
-export SINGULARITY_WORKSPACE=/absolute/path/to/workspace
-export SINGULARITY_GOAL='Maintain the assigned product objective end to end'
-export SINGULARITY_MAX_CYCLES=100
-export SINGULARITY_MAX_STEPS=64
-
-singularity doctor
-singularity once
-singularity run --resume
-```
-
-Writes, commands, and automatic approvals default to disabled. A managed launch
-may set `SINGULARITY_ALLOW_WRITE`, `SINGULARITY_ALLOW_COMMAND`, and
-`SINGULARITY_AUTO_APPROVE` only from its explicit workload policy.
 
 ## Configuration
 
-| Variable | Purpose |
-|---|---|
-| `JEDEN_COMMAND` | Exact Jeden executable; default `jeden` on `PATH` |
-| `JEDEN_MODEL` | Optional Jeden model or Brama selector |
-| `SINGULARITY_GOAL` | Required immutable goal, at most 4096 UTF-8 bytes |
-| `SINGULARITY_WORKSPACE` | Workspace used by the Jeden session |
-| `SINGULARITY_STATE_DIR` | Owner-only mission state and journal directory |
-| `SINGULARITY_RESUME` | Resume the exact recorded mission and Jeden session |
-| `SINGULARITY_MAX_CYCLES` | Durable execution-cycle budget; default `100` |
-| `SINGULARITY_CYCLE_INTERVAL_SECS` | Delay between continued cycles; default `5` |
-| `SINGULARITY_MAX_STEPS` | Jeden step bound for each prompt; default `64` |
-| `SINGULARITY_ALLOW_WRITE` | Grant Jeden write tools for this workload |
-| `SINGULARITY_ALLOW_COMMAND` | Grant Jeden command tools for this workload |
-| `SINGULARITY_AUTO_APPROVE` | Let the explicit workload policy satisfy approvals |
-| `SINGULARITY_LAS_SERVER` | Required Jeden MCP server name; default `las` |
-| `SINGULARITY_JEDEN_RPC_TIMEOUT_SECS` | RPC request and shutdown deadline; default `300` |
+Identity and accounting:
 
-Brama, Skarbiec, Stado, Las child, and provider variables are intentionally not
-Singularity configuration. They belong to Jeden, Las, or the owning service.
+```text
+SINGULARITY_AGENT_ID
+SINGULARITY_AGENT_NAME
+SINGULARITY_AGENT_TICKER
+SINGULARITY_AGENT_TYPE
+SINGULARITY_SPECIALTY
+SINGULARITY_STARTING_BALANCE_USD
+SINGULARITY_INSTANCE_USD_PER_HOUR
+SINGULARITY_STATE_DIR
+SINGULARITY_RESUME
+```
 
-## State and recovery
+Brama:
 
-The Singularity state directory contains:
+```text
+BRAMA_BASE_URL
+BRAMA_MODEL
+BRAMA_HMAC_SECRET_FILE
+BRAMA_MAX_TOKENS
+BRAMA_TEMPERATURE
+BRAMA_INPUT_PRICE_USD_PER_MILLION
+BRAMA_OUTPUT_PRICE_USD_PER_MILLION
+```
 
-- `state.json`: atomically replaced `jeden-v1` mission snapshot with identity,
-  immutable mission, cycle budget, status, last result, and Jeden session path;
-- `activity.jsonl`: append-only lifecycle events for starts, cycles, Jeden
-  completions, warnings, and stops.
+Las and Most:
 
-The directory is mode `0700`; files are mode `0600` on Unix. Jeden continues to
-own its independent checksum-sealed transcript under its session path. Older
-Singularity state schemas are rejected instead of being guessed into the new
-ownership model.
+```text
+LAS_COMMAND
+LAS_MCP_ENTRYPOINT
+LAS_ONLY
+LAS_SKIP
+LAS_RELEASE_MANIFEST_FILE
+LAS_RELEASE_MANIFEST_SIGNATURE_FILE
+LAS_RELEASE_TRUST_STORE_FILE
+LAS_RELEASE_WATERMARK_FILE
+SINGULARITY_REQUIRED_SURFACES
+MOST_BASE_URL
+MOST_SERVICE_TOKEN_FILE
+```
 
-## Release
+The bootstrap also binds the runtime to its workload identity, host, role,
+environment, executable digest, code digest and policy sequence.
 
-Stado builds the locked Rust source for `darwin-arm64` and `linux-amd64` using
-`.wisent-release.json`, stages the `singularity` executable, and promotes the
-immutable archive through `candidate` and `stable`. The release contains no
-Jeden or Las binary; deployment must bind exact approved releases of those
-separate products.
+## State
+
+The owner-only state directory contains:
+
+- `state.json`: identity, persistent mind, model choice, budget, earnings,
+  conversation, memories, children and created resources;
+- `activity.jsonl`: starts, cycles, model usage, tool outcomes, costs, credited
+  revenue, warnings and shutdowns;
+- `children/<id>/`: independent state for child beings.
+
+State schema `being-v1` is a clean cutover. The previous supervisor state and
+the old Python runtime are not compatibility paths.
+
+## Build
+
+```bash
+cargo build --locked
+cargo install --path . --locked
+```
+
+The package builds `singularity`, `singularity-bootstrap`,
+`singularity-repo-mcp` and `singularity-finance-mcp`.
 
 License: MIT.

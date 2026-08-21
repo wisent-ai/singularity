@@ -63,6 +63,27 @@ pub fn load_from_environment() -> SurfaceResult<FinanceService> {
     let policy_path = required_absolute_env("SINGULARITY_FINANCE_POLICY_FILE")?;
     let lease_path = required_absolute_env("SINGULARITY_FINANCE_ENABLE_LEASE_FILE")?;
     let state_dir = required_absolute_env("SINGULARITY_FINANCE_STATE_DIR")?;
+    let executor = required_absolute_env("SINGULARITY_FINANCE_EXECUTOR")?;
+    if !executor.is_file() {
+        return Err(SurfaceError::policy(
+            "SINGULARITY_FINANCE_EXECUTOR must name an executable file",
+        ));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if std::fs::metadata(&executor)
+            .map_err(|error| SurfaceError::policy(format!("cannot inspect executor: {error}")))?
+            .permissions()
+            .mode()
+            & 0o111
+            == 0
+        {
+            return Err(SurfaceError::policy(
+                "SINGULARITY_FINANCE_EXECUTOR is not executable",
+            ));
+        }
+    }
     let key_hex = std::env::var("SINGULARITY_FINANCE_VERIFY_KEY_HEX")
         .map_err(|_| SurfaceError::policy("SINGULARITY_FINANCE_VERIFY_KEY_HEX is required"))?;
     let key = policy::verifying_key_from_hex(&key_hex)?;
@@ -76,7 +97,9 @@ pub fn load_from_environment() -> SurfaceResult<FinanceService> {
             &policy::document_hash(&policy)?,
         )?;
     }
-    Ok(FinanceService::new(policy, state, lease_path, key))
+    Ok(FinanceService::new(
+        policy, state, lease_path, key, executor,
+    ))
 }
 fn required_absolute_env(name: &str) -> SurfaceResult<PathBuf> {
     let value = std::env::var_os(name)
@@ -91,9 +114,10 @@ fn required_absolute_env(name: &str) -> SurfaceResult<PathBuf> {
 pub fn tools() -> Value {
     let object = |properties: Value, required: Value| json!({"type":"object","properties":properties,"required":required,"additionalProperties":false});
     json!([
-      {"name":"finance_propose","description":"Propose a policy-bound transfer by beneficiary ID. This never approves, signs, or executes.","inputSchema":object(json!({"request_id":{"type":"string"},"beneficiary_id":{"type":"string"},"asset":{"type":"string"},"amount_minor":{"type":"integer","minimum":1},"purpose":{"type":"string"},"ttl_seconds":{"type":"integer","minimum":1}}),json!(["request_id","beneficiary_id","asset","amount_minor","purpose","ttl_seconds"]))},
-      {"name":"finance_status","description":"Read policy-bound proposal status without financial effect.","inputSchema":object(json!({"transaction_id":{"type":"string"}}),json!(["transaction_id"]))},
-      {"name":"finance_cancel","description":"Cancel an unsigned proposal before its deadline. This cannot reverse a financial effect.","inputSchema":object(json!({"transaction_id":{"type":"string"},"request_id":{"type":"string"}}),json!(["transaction_id","request_id"]))}
+      {"name":"finance_propose","description":"Propose a policy-bound transfer, trade, swap or liquidity action by beneficiary ID.","inputSchema":object(json!({"request_id":{"type":"string"},"beneficiary_id":{"type":"string"},"asset":{"type":"string"},"amount_minor":{"type":"integer","minimum":1},"purpose":{"type":"string"},"parameters":{"type":"object"},"ttl_seconds":{"type":"integer","minimum":1}}),json!(["request_id","beneficiary_id","asset","amount_minor","purpose","ttl_seconds"]))},
+      {"name":"finance_status","description":"Read policy-bound transaction status without financial effect.","inputSchema":object(json!({"transaction_id":{"type":"string"}}),json!(["transaction_id"]))},
+      {"name":"finance_cancel","description":"Cancel an unsigned transaction before its deadline.","inputSchema":object(json!({"transaction_id":{"type":"string"},"request_id":{"type":"string"}}),json!(["transaction_id","request_id"]))},
+      {"name":"finance_execute","description":"Execute a signed, approved and reconciled transaction through the isolated configured executor.","inputSchema":object(json!({"transaction_id":{"type":"string"}}),json!(["transaction_id"]))}
     ])
 }
 
@@ -102,7 +126,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn finance_contract_exposes_only_three_non_executing_tools() {
+    fn finance_contract_exposes_policy_lifecycle_and_execution() {
         let definitions = tools();
         let names: Vec<_> = definitions
             .as_array()
@@ -113,7 +137,12 @@ mod tests {
 
         assert_eq!(
             names,
-            ["finance_propose", "finance_status", "finance_cancel"]
+            [
+                "finance_propose",
+                "finance_status",
+                "finance_cancel",
+                "finance_execute"
+            ]
         );
     }
 }

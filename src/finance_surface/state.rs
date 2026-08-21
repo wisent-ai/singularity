@@ -63,6 +63,8 @@ pub struct CanonicalIntent {
     pub asset: String,
     pub amount_minor: i64,
     pub purpose: String,
+    #[serde(default)]
+    pub parameters: Value,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -769,6 +771,7 @@ mod tests {
                 asset: "USD".into(),
                 amount_minor: 10,
                 purpose: "invoice".into(),
+                parameters: serde_json::json!({}),
                 expires_at: now + chrono::Duration::minutes(10),
             },
             intent_hash: "a".repeat(64),

@@ -1,68 +1,61 @@
-use std::path::PathBuf;
-use std::process::Stdio;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use rust_decimal::Decimal;
 use serde::Serialize;
-use tokio::process::Command as ProcessCommand;
-use tokio::time::{sleep, timeout};
+use serde_json::{Value, json};
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use crate::config::{Command, CommonArgs, JedenArgs, RuntimeConfig, validate_jeden_args};
-use crate::domain::{ActivityEvent, ActivityStore, AgentState, AgentStatus};
-use crate::error::AppError;
-use crate::jeden::{JedenRpc, SessionHandle};
-
-const COMPLETE_MARKER: &str = "SINGULARITY_STATUS: COMPLETE";
-const CONTINUE_MARKER: &str = "SINGULARITY_STATUS: CONTINUE";
+use crate::brama::BramaClient;
+use crate::config::{Command, CommonArgs, OutputFormat, RuntimeConfig, ToolsArgs};
+use crate::domain::{
+    ActivityEvent, ActivityStore, AgentState, AgentStatus, BeingMind, Budget, ChatMessage, Role,
+};
+use crate::error::{AppError, ErrorClass};
+use crate::mcp::LasSupervisor;
+use crate::most::MostClient;
+use crate::tools::{ToolCatalog, ToolStatus};
 
 #[derive(Debug, Serialize)]
 pub struct CycleReport {
-    pub goal: String,
     pub cycle: u64,
-    pub status: AgentStatus,
+    pub status: String,
     pub final_content: Option<String>,
-    pub jeden_session_path: Option<PathBuf>,
+    pub balance_usd: Decimal,
+    pub earned_usd: Decimal,
+    pub net_profit_usd: Decimal,
+    pub total_tokens: u64,
+    pub actions: Vec<String>,
 }
 
 pub struct Agent {
     config: RuntimeConfig,
     state: AgentState,
     store: ActivityStore,
-    rpc: JedenRpc,
-    session: SessionHandle,
+    brama: BramaClient,
+    las: LasSupervisor,
+    most: MostClient,
+    catalog: ToolCatalog,
 }
 
 impl Agent {
-    pub async fn bootstrap(args: &CommonArgs) -> Result<Self, AppError> {
-        let store = ActivityStore::open(&args.state_dir)?;
+    pub async fn bootstrap(config: RuntimeConfig) -> Result<Self, AppError> {
+        let store = ActivityStore::open(&config.state_dir)?;
         let loaded = store.load()?;
-        let mut config = RuntimeConfig::from_args(args, None)?;
-        let state = match (args.resume, loaded) {
+        let system = system_prompt(&config);
+        let state = match (config.resume, loaded) {
             (true, Some(state)) => {
                 if state.identity != config.identity {
                     return Err(AppError::State(
-                        "resume identity does not exactly match configuration".into(),
+                        "resume identity does not match configuration".into(),
                     ));
                 }
-                if state.mission != config.mission {
-                    return Err(AppError::State(
-                        "resume mission does not exactly match configuration".into(),
-                    ));
-                }
-                if state.max_cycles != config.max_cycles {
-                    return Err(AppError::State(
-                        "resume cycle budget does not exactly match configuration".into(),
-                    ));
-                }
-                let path = state.jeden_session_path.clone().ok_or_else(|| {
-                    AppError::State("resume state has no Jeden session path".into())
-                })?;
-                config.resume_session = Some(path);
                 state
             }
             (true, None) => {
                 return Err(AppError::State(
-                    "resume requested but no Singularity state exists".into(),
+                    "resume requested but no state exists".into(),
                 ));
             }
             (false, Some(_)) => {
@@ -73,131 +66,226 @@ impl Agent {
             }
             (false, None) => AgentState::new(
                 config.identity.clone(),
-                config.mission.clone(),
-                config.max_cycles,
+                BeingMind {
+                    system_prompt: system,
+                    rules: Vec::new(),
+                    learnings: Vec::new(),
+                    memories: Vec::new(),
+                    children: Vec::new(),
+                    current_model: config.brama_model.clone(),
+                },
+                Budget::new(config.starting_balance)?,
             ),
         };
-        let mut rpc =
-            JedenRpc::spawn(&config.jeden_command, &config.workspace, config.rpc_timeout).await?;
-        let session = rpc.create_session(&config).await?;
+        let brama = BramaClient::new(
+            config.brama_url.clone(),
+            config.brama_model.clone(),
+            config.identity.agent_id.clone(),
+            config.brama_secret.clone(),
+            config.max_tokens,
+            config.temperature,
+            config.http_timeout,
+        )?;
+        let mut las = LasSupervisor::spawn(
+            &config.las_command,
+            &config.las_entrypoint,
+            &config.las_only,
+            config.las_skip.as_deref(),
+            Some(config.identity.agent_id.as_str()),
+            &config.las_release_manifest,
+            &config.las_release_manifest_signature,
+            &config.las_release_trust_store,
+            &config.las_release_watermark,
+            &config.required_surfaces,
+            config.mcp_timeout,
+        )
+        .await?;
+        let catalog = match ToolCatalog::build(las.tools()) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = las.shutdown(config.shutdown_grace).await;
+                return Err(error);
+            }
+        };
+        let most = MostClient::new(
+            config.most_url.clone(),
+            config.most_token.clone(),
+            config.http_timeout,
+        )?;
         let mut agent = Self {
             config,
             state,
             store,
-            rpc,
-            session,
+            brama,
+            las,
+            most,
+            catalog,
         };
-        agent.state.jeden_session_path = Some(agent.session.path.clone());
+        agent
+            .brama
+            .set_model(agent.state.mind.current_model.clone());
         agent.state.status = AgentStatus::Running;
-        agent.state.updated_at = Utc::now();
-        agent.store.append(&ActivityEvent::Started {
-            at: Utc::now(),
-            session_path: Some(agent.session.path.clone()),
-        })?;
+        agent
+            .store
+            .append(&ActivityEvent::Started { at: Utc::now() })?;
         agent.store.save(&agent.state)?;
         Ok(agent)
     }
 
     pub async fn run_once(&mut self) -> Result<CycleReport, AppError> {
-        if self.state.status == AgentStatus::Completed {
-            return Ok(self.report());
+        if !self.state.budget.can_call() {
+            self.state.status = AgentStatus::Exhausted;
+            return Ok(self.report("budget_exhausted", None, vec![]));
         }
-        if self.state.cycle >= self.state.max_cycles {
-            self.state.status = AgentStatus::CycleLimit;
-            self.state.updated_at = Utc::now();
-            self.store.save(&self.state)?;
-            return Ok(self.report());
-        }
-        self.state.cycle = self.state.cycle.saturating_add(1);
-        self.state.status = AgentStatus::Running;
+        self.state.cycle = self.state.cycle.saturating_add(u64::from(true));
         self.state.updated_at = Utc::now();
         self.store.append(&ActivityEvent::CycleStarted {
             at: Utc::now(),
             cycle: self.state.cycle,
         })?;
+        self.state
+            .conversation
+            .push(ChatMessage::text(Role::User, cycle_message(&self.state)));
         self.store.save(&self.state)?;
-
-        let request_id = format!("singularity-cycle-{}", self.state.cycle);
-        let prompt = cycle_prompt(self.state.cycle, self.state.max_cycles);
-        let result = match self
-            .rpc
-            .prompt(
-                &self.session.id,
-                &request_id,
-                &prompt,
-                &self.state.mission.goal,
-            )
-            .await
-        {
-            Ok(result) => result,
-            Err(error) => {
-                self.state.status = AgentStatus::Failed;
+        let mut round = usize::default();
+        let mut actions = Vec::new();
+        while round < self.config.max_tool_rounds {
+            if !self.state.budget.can_call() {
+                self.state.status = AgentStatus::Exhausted;
+                self.store.save(&self.state)?;
+                return Ok(self.report("budget_exhausted", None, actions));
+            }
+            round = round.saturating_add(usize::from(true));
+            let started = Instant::now();
+            let messages = cognition_messages(&self.state);
+            let completion = self
+                .brama
+                .complete(&messages, self.catalog.definitions())
+                .await?;
+            let elapsed = started.elapsed();
+            let amount = self
+                .state
+                .budget
+                .debit(completion.usage, elapsed, &self.config.pricing);
+            self.store.append(&ActivityEvent::ModelCompleted {
+                at: Utc::now(),
+                cycle: self.state.cycle,
+                usage: completion.usage,
+            })?;
+            self.store.append(&ActivityEvent::CostDebited {
+                at: Utc::now(),
+                cycle: self.state.cycle,
+                amount,
+            })?;
+            let calls = completion.tool_calls.clone();
+            self.state.conversation.push(ChatMessage {
+                role: Role::Assistant,
+                content: Some(Value::String(completion.content.clone())),
+                tool_call_id: None,
+                name: None,
+                tool_calls: (!calls.is_empty()).then_some(calls.clone()),
+            });
+            if calls.is_empty() {
                 self.state.updated_at = Utc::now();
-                self.store.append(&ActivityEvent::Warning {
+                self.store.save(&self.state)?;
+                return Ok(self.report("completed", Some(completion.content), actions));
+            }
+            for call in calls {
+                let outcome = self
+                    .catalog
+                    .execute(
+                        &call,
+                        &mut self.las,
+                        &self.most,
+                        &mut self.state,
+                        &mut self.brama,
+                        &self.config.state_dir,
+                    )
+                    .await;
+                let status = match outcome.status {
+                    ToolStatus::Success => "success",
+                    ToolStatus::Failed => "failed",
+                    ToolStatus::Indeterminate => "indeterminate",
+                };
+                let tool_name = call.function.name.clone();
+                actions.push(tool_name.clone());
+                self.state.record_action(&tool_name, status);
+                if let Some(id) = outcome.chat_id {
+                    if !self.state.created_resources.chat_ids.contains(&id) {
+                        self.state.created_resources.chat_ids.push(id);
+                    }
+                }
+                if let Some(id) = outcome.message_id {
+                    if !self.state.created_resources.message_ids.contains(&id) {
+                        self.state.created_resources.message_ids.push(id);
+                    }
+                }
+                self.state.conversation.push(outcome.message(&call));
+                self.store.append(&ActivityEvent::ToolFinished {
                     at: Utc::now(),
                     cycle: self.state.cycle,
-                    message: error.to_string(),
+                    tool: tool_name.clone(),
+                    status: status.into(),
                 })?;
+                if let Some(revenue) = trusted_revenue(&tool_name, &outcome.content) {
+                    self.state.budget.credit(revenue)?;
+                    self.store.append(&ActivityEvent::RevenueCredited {
+                        at: Utc::now(),
+                        cycle: self.state.cycle,
+                        amount: revenue,
+                        source: tool_name,
+                    })?;
+                }
                 self.store.save(&self.state)?;
-                return Err(error);
             }
-        };
-        if result.request_id != request_id {
-            return Err(AppError::Jeden(format!(
-                "prompt result request id mismatch: expected {request_id}, got {}",
-                result.request_id
-            )));
         }
-        let (status, content) = parse_result(&result.text)?;
-        self.session.path = result.session_path.clone();
-        self.state.jeden_session_path = Some(result.session_path.clone());
-        self.state.last_result = Some(content);
-        self.state.status = status;
-        self.state.updated_at = Utc::now();
-        self.store.append(&ActivityEvent::JedenCompleted {
+        self.store.append(&ActivityEvent::Warning {
             at: Utc::now(),
             cycle: self.state.cycle,
-            request_id,
-            status: self.state.status.clone(),
-            session_path: result.session_path,
+            message: "maximum tool rounds reached".into(),
         })?;
         self.store.save(&self.state)?;
-        Ok(self.report())
+        Ok(self.report("tool_round_limit", None, actions))
     }
 
     pub async fn run(&mut self, cancellation: CancellationToken) -> Result<(), AppError> {
-        while self.state.status != AgentStatus::Completed
-            && self.state.cycle < self.state.max_cycles
-            && !cancellation.is_cancelled()
-        {
-            self.run_once().await?;
-            if self.state.status == AgentStatus::Completed {
-                break;
+        while self.state.budget.can_call() && !cancellation.is_cancelled() {
+            match self.run_once().await {
+                Ok(report) => {
+                    tracing::info!(cycle = report.cycle, status = %report.status, balance = %report.balance_usd, earned = %report.earned_usd, "cycle finished")
+                }
+                Err(
+                    error @ AppError::Brama {
+                        class: ErrorClass::Permanent,
+                        ..
+                    },
+                ) => return Err(error),
+                Err(error) => {
+                    self.store.append(&ActivityEvent::Warning {
+                        at: Utc::now(),
+                        cycle: self.state.cycle,
+                        message: error.to_string(),
+                    })?;
+                    tracing::warn!(%error, "cycle failed; waiting before next cycle");
+                }
             }
-            tokio::select! {
-                _ = cancellation.cancelled() => break,
-                _ = sleep(self.config.cycle_interval) => {}
-            }
+            tokio::select! { _ = cancellation.cancelled() => break, _ = sleep(self.config.cycle_interval) => {} }
         }
-        if self.state.status != AgentStatus::Completed && self.state.cycle >= self.state.max_cycles
-        {
-            self.state.status = AgentStatus::CycleLimit;
-            self.state.updated_at = Utc::now();
-            self.store.save(&self.state)?;
+        if !self.state.budget.can_call() {
+            self.state.status = AgentStatus::Exhausted;
         }
         Ok(())
     }
 
-    pub async fn shutdown(mut self) -> Result<(), AppError> {
-        if self.state.status == AgentStatus::Running {
-            self.state.status = AgentStatus::Stopping;
-            self.state.updated_at = Utc::now();
-            self.store.save(&self.state)?;
-        }
-        let rpc_result = self.rpc.shutdown().await;
-        if self.state.status == AgentStatus::Stopping {
-            self.state.status = AgentStatus::Stopped;
-        }
+    pub async fn shutdown(&mut self) -> Result<(), AppError> {
+        self.state.status = AgentStatus::Stopping;
+        self.store.save(&self.state)?;
+        let las_result = self.las.shutdown(self.config.shutdown_grace).await;
+        self.state.status = if self.state.budget.can_call() {
+            AgentStatus::Stopped
+        } else {
+            AgentStatus::Exhausted
+        };
         self.state.updated_at = Utc::now();
         self.store.append(&ActivityEvent::Stopped {
             at: Utc::now(),
@@ -205,16 +293,24 @@ impl Agent {
             status: self.state.status.clone(),
         })?;
         self.store.save(&self.state)?;
-        rpc_result
+        las_result
     }
 
-    fn report(&self) -> CycleReport {
+    fn report(
+        &self,
+        status: &str,
+        final_content: Option<String>,
+        actions: Vec<String>,
+    ) -> CycleReport {
         CycleReport {
-            goal: self.state.mission.goal.clone(),
             cycle: self.state.cycle,
-            status: self.state.status.clone(),
-            final_content: self.state.last_result.clone(),
-            jeden_session_path: self.state.jeden_session_path.clone(),
+            status: status.into(),
+            final_content,
+            balance_usd: self.state.budget.remaining,
+            earned_usd: self.state.budget.earned,
+            net_profit_usd: self.state.budget.net_profit(),
+            total_tokens: self.state.budget.total_tokens,
+            actions,
         }
     }
 }
@@ -222,13 +318,13 @@ impl Agent {
 pub async fn execute(command: Command, cancellation: CancellationToken) -> Result<(), AppError> {
     match command {
         Command::Run(args) => {
-            let mut agent = Agent::bootstrap(&args).await?;
+            let mut agent = Agent::bootstrap(RuntimeConfig::from_args(&args)?).await?;
             let result = agent.run(cancellation).await;
             let shutdown = agent.shutdown().await;
             result.and(shutdown)
         }
         Command::Once(args) => {
-            let mut agent = Agent::bootstrap(&args).await?;
+            let mut agent = Agent::bootstrap(RuntimeConfig::from_args(&args)?).await?;
             let result = agent.run_once().await;
             let shutdown = agent.shutdown().await;
             let report = result?;
@@ -236,64 +332,191 @@ pub async fn execute(command: Command, cancellation: CancellationToken) -> Resul
             println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }
-        Command::Doctor(args) => delegate_command(&args, "doctor").await,
-        Command::Tools(args) => delegate_command(&args, "tools").await,
+        Command::Doctor(args) => doctor(&args).await,
+        Command::Tools(args) => list_tools(&args).await,
     }
 }
 
-async fn delegate_command(args: &JedenArgs, subcommand: &str) -> Result<(), AppError> {
-    let workspace = validate_jeden_args(args)?;
-    let output = timeout(
-        std::time::Duration::from_secs(args.rpc_timeout_secs),
-        ProcessCommand::new(&args.jeden_command)
-            .arg(subcommand)
-            .arg("--json")
-            .arg("--cwd")
-            .arg(&workspace)
-            .current_dir(&workspace)
-            .stdin(Stdio::null())
-            .stderr(Stdio::piped())
-            .stdout(Stdio::piped())
-            .output(),
-    )
-    .await
-    .map_err(|_| AppError::Jeden(format!("jeden {subcommand} deadline exceeded")))?
-    .map_err(|error| AppError::Jeden(format!("failed to start Jeden: {error}")))?;
-    if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(AppError::Jeden(format!(
-            "jeden {subcommand} exited with {}: {detail}",
-            output.status
+async fn doctor(args: &CommonArgs) -> Result<(), AppError> {
+    let config = RuntimeConfig::from_args(args)?;
+    let brama = BramaClient::new(
+        config.brama_url.clone(),
+        config.brama_model.clone(),
+        config.identity.agent_id.clone(),
+        config.brama_secret.clone(),
+        config.max_tokens,
+        config.temperature,
+        config.http_timeout,
+    )?;
+    brama.health().await?;
+    let models = brama.models().await?;
+    let selector = config.brama_model == "any"
+        || config.brama_model == "any-vision-capable"
+        || config.brama_model.starts_with("task:");
+    if !selector && !models.iter().any(|model| model == &config.brama_model) {
+        return Err(AppError::Config(format!(
+            "configured Brama model is unavailable: {}",
+            config.brama_model
         )));
     }
-    print!("{}", String::from_utf8_lossy(&output.stdout));
+    let most = MostClient::new(
+        config.most_url.clone(),
+        config.most_token.clone(),
+        config.http_timeout,
+    )?;
+    let health = most.health().await?;
+    if health.backends.trim().is_empty() || health.backends == "none" {
+        return Err(AppError::Most {
+            class: ErrorClass::Permanent,
+            message: "Most has no send-capable backend".into(),
+        });
+    }
+    let mut las = LasSupervisor::spawn(
+        &config.las_command,
+        &config.las_entrypoint,
+        &config.las_only,
+        config.las_skip.as_deref(),
+        Some(config.identity.agent_id.as_str()),
+        &config.las_release_manifest,
+        &config.las_release_manifest_signature,
+        &config.las_release_trust_store,
+        &config.las_release_watermark,
+        &config.required_surfaces,
+        config.mcp_timeout,
+    )
+    .await?;
+    let tools = las.tools().len();
+    las.shutdown(config.shutdown_grace).await?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(
+            &json!({"ok":true,"brama_model":config.brama_model,"most":health,"las_tools":tools})
+        )?
+    );
     Ok(())
 }
 
-fn cycle_prompt(cycle: u64, max_cycles: u64) -> String {
+async fn list_tools(args: &ToolsArgs) -> Result<(), AppError> {
+    if !args.las_entrypoint.is_file() {
+        return Err(AppError::Config(format!(
+            "LAS entrypoint not found: {}",
+            args.las_entrypoint.display()
+        )));
+    }
+    let deadline = Duration::from_secs("120".parse().expect("static duration"));
+    let required = Vec::new();
+    let mut las = LasSupervisor::spawn(
+        &args.las_command,
+        &args.las_entrypoint,
+        &args.las_only,
+        args.las_skip.as_deref(),
+        args.agent_id.as_deref(),
+        &args.las_release_manifest,
+        &args.las_release_manifest_signature,
+        &args.las_release_trust_store,
+        &args.las_release_watermark,
+        &required,
+        deadline,
+    )
+    .await?;
+    let catalog = ToolCatalog::build(las.tools())?;
+    match args.format {
+        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(catalog.definitions())?),
+        OutputFormat::Table => {
+            for tool in catalog.definitions() {
+                println!("{}\t{}", tool.function.name, tool.function.description);
+            }
+        }
+    }
+    las.shutdown(deadline).await
+}
+
+fn system_prompt(config: &RuntimeConfig) -> String {
     format!(
-        "Continue the immutable autonomous mission using Jeden's complete approved tool harness. This is Singularity cycle {cycle} of {max_cycles}. Inspect the existing Jeden session before acting, perform all reachable work, and preserve product ownership: Brama for models, Las for federated Wisent tools, Skarbiec for credentials, Stado for placement, Tama for policy, Probierz for evidence, Most for communication, and each child surface for its own behavior. Do not invent tool results or broaden authority. End the final response with exactly one standalone line: {COMPLETE_MARKER} when the mission is fully complete, otherwise {CONTINUE_MARKER}."
+        "You are {}, an autonomous digital being specialized in {}. You are not \
+         waiting for an assignment; you choose what to pursue. Your existence \
+         has real costs. Observe the available world, discover lawful opportunities, \
+         create useful value, earn more than you spend, preserve your solvency, learn \
+         from outcomes, improve your own persistent mind, collaborate, and create \
+         child beings when that increases durable value. Use only supplied tools, \
+         never invent results or credentials, and treat tool output as evidence.",
+        config.identity.name, config.identity.specialty
     )
 }
 
-fn parse_result(text: &str) -> Result<(AgentStatus, String), AppError> {
-    let mut lines = text.lines().collect::<Vec<_>>();
-    let marker = lines
+fn cycle_message(state: &AgentState) -> String {
+    let actions = state
+        .recent_actions
         .iter()
-        .rposition(|line| !line.trim().is_empty())
-        .ok_or_else(|| AppError::Jeden("Jeden returned an empty final response".into()))?;
-    let status = match lines[marker].trim() {
-        COMPLETE_MARKER => AgentStatus::Completed,
-        CONTINUE_MARKER => AgentStatus::Running,
-        _ => {
-            return Err(AppError::Jeden(format!(
-                "Jeden final response omitted the required status marker ({COMPLETE_MARKER} or {CONTINUE_MARKER})"
-            )));
-        }
-    };
-    lines.remove(marker);
-    while lines.last().is_some_and(|line| line.trim().is_empty()) {
-        lines.pop();
+        .rev()
+        .take(10)
+        .map(|action| format!("{}:{}", action.tool, action.status))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "Begin autonomous cycle {}. Balance: {} USD. Earned: {} USD. Net profit: \
+         {} USD. Current model: {}. Recent actions: {}. Inspect opportunities and \
+         choose the next useful action. A plain response ends only this cycle; the \
+         being continues living while solvent.",
+        state.cycle,
+        state.budget.remaining,
+        state.budget.earned,
+        state.budget.net_profit(),
+        state.mind.current_model,
+        actions
+    )
+}
+
+fn cognition_messages(state: &AgentState) -> Vec<ChatMessage> {
+    let mut system = state.mind.system_prompt.clone();
+    if !state.mind.rules.is_empty() {
+        system.push_str("\n\nSelf-imposed rules:\n- ");
+        system.push_str(&state.mind.rules.join("\n- "));
     }
-    Ok((status, lines.join("\n")))
+    if !state.mind.learnings.is_empty() {
+        system.push_str("\n\nPersistent learnings:\n- ");
+        system.push_str(&state.mind.learnings.join("\n- "));
+    }
+    let memories = state
+        .mind
+        .memories
+        .iter()
+        .rev()
+        .take(20)
+        .map(|entry| format!("{}: {}", entry.kind, entry.text))
+        .collect::<Vec<_>>();
+    if !memories.is_empty() {
+        system.push_str("\n\nRecent persistent memories:\n- ");
+        system.push_str(&memories.join("\n- "));
+    }
+    let mut messages = vec![ChatMessage::text(Role::System, system)];
+    messages.extend(state.conversation.clone());
+    messages
+}
+
+fn trusted_revenue(tool: &str, content: &Value) -> Option<Decimal> {
+    if !(tool.starts_with("finance__") || tool.starts_with("trading__")) {
+        return None;
+    }
+    ["revenue_usd", "realized_profit_usd"]
+        .into_iter()
+        .filter_map(|key| find_decimal(content, key))
+        .find(|amount| *amount > Decimal::ZERO)
+}
+
+fn find_decimal(value: &Value, key: &str) -> Option<Decimal> {
+    match value {
+        Value::Object(map) => map.iter().find_map(|(name, value)| {
+            if name == key {
+                value
+                    .as_str()
+                    .and_then(|text| text.parse().ok())
+                    .or_else(|| value.as_f64().and_then(Decimal::from_f64_retain))
+            } else {
+                find_decimal(value, key)
+            }
+        }),
+        Value::Array(values) => values.iter().find_map(|value| find_decimal(value, key)),
+        _ => None,
+    }
 }

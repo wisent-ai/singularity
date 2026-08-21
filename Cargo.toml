@@ -1,9 +1,9 @@
 [package]
 name = "singularity"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Autonomous Wisent mission supervisor powered by Jeden"
+description = "Autonomous digital being that creates value and sustains itself"
 license = "MIT"
 repository = "https://github.com/wisent-ai/singularity"
 homepage = "https://singularity.wisent.com"
@@ -48,4 +48,5 @@ tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1", features = ["serde", "v4"] }
+url = "2"
 zeroize = "1"

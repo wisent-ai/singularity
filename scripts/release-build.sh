@@ -16,10 +16,12 @@ case "$WISENT_PLATFORM" in
 esac
 
 mkdir -p "$WISENT_OUTPUT_DIR/cargo-target-$WISENT_PLATFORM"
-rm -f "$WISENT_OUTPUT_DIR/singularity"
+rm -f "$WISENT_OUTPUT_DIR"/singularity*
 export CARGO_INCREMENTAL=0
 export SOURCE_DATE_EPOCH=1
 export CARGO_TARGET_DIR="$WISENT_OUTPUT_DIR/cargo-target-$WISENT_PLATFORM"
 cd "$WISENT_SOURCE_DIR"
-cargo build --release --locked --manifest-path "$WISENT_SOURCE_DIR/Cargo.toml" --bin singularity
-install -m 0755 "$CARGO_TARGET_DIR/release/singularity" "$WISENT_OUTPUT_DIR/singularity"
+cargo build --release --locked --manifest-path "$WISENT_SOURCE_DIR/Cargo.toml" --bins
+for binary in singularity singularity-bootstrap singularity-repo-mcp singularity-finance-mcp; do
+  install -m 0755 "$CARGO_TARGET_DIR/release/$binary" "$WISENT_OUTPUT_DIR/$binary"
+done

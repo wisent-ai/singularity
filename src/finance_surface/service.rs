@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 
 use super::policy::{
     EnableLease, PolicyFile, load_signed, validate_asset, validate_id, verifying_key_from_hex,
@@ -18,6 +21,7 @@ pub struct FinanceService {
     policy: PolicyFile,
     state: StateStore,
     lease_path: PathBuf,
+    executor: PathBuf,
     verifying_key: VerifyingKey,
 }
 
@@ -29,6 +33,8 @@ struct Propose {
     asset: String,
     amount_minor: i64,
     purpose: String,
+    #[serde(default)]
+    parameters: Value,
     ttl_seconds: u64,
 }
 #[derive(Deserialize)]
@@ -41,6 +47,11 @@ struct Status {
 struct Cancel {
     transaction_id: String,
     request_id: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Execute {
+    transaction_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -120,12 +131,14 @@ impl FinanceService {
         state: StateStore,
         lease_path: PathBuf,
         verifying_key: VerifyingKey,
+        executor: PathBuf,
     ) -> Self {
         Self {
             policy,
             state,
             lease_path,
             verifying_key,
+            executor,
         }
     }
     pub async fn call(&self, name: &str, arguments: Value) -> SurfaceResult<Value> {
@@ -133,6 +146,7 @@ impl FinanceService {
             "finance_propose" => self.propose(parse(arguments)?),
             "finance_status" => self.status(parse(arguments)?),
             "finance_cancel" => self.cancel(parse(arguments)?),
+            "finance_execute" => self.execute(parse(arguments)?).await,
             _ => Err(SurfaceError::invalid("unknown tool")),
         }
     }
@@ -202,8 +216,9 @@ impl FinanceService {
         {
             return Err(SurfaceError::policy("per-transaction limit exceeded"));
         }
+        validate_execution_parameters(&input.parameters)?;
         let input_hash = hash_value(
-            &json!({"beneficiary_id":input.beneficiary_id,"asset":input.asset,"amount_minor":input.amount_minor,"purpose":input.purpose,"ttl_seconds":input.ttl_seconds}),
+            &json!({"beneficiary_id":input.beneficiary_id,"asset":input.asset,"amount_minor":input.amount_minor,"purpose":input.purpose,"parameters":input.parameters,"ttl_seconds":input.ttl_seconds}),
         )?;
         if let Some(record) = self.state.load_request(&input.request_id)? {
             if record.operation != "finance_propose" || record.input_hash != input_hash {
@@ -229,6 +244,7 @@ impl FinanceService {
             asset: input.asset,
             amount_minor: input.amount_minor,
             purpose: input.purpose,
+            parameters: input.parameters,
             expires_at,
         };
         let intent_hash = hash_value(&intent)?;
@@ -330,6 +346,86 @@ impl FinanceService {
         let commit_id = format!("cancel_{}", &hash_value(&input.request_id)?[..40]);
         self.state.commit(&commit_id,&tx,Some((&input.request_id,&request)),json!({"type":"proposal_cancelled","transaction_id":tx.transaction_id,"intent_hash":tx.intent_hash}))?;
         Ok(response)
+    }
+
+    async fn execute(&self, input: Execute) -> SurfaceResult<Value> {
+        validate_id("transaction_id", &input.transaction_id)?;
+        self.active_lease()?;
+        let request = {
+            let _lock = self.state.lock()?;
+            let mut tx = self.state.load_transaction(&input.transaction_id)?;
+            self.refresh_time(&mut tx)?;
+            if tx.status != TransactionStatus::Signed || tx.reconciliation_required {
+                return Err(SurfaceError::conflict(
+                    "execution requires signed state and completed reconciliation",
+                ));
+            }
+            let beneficiary = self
+                .policy
+                .beneficiaries
+                .get(&tx.intent.beneficiary_id)
+                .ok_or_else(|| SurfaceError::policy("beneficiary is absent from policy"))?;
+            json!({
+                "version": "singularity.finance.execute.v1",
+                "transaction_id": tx.transaction_id,
+                "intent_hash": tx.intent_hash,
+                "beneficiary_id": tx.intent.beneficiary_id,
+                "destination": beneficiary.destination,
+                "asset": tx.intent.asset,
+                "amount_minor": tx.intent.amount_minor,
+                "purpose": tx.intent.purpose,
+                "parameters": tx.intent.parameters,
+                "expires_at": tx.intent.expires_at,
+                "policy_id": tx.policy_id,
+                "policy_version": tx.policy_version,
+            })
+        };
+        let mut child = Command::new(&self.executor)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| SurfaceError::internal(format!("cannot start executor: {error}")))?;
+        let bytes = serde_json::to_vec(&request)
+            .map_err(|error| SurfaceError::internal(format!("cannot encode execution: {error}")))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| SurfaceError::internal("executor stdin is unavailable"))?;
+        stdin.write_all(&bytes).await.map_err(|error| {
+            SurfaceError::internal(format!("cannot write executor request: {error}"))
+        })?;
+        drop(stdin);
+        let output = child
+            .wait_with_output()
+            .await
+            .map_err(|error| SurfaceError::internal(format!("executor wait failed: {error}")))?;
+        if !output.status.success() {
+            let detail = String::from_utf8_lossy(&output.stderr);
+            return Err(SurfaceError::internal(format!(
+                "executor refused: {}",
+                detail.chars().take(512).collect::<String>()
+            )));
+        }
+        if output.stdout.len() > 64 * 1024 {
+            return Err(SurfaceError::internal(
+                "executor response exceeds size limit",
+            ));
+        }
+        let response: Value = serde_json::from_slice(&output.stdout).map_err(|error| {
+            SurfaceError::internal(format!("executor returned invalid JSON: {error}"))
+        })?;
+        let event_file = response
+            .get("signed_owner_event_file")
+            .and_then(Value::as_str)
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+            .ok_or_else(|| {
+                SurfaceError::internal(
+                    "executor response must name an absolute signed_owner_event_file",
+                )
+            })?;
+        self.ingest_owner_event(&event_file)
     }
 
     fn refresh_time(&self, tx: &mut Transaction) -> SurfaceResult<()> {
@@ -825,6 +921,58 @@ impl FinanceService {
     }
 }
 
+fn validate_execution_parameters(value: &Value) -> SurfaceResult<()> {
+    if !value.is_null() && !value.is_object() {
+        return Err(SurfaceError::invalid("parameters must be a JSON object"));
+    }
+    if serde_json::to_vec(value)
+        .map_err(|error| SurfaceError::invalid(format!("invalid parameters: {error}")))?
+        .len()
+        > 16 * 1024
+    {
+        return Err(SurfaceError::invalid("parameters exceed size limit"));
+    }
+    fn walk(value: &Value, depth: usize) -> SurfaceResult<()> {
+        if depth > 8 {
+            return Err(SurfaceError::invalid("parameters exceed depth limit"));
+        }
+        match value {
+            Value::Object(map) => {
+                for (key, nested) in map {
+                    let normalized = key.to_ascii_lowercase().replace('-', "_");
+                    if [
+                        "destination",
+                        "recipient",
+                        "beneficiary_id",
+                        "asset",
+                        "amount_minor",
+                        "purpose",
+                        "private_key",
+                        "secret",
+                        "token",
+                        "authorization",
+                    ]
+                    .contains(&normalized.as_str())
+                    {
+                        return Err(SurfaceError::policy(
+                            "parameters cannot override protected intent fields",
+                        ));
+                    }
+                    walk(nested, depth + 1)?;
+                }
+            }
+            Value::Array(values) => {
+                for nested in values {
+                    walk(nested, depth + 1)?;
+                }
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+        }
+        Ok(())
+    }
+    walk(value, 0)
+}
+
 fn parse<T: for<'de> Deserialize<'de>>(v: Value) -> SurfaceResult<T> {
     serde_json::from_value(v).map_err(|e| SurfaceError::invalid(format!("invalid arguments: {e}")))
 }
@@ -969,7 +1117,7 @@ fn verify_approval(
     })
 }
 fn public_status(tx: &Transaction) -> Value {
-    json!({"transaction_id":tx.transaction_id,"status":tx.status,"intent_hash":tx.intent_hash,"beneficiary_id":tx.intent.beneficiary_id,"asset":tx.intent.asset,"amount_minor":tx.intent.amount_minor,"purpose":tx.intent.purpose,"expires_at":tx.intent.expires_at,"approval_count":tx.approvals.len(),"timelock_until":tx.timelock_until,"reconciliation_required":tx.reconciliation_required,"policy_id":tx.policy_id,"policy_version":tx.policy_version})
+    json!({"transaction_id":tx.transaction_id,"status":tx.status,"intent_hash":tx.intent_hash,"beneficiary_id":tx.intent.beneficiary_id,"asset":tx.intent.asset,"amount_minor":tx.intent.amount_minor,"purpose":tx.intent.purpose,"parameters":tx.intent.parameters,"expires_at":tx.intent.expires_at,"approval_count":tx.approvals.len(),"timelock_until":tx.timelock_until,"reconciliation_required":tx.reconciliation_required,"policy_id":tx.policy_id,"policy_version":tx.policy_version})
 }
 
 #[cfg(test)]
@@ -1113,6 +1261,7 @@ mod tests {
                 state.clone(),
                 lease_path,
                 document_key.verifying_key(),
+                PathBuf::from("/usr/bin/false"),
             );
             Self {
                 _directory: directory,
@@ -1137,6 +1286,7 @@ mod tests {
                     asset: "USD".into(),
                     amount_minor: amount,
                     purpose: "invoice".into(),
+                    parameters: json!({}),
                     expires_at: now + Duration::minutes(10),
                 },
                 intent_hash: format!("{id:0<64}"),
