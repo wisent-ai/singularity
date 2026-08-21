@@ -56,7 +56,9 @@ Singularity exposes these built-in tools to itself:
 - `singularity_self_add_rule`;
 - `singularity_self_add_learning`;
 - `singularity_self_switch_model`;
-- `singularity_spawn_child`.
+- `singularity_spawn_child`;
+- `singularity_file_read` and `singularity_file_write`, confined to
+  `SINGULARITY_WORKSPACE`.
 
 Rules, learnings, memories, model choice and child records live in `state.json`.
 The prompt sent to Brama is rebuilt from that state every round, so a successful
@@ -132,6 +134,8 @@ SINGULARITY_AGENT_NAME
 SINGULARITY_AGENT_TICKER
 SINGULARITY_AGENT_TYPE
 SINGULARITY_SPECIALTY
+SINGULARITY_WORKSPACE
+SINGULARITY_STIMULUS
 SINGULARITY_STARTING_BALANCE_USD
 SINGULARITY_INSTANCE_USD_PER_HOUR
 SINGULARITY_STATE_DIR
