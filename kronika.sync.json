@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "documents": {
+    "docs/what-is-singularity.md": {},
+    "docs/quick-start.md": {},
+    "docs/cli.md": {},
+    "docs/being.md": {},
+    "docs/loop.md": {},
+    "docs/skills.md": {},
+    "docs/finance.md": {},
+    "docs/bootstrap.md": {},
+    "docs/repo-surface.md": {},
+    "docs/configuration.md": {}
+  },
+  "sources": ["src/", "bin/", "README.md"],
+  "instruction": "The docs must stay true to the singularity runtime source: every command, tool name, environment variable, limit, and lifecycle state must match src/, bin/, and the CLI help output."
+}
