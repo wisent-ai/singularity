@@ -129,6 +129,7 @@ never enter child arguments.
 ```text
 singularity run     live continuously while solvent
 singularity once    execute one autonomous cycle and print its report
+singularity onboarding  show the first-use walkthrough; add --reset to replay it
 singularity doctor  verify Brama, Las, Most and required surfaces
 singularity tools   print the dynamic and built-in tool catalogue
 ```
@@ -191,6 +192,11 @@ The owner-only state directory contains:
 - `activity.jsonl`: starts, cycles, model usage, tool outcomes, costs, credited
   revenue, warnings and shutdowns;
 - `children/<id>/`: independent state for child beings.
+
+Onboarding progress is stored separately at
+`$XDG_STATE_HOME/singularity/onboarding.json` (or
+`~/.local/state/singularity/onboarding.json`) and can be redirected with
+`SINGULARITY_ONBOARDING_STATE_PATH`.
 
 State schema `being-v1` is a clean cutover. The previous supervisor state and
 the old Python runtime are not compatibility paths.

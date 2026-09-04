@@ -339,7 +339,22 @@ pub async fn execute(command: Command, cancellation: CancellationToken) -> Resul
             let report = result?;
             shutdown?;
             println!("{}", serde_json::to_string_pretty(&report)?);
+            match crate::onboarding::record_completed_cycle(&report).await {
+                Ok(true) => println!(
+                    "First-use complete: Singularity recorded autonomous_cycle_completed from the cycle above."
+                ),
+                Ok(false) => {}
+                Err(error) => {
+                    eprintln!("singularity: could not record onboarding first success: {error}");
+                }
+            }
             Ok(())
+        }
+        Command::Onboarding(args) => {
+            crate::onboarding::run_first_use(args.reset)
+                .await
+                .map(|_| ())
+                .map_err(|error| AppError::Runtime(format!("onboarding: {error}")))
         }
         Command::Doctor(args) => doctor(&args).await,
         Command::Tools(args) => list_tools(&args).await,

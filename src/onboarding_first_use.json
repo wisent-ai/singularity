@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "product_id": "singularity",
+  "journey_id": "first-use",
+  "journey_version": "2026-09-03.1",
+  "entry_screen_id": "persistent-being",
+  "first_success_fact": "autonomous_cycle_completed",
+  "published_at": "2026-09-03T00:00:00Z",
+  "source_revision": "singularity-first-use-2026-09-03.1",
+  "screens": [
+    {
+      "screen_id": "persistent-being",
+      "screen_kind": "explanation",
+      "title_key": "singularity.onboarding.persistent-being.title",
+      "body_key": "singularity.onboarding.persistent-being.body",
+      "required": true,
+      "actions": [
+        "next"
+      ],
+      "transitions": [
+        {
+          "next_screen_id": "bounded-tools",
+          "reason_code": "runtime_understood",
+          "priority": 0
+        }
+      ],
+      "presentation": {
+        "title": "Run a persistent autonomous being",
+        "body": "Singularity is a native runtime for a digital being that keeps its identity, mind, memories, financial state, and recent actions between cycles. A normal assistant response ends one cycle, not the being: run continues while it is solvent, and once executes exactly one cycle for inspection."
+      }
+    },
+    {
+      "screen_id": "bounded-tools",
+      "screen_kind": "explanation",
+      "title_key": "singularity.onboarding.bounded-tools.title",
+      "body_key": "singularity.onboarding.bounded-tools.body",
+      "required": true,
+      "actions": [
+        "next"
+      ],
+      "transitions": [
+        {
+          "next_screen_id": "durable-accounting",
+          "reason_code": "boundaries_understood",
+          "priority": 0
+        }
+      ],
+      "presentation": {
+        "title": "Connect cognition without handing over authority",
+        "body": "Brama provides model cognition and Las provides the current namespaced tool catalogue. Most communication, Skarbiec capabilities, repository work, compute placement, and finance stay behind their own policy boundaries. Singularity records an ambiguous remote effect as indeterminate instead of replaying it automatically."
+      }
+    },
+    {
+      "screen_id": "durable-accounting",
+      "screen_kind": "explanation",
+      "title_key": "singularity.onboarding.durable-accounting.title",
+      "body_key": "singularity.onboarding.durable-accounting.body",
+      "required": true,
+      "actions": [
+        "next"
+      ],
+      "transitions": [
+        {
+          "next_screen_id": "complete-first-cycle",
+          "reason_code": "state_understood",
+          "priority": 0
+        }
+      ],
+      "presentation": {
+        "title": "Keep the mind and its economics durable",
+        "body": "The owner-only state directory stores the being's prompt, rules, learnings, memories, children, conversation, balance, and activity journal. Each cycle debits observed model and compute cost exactly once; revenue is credited only from trusted finance or trading results. Use a new state directory for a new being, or --resume for the same identity."
+      }
+    },
+    {
+      "screen_id": "complete-first-cycle",
+      "screen_kind": "first_success",
+      "title_key": "singularity.onboarding.complete-first-cycle.title",
+      "body_key": "singularity.onboarding.complete-first-cycle.body",
+      "required": true,
+      "completion_evidence": {
+        "kind": "fact",
+        "fact": "autonomous_cycle_completed",
+        "operator": "eq",
+        "value": true
+      },
+      "actions": [
+        "run_autonomous_cycle"
+      ],
+      "transitions": [],
+      "presentation": {
+        "title": "Complete one real autonomous cycle",
+        "body": "Configure the normal workload identity, Brama, Las, and policy inputs, then run singularity once. The command bootstraps the being, asks the real model what to pursue, executes any approved tool calls, persists the resulting mind and accounting state, and prints its cycle report. Completion is recorded only after that command returns a completed cycle; reading this walkthrough is not sufficient."
+      }
+    }
+  ],
+  "analytics_contract": {
+    "contract_version": "1",
+    "surface": "cli_first_use",
+    "exposure_event": "onboarding_step_viewed",
+    "primary_action_event": "onboarding_step_completed",
+    "completion_event": "onboarding_completed",
+    "first_success_event": "onboarding_first_success_observed"
+  }
+}

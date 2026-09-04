@@ -27,6 +27,15 @@ pub enum Command {
     Once(CommonArgs),
     Doctor(CommonArgs),
     Tools(ToolsArgs),
+    /// Show the first-use walkthrough
+    Onboarding(OnboardingArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct OnboardingArgs {
+    /// Discard recorded progress and evidence, then show the walkthrough from its first screen
+    #[arg(long, default_value_t = false)]
+    pub reset: bool,
 }
 
 #[derive(Debug, Clone, Args)]

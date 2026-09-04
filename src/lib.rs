@@ -9,6 +9,7 @@ pub mod error;
 pub mod mcp;
 #[path = "platform/most.rs"]
 pub mod most;
+pub mod onboarding;
 #[path = "platform/tools.rs"]
 pub mod tools;
 

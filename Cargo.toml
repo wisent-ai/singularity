@@ -53,5 +53,6 @@ tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1", features = ["serde", "v4"] }
+wisent-onboarding-client = { git = "https://github.com/wisent-ai/echo-web", rev = "e2e4bdc08b336d41818a8589527cc6595cfc6c65", package = "wisent-onboarding-client" }
 url = "2"
 zeroize = "1"
