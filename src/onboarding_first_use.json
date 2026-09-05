@@ -2,11 +2,11 @@
   "schema_version": 1,
   "product_id": "singularity",
   "journey_id": "first-use",
-  "journey_version": "2026-09-03.1",
+  "journey_version": "2026-09-04.1",
   "entry_screen_id": "persistent-being",
   "first_success_fact": "autonomous_cycle_completed",
-  "published_at": "2026-09-03T00:00:00Z",
-  "source_revision": "singularity-first-use-2026-09-03.1",
+  "published_at": "2026-09-04T00:00:00Z",
+  "source_revision": "singularity-first-use-2026-09-04.1",
   "screens": [
     {
       "screen_id": "persistent-being",
@@ -51,13 +51,13 @@
       }
     },
     {
-      "screen_id": "durable-accounting",
+      "screen_id": "bring-your-mind",
       "screen_kind": "explanation",
-      "title_key": "singularity.onboarding.durable-accounting.title",
-      "body_key": "singularity.onboarding.durable-accounting.body",
+      "title_key": "singularity.onboarding.bring-your-mind.title",
+      "body_key": "singularity.onboarding.bring-your-mind.body",
       "required": true,
       "actions": [
-        "next"
+        "import_existing_mind"
       ],
       "transitions": [
         {
@@ -67,8 +67,8 @@
         }
       ],
       "presentation": {
-        "title": "Keep the mind and its economics durable",
-        "body": "The owner-only state directory stores the being's prompt, rules, learnings, memories, children, conversation, balance, and activity journal. Each cycle debits observed model and compute cost exactly once; revenue is credited only from trusted finance or trading results. Use a new state directory for a new being, or --resume for the same identity."
+        "title": "Bring existing memory and knowledge",
+        "body": "Optionally pass --import-file to singularity run or once so a new being receives existing memory before its first model call, or use import/onboarding for an existing state. Singularity validates every memory, knowledge, and profile record before one atomic state save, preserves source attribution, and refuses changed duplicates. The import never changes identity, prompt, rules, model, budget, finance policy, or tools. Without a file, setup remains empty and usable."
       }
     },
     {

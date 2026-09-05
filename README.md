@@ -64,6 +64,55 @@ Rules, learnings, memories, model choice and child records live in `state.json`.
 The prompt sent to Brama is rebuilt from that state every round, so a successful
 self-change affects the next model call without changing the executable.
 
+### Import existing memory, knowledge, and profile records
+
+To create a new being with existing mind records before its first model call,
+add the file to the normal fully configured startup command:
+
+```text
+singularity once --import-file /path/to/mind.json [normal required runtime flags]
+singularity run --import-file /path/to/mind.json [normal required runtime flags]
+```
+
+For a being that already exists, including one currently owned by `run`, use:
+
+```text
+singularity import --file /path/to/mind.json --state-dir /path/to/state
+singularity onboarding --import-file /path/to/mind.json --state-dir /path/to/state
+```
+
+The accepted document is strict `singularity-mind-import-v1` JSON:
+
+```json
+{
+  "schema_version": "singularity-mind-import-v1",
+  "source": { "kind": "<export type>", "id": "<stable source id>" },
+  "memories": [{ "id": "<stable item id>", "text": "<existing memory>" }],
+  "knowledge": [{ "id": "<stable item id>", "text": "<existing knowledge>" }],
+  "profile": [{ "id": "<stable item id>", "text": "<existing profile fact>" }]
+}
+```
+
+The three arrays are optional, but at least one real record is required. Source
+and item IDs must be stable, nonempty, and unique within the document. Unknown
+fields, malformed JSON, symbolic links, files over 16 MiB, more than 1,000
+records, empty text, NULs, and oversized fields are refused.
+
+Singularity validates the entire document before mutation and saves `state.json`
+once. Repeating the same source item with the same text is unchanged; repeating
+it with different text refuses the entire import; the same existing text from a
+different source adds provenance without duplicating the memory. The JSON result
+reports `imported`, `attributed`, `unchanged`, `conflicting`, and `rejected`
+counts plus item issues. Imported profile records are retained as profile-kind
+mind memories: they never replace the being identity. Import does not change the
+prompt, rules, model, budget, finance policy, or enabled tools.
+
+When `singularity run` owns the state, the command submits to its owner-only
+local state service. When stopped, the command writes through `ActivityStore`
+directly. A missing being or an unavailable running state owner is refused
+without creating a second store.
+
+
 ## Dynamic skills
 
 Las supplies the current namespaced MCP catalogue. Singularity does not freeze a
@@ -127,11 +176,12 @@ never enter child arguments.
 ## Commands
 
 ```text
-singularity run     live continuously while solvent
-singularity once    execute one autonomous cycle and print its report
-singularity onboarding  show the first-use walkthrough; add --reset to replay it
-singularity doctor  verify Brama, Las, Most and required surfaces
-singularity tools   print the dynamic and built-in tool catalogue
+singularity run         live continuously while solvent
+singularity once        execute one autonomous cycle and print its report
+singularity import      import attributed memory, knowledge, and profile JSON
+singularity onboarding  show first use; add --import-file or --reset
+singularity doctor      verify Brama, Las, Most and required surfaces
+singularity tools       print the dynamic and built-in tool catalogue
 ```
 
 ## Configuration
@@ -188,9 +238,11 @@ environment, executable digest, code digest and policy sequence.
 The owner-only state directory contains:
 
 - `state.json`: identity, persistent mind, model choice, budget, earnings,
-  conversation, memories, children and created resources;
+  conversation, memories with optional import provenance, children and created
+  resources;
 - `activity.jsonl`: starts, cycles, model usage, tool outcomes, costs, credited
-  revenue, warnings and shutdowns;
+  revenue, mind imports, warnings and shutdowns;
+- `state-import.sock`: owner-only local import boundary while `run` is active;
 - `children/<id>/`: independent state for child beings.
 
 Onboarding progress is stored separately at

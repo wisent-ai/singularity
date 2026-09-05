@@ -8,7 +8,7 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use crate::brama::BramaClient;
-use crate::config::{Command, CommonArgs, OutputFormat, RuntimeConfig, ToolsArgs};
+use crate::config::{Command, CommonArgs, CycleArgs, OutputFormat, RuntimeConfig, ToolsArgs};
 use crate::domain::{
     ActivityEvent, ActivityStore, AgentState, AgentStatus, BeingMind, Budget, ChatMessage, Role,
 };
@@ -16,6 +16,7 @@ use crate::error::{AppError, ErrorClass};
 use crate::mcp::LasSupervisor;
 use crate::most::MostClient;
 use crate::tools::{ToolCatalog, ToolStatus};
+use crate::state_service::StateImportService;
 
 #[derive(Debug, Serialize)]
 pub struct CycleReport {
@@ -41,10 +42,19 @@ pub struct Agent {
 
 impl Agent {
     pub async fn bootstrap(config: RuntimeConfig) -> Result<Self, AppError> {
+        Self::bootstrap_with_import(config, None)
+            .await
+            .map(|(agent, _)| agent)
+    }
+
+    async fn bootstrap_with_import(
+        config: RuntimeConfig,
+        startup_import: Option<&crate::import::MindImport>,
+    ) -> Result<(Self, Option<crate::import::ImportReport>), AppError> {
         let store = ActivityStore::open(&config.state_dir)?;
         let loaded = store.load()?;
         let system = system_prompt(&config);
-        let state = match (config.resume, loaded) {
+        let mut state = match (config.resume, loaded) {
             (true, Some(state)) => {
                 if state.identity != config.identity {
                     return Err(AppError::State(
@@ -76,6 +86,19 @@ impl Agent {
                 },
                 Budget::new(config.starting_balance)?,
             ),
+        };
+        let startup_report = if let Some(input) = startup_import {
+            let (imported, report) = crate::import::apply_import(state, input)?;
+            if !report.accepted {
+                return Err(AppError::State(format!(
+                    "startup import refused: {} conflicting and {} rejected item(s); no state was created",
+                    report.conflicting, report.rejected
+                )));
+            }
+            state = imported;
+            Some(report)
+        } else {
+            None
         };
         let brama = BramaClient::new(
             config.brama_url.clone(),
@@ -125,11 +148,19 @@ impl Agent {
             .brama
             .set_model(agent.state.mind.current_model.clone());
         agent.state.status = AgentStatus::Running;
-        agent
-            .store
-            .append(&ActivityEvent::Started { at: Utc::now() })?;
+        agent.store.append(&ActivityEvent::Started { at: Utc::now() })?;
+        if let Some(report) = startup_report.as_ref() {
+            agent.store.append(&ActivityEvent::MindImported {
+                at: Utc::now(),
+                source_kind: report.source_kind.clone(),
+                source_id: report.source_id.clone(),
+                imported: report.imported,
+                attributed: report.attributed,
+                unchanged: report.unchanged,
+            })?;
+        }
         agent.store.save(&agent.state)?;
-        Ok(agent)
+        Ok((agent, startup_report))
     }
 
     pub async fn run_once(&mut self) -> Result<CycleReport, AppError> {
@@ -256,9 +287,31 @@ impl Agent {
         self.store.save(&self.state)?;
         Ok(self.report("tool_round_limit", None, actions))
     }
+    fn import_mind(
+        &mut self,
+        input: &crate::import::MindImport,
+    ) -> Result<crate::import::ImportReport, AppError> {
+        let (state, report) = crate::import::apply_import(self.state.clone(), input)?;
+        if report.accepted {
+            self.store.save(&state)?;
+            self.store.append(&ActivityEvent::MindImported {
+                at: Utc::now(),
+                source_kind: report.source_kind.clone(),
+                source_id: report.source_id.clone(),
+                imported: report.imported,
+                attributed: report.attributed,
+                unchanged: report.unchanged,
+            })?;
+            self.state = state;
+        }
+        Ok(report)
+    }
+
 
     pub async fn run(&mut self, cancellation: CancellationToken) -> Result<(), AppError> {
-        while self.state.budget.can_call() && !cancellation.is_cancelled() {
+        let (_state_import_service, mut import_requests) =
+            StateImportService::start(&self.config.state_dir).await?;
+        'cycles: while self.state.budget.can_call() && !cancellation.is_cancelled() {
             match self.run_once().await {
                 Ok(report) => {
                     tracing::info!(cycle = report.cycle, status = %report.status, balance = %report.balance_usd, earned = %report.earned_usd, "cycle finished")
@@ -278,7 +331,21 @@ impl Agent {
                     tracing::warn!(%error, "cycle failed; waiting before next cycle");
                 }
             }
-            tokio::select! { _ = cancellation.cancelled() => break, _ = sleep(self.config.cycle_interval) => {} }
+            let wait = sleep(self.config.cycle_interval);
+            tokio::pin!(wait);
+            loop {
+                tokio::select! {
+                    _ = cancellation.cancelled() => break 'cycles,
+                    _ = &mut wait => break,
+                    request = import_requests.recv() => {
+                        let Some(request) = request else {
+                            return Err(AppError::State("local state import service stopped".into()));
+                        };
+                        let result = self.import_mind(&request.input);
+                        request.respond(result);
+                    }
+                }
+            }
         }
         if !self.state.budget.can_call() {
             self.state.status = AgentStatus::Exhausted;
@@ -324,16 +391,55 @@ impl Agent {
     }
 }
 
+fn startup_import(args: &CycleArgs) -> Result<Option<crate::import::MindImport>, AppError> {
+    if args.common.resume && args.import_file.is_some() {
+        return Err(AppError::State(
+            "import into an existing being with `singularity import` before starting it with --resume"
+                .into(),
+        ));
+    }
+    args.import_file
+        .as_deref()
+        .map(|path| {
+            let document = crate::import::read_import_document(path)?;
+            let input = crate::import::parse_import_bytes(&document)?;
+            crate::import::validate_import(&input)?;
+            Ok(input)
+        })
+        .transpose()
+}
+
+fn print_startup_import(report: &crate::import::ImportReport) -> Result<(), AppError> {
+    println!("{}", serde_json::to_string_pretty(report)?);
+    Ok(())
+}
+
 pub async fn execute(command: Command, cancellation: CancellationToken) -> Result<(), AppError> {
     match command {
         Command::Run(args) => {
-            let mut agent = Agent::bootstrap(RuntimeConfig::from_args(&args)?).await?;
+            let startup_import = startup_import(&args)?;
+            let (mut agent, startup_report) = Agent::bootstrap_with_import(
+                RuntimeConfig::from_args(&args.common)?,
+                startup_import.as_ref(),
+            )
+            .await?;
+            if let Some(report) = startup_report.as_ref() {
+                print_startup_import(report)?;
+            }
             let result = agent.run(cancellation).await;
             let shutdown = agent.shutdown().await;
             result.and(shutdown)
         }
         Command::Once(args) => {
-            let mut agent = Agent::bootstrap(RuntimeConfig::from_args(&args)?).await?;
+            let startup_import = startup_import(&args)?;
+            let (mut agent, startup_report) = Agent::bootstrap_with_import(
+                RuntimeConfig::from_args(&args.common)?,
+                startup_import.as_ref(),
+            )
+            .await?;
+            if let Some(report) = startup_report.as_ref() {
+                print_startup_import(report)?;
+            }
             let result = agent.run_once().await;
             let shutdown = agent.shutdown().await;
             let report = result?;
@@ -350,7 +456,29 @@ pub async fn execute(command: Command, cancellation: CancellationToken) -> Resul
             }
             Ok(())
         }
+        Command::Import(args) => {
+            let report = crate::import::import_file(&args.state_dir, &args.file).await?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            if report.accepted {
+                Ok(())
+            } else {
+                Err(AppError::State(format!(
+                    "import refused: {} conflicting and {} rejected item(s); no state was changed",
+                    report.conflicting, report.rejected
+                )))
+            }
+        }
         Command::Onboarding(args) => {
+            if let Some(path) = args.import_file.as_deref() {
+                let report = crate::import::import_file(&args.state_dir, path).await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                if !report.accepted {
+                    return Err(AppError::State(format!(
+                        "onboarding import refused: {} conflicting and {} rejected item(s); no state was changed",
+                        report.conflicting, report.rejected
+                    )));
+                }
+            }
             crate::onboarding::run_first_use(args.reset)
                 .await
                 .map(|_| ())

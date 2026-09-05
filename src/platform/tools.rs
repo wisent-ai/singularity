@@ -440,6 +440,7 @@ fn remember(state: &mut AgentState, arguments: Map<String, Value>) -> ToolOutcom
         kind,
         text,
         created_at: Utc::now(),
+        sources: Vec::new(),
     };
     let id = entry.id;
     state.mind.memories.push(entry);

@@ -194,12 +194,22 @@ pub enum AgentStatus {
     Failed,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(deny_unknown_fields)]
+pub struct MemorySource {
+    pub kind: String,
+    pub source_id: String,
+    pub item_id: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MemoryEntry {
     pub id: Uuid,
     pub kind: String,
     pub text: String,
     pub created_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<MemorySource>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -336,6 +346,14 @@ pub enum ActivityEvent {
         cycle: u64,
         amount: Decimal,
         source: String,
+    },
+    MindImported {
+        at: DateTime<Utc>,
+        source_kind: String,
+        source_id: String,
+        imported: usize,
+        attributed: usize,
+        unchanged: usize,
     },
     Warning {
         at: DateTime<Utc>,

@@ -16,11 +16,11 @@ use crate::CycleReport;
 
 const PRODUCT_ID: &str = "singularity";
 const JOURNEY_ID: &str = "first-use";
-const JOURNEY_VERSION: &str = "2026-09-03.1";
-const JOURNEY_VERSION_ID: &str = "7fd42ac2-a04b-4d44-9c19-20dc850e4c10";
-const SOURCE_REVISION: &str = "singularity-first-use-2026-09-03.1";
+const JOURNEY_VERSION: &str = "2026-09-04.1";
+const JOURNEY_VERSION_ID: &str = "ec8347d4-243f-4d15-82ab-d3fcf2c25e70";
+const SOURCE_REVISION: &str = "singularity-first-use-2026-09-04.1";
 const FIRST_SUCCESS_FACT: &str = "autonomous_cycle_completed";
-const STATE_REVISION: &str = "cli:first-use:2026-09-03.1";
+const STATE_REVISION: &str = "cli:first-use:2026-09-04.1";
 const FALLBACK_DEFINITION: &str = include_str!("onboarding_first_use.json");
 
 type Client = JourneyClient<Box<dyn Transport>, FileStorage>;

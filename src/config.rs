@@ -23,10 +23,12 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    Run(CommonArgs),
-    Once(CommonArgs),
+    Run(CycleArgs),
+    Once(CycleArgs),
     Doctor(CommonArgs),
     Tools(ToolsArgs),
+    /// Import existing memory, knowledge, and profile records into a being
+    Import(ImportArgs),
     /// Show the first-use walkthrough
     Onboarding(OnboardingArgs),
 }
@@ -36,6 +38,22 @@ pub struct OnboardingArgs {
     /// Discard recorded progress and evidence, then show the walkthrough from its first screen
     #[arg(long, default_value_t = false)]
     pub reset: bool,
+    /// Import this file through the canonical state owner before showing the walkthrough
+    #[arg(long, value_name = "JSON")]
+    pub import_file: Option<PathBuf>,
+    /// State directory of the being receiving imported records
+    #[arg(long, env = "SINGULARITY_STATE_DIR", default_value = ".singularity")]
+    pub state_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ImportArgs {
+    /// JSON document using schema singularity-mind-import-v1
+    #[arg(long, value_name = "JSON")]
+    pub file: PathBuf,
+    /// State directory of the being receiving imported records
+    #[arg(long, env = "SINGULARITY_STATE_DIR", default_value = ".singularity")]
+    pub state_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -70,6 +88,15 @@ pub struct ToolsArgs {
 pub enum OutputFormat {
     Json,
     Table,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct CycleArgs {
+    #[command(flatten)]
+    pub common: CommonArgs,
+    /// Import existing mind records into a new state before its first cycle
+    #[arg(long, value_name = "JSON")]
+    pub import_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Args)]
