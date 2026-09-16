@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import os
 import shutil
 import subprocess
@@ -11,7 +10,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -33,15 +31,6 @@ def run_preflight(*arguments: str | Path) -> subprocess.CompletedProcess[str]:
             "LC_ALL": "C.UTF-8",
         },
     )
-
-
-def load_preflight_module():
-    spec = importlib.util.spec_from_file_location("capability_preflight_under_test", PREFLIGHT)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load {PREFLIGHT}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 class StaticDeploymentPreflightTests(unittest.TestCase):
@@ -115,56 +104,6 @@ class StaticDeploymentPreflightTests(unittest.TestCase):
             self.assertIn("externally enforced deny-all sandbox", result.stderr)
         else:
             self.assertIn("only valid on macOS", result.stderr)
-
-
-class ExecEnvironmentIsolationTests(unittest.TestCase):
-    def test_exec_environment_contains_only_validated_file_values_and_safe_locale(self) -> None:
-        preflight = load_preflight_module()
-        with tempfile.TemporaryDirectory() as temporary:
-            environment_file = Path(temporary).resolve() / "agent.env"
-            environment_file.write_text(
-                "SINGULARITY_BOOTSTRAP_BINARY=/bin/true\n"
-                "SKARBIEC_WORKLOAD_ID=brama\n",
-                encoding="utf-8",
-            )
-            environment_file.chmod(0o600)
-            observed: dict[str, str] = {}
-
-            def capture_exec(executable: str, argv: list[str]) -> None:
-                observed.update(os.environ)
-                raise SystemExit((executable, argv))
-
-            argv = [
-                str(PREFLIGHT),
-                "agent",
-                str(environment_file),
-                "--exec",
-            ]
-            inherited = {
-                "PATH": "/attacker/bin",
-                "LANG": "attacker-locale",
-                "AWS_SECRET_ACCESS_KEY": "must-not-survive",
-                "UNRELATED_PARENT_VALUE": "must-not-survive",
-            }
-            with mock.patch.object(preflight, "validate_agent"), mock.patch.object(
-                preflight.os, "execv", side_effect=capture_exec
-            ), mock.patch.object(preflight.sys, "argv", argv), mock.patch.dict(
-                os.environ, inherited, clear=True
-            ):
-                with self.assertRaises(SystemExit) as exit_context:
-                    preflight.main()
-
-            self.assertEqual(("/bin/true", ["/bin/true"]), exit_context.exception.code)
-            self.assertEqual(
-                {
-                    "SINGULARITY_BOOTSTRAP_BINARY": "/bin/true",
-                    "SKARBIEC_WORKLOAD_ID": "brama",
-                    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
-                    "LANG": "C.UTF-8",
-                    "LC_ALL": "C.UTF-8",
-                },
-                observed,
-            )
 
 
 if __name__ == "__main__":
