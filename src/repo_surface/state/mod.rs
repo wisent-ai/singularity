@@ -17,7 +17,6 @@ pub struct WorkspaceState {
     pub worktree: PathBuf,
     pub created_at: String,
     pub sealed_fingerprint: Option<String>,
-    #[serde(default)]
     pub checks: BTreeMap<String, CheckEvidence>,
     pub commit: Option<String>,
     pub published: bool,

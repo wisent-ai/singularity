@@ -8,8 +8,8 @@ use std::path::Path;
 
 use serde_json::json;
 
-use crate::repo_surface::command::git;
 use super::checks::{fresh_seal, write_tree};
+use crate::repo_surface::command::git;
 
 struct TestDirectory(PathBuf);
 

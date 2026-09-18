@@ -4,7 +4,7 @@ use crate::finance_surface::policy::validate_id;
 use crate::finance_surface::state::{Transaction, TransactionStatus};
 use crate::finance_surface::{SurfaceError, SurfaceResult};
 
-use super::super::{FinanceService, pre_signing_state, require_hash, transition, verify_role};
+use super::super::{pre_signing_state, require_hash, transition, verify_role, FinanceService};
 
 impl FinanceService {
     pub(super) fn record_rejection(

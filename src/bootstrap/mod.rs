@@ -43,7 +43,6 @@ pub struct BootstrapManifest {
     pub broker_socket: PathBuf,
     pub workload_private_key_file: PathBuf,
     pub singularity_executable: PathBuf,
-    #[serde(default)]
     pub singularity_args: Vec<String>,
     pub capabilities: BootstrapCapabilities,
 }

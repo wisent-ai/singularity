@@ -2,7 +2,7 @@ use std::fs;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::error::AppError;
-use crate::import::{ImportReport, MindImport, parse_import_bytes};
+use crate::import::{parse_import_bytes, ImportReport, MindImport};
 
 const SOCKET_FILE: &str = "state-import.sock";
 const WIRE_VERSION: u32 = 1;
@@ -24,7 +24,9 @@ pub struct StateImportRequest {
 
 impl StateImportRequest {
     pub fn respond(self, result: Result<ImportReport, AppError>) {
-        let _ = self.response.send(result.map_err(|error| error.to_string()));
+        let _ = self
+            .response
+            .send(result.map_err(|error| error.to_string()));
     }
 }
 
@@ -146,10 +148,7 @@ async fn serve(
     Ok(())
 }
 
-async fn handle_request(
-    bytes: &[u8],
-    sender: mpsc::Sender<StateImportRequest>,
-) -> WireResponse {
+async fn handle_request(bytes: &[u8], sender: mpsc::Sender<StateImportRequest>) -> WireResponse {
     let result = async {
         let request: WireRequest = serde_json::from_slice(bytes)
             .map_err(|error| AppError::State(format!("invalid state import request: {error}")))?;
@@ -169,15 +168,14 @@ async fn handle_request(
             .map_err(|_| AppError::State("the being stopped before importing".into()))?;
         receive
             .await
-            .map_err(|_| AppError::State("the being stopped before returning the import result".into()))?
+            .map_err(|_| {
+                AppError::State("the being stopped before returning the import result".into())
+            })?
             .map_err(AppError::State)
     }
     .await;
     match result {
-        Ok(result) => WireResponse::Success {
-            ok: true,
-            result,
-        },
+        Ok(result) => WireResponse::Success { ok: true, result },
         Err(error) => WireResponse::Failure {
             ok: false,
             error: error.to_string(),

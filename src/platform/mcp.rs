@@ -41,14 +41,9 @@ fn valid_agent_id(agent_id: &str) -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpTool {
     pub name: String,
-    #[serde(default)]
     pub description: String,
-    #[serde(rename = "inputSchema", default = "empty_schema")]
+    #[serde(rename = "inputSchema")]
     pub input_schema: Value,
-}
-
-fn empty_schema() -> Value {
-    json!({"type":"object","properties":{}})
 }
 
 #[derive(Debug, Deserialize)]
@@ -243,15 +238,11 @@ impl LasSupervisor {
                     ));
                 }
                 if let Some(error) = value.get("error") {
-                    let code = error.get("code").cloned().unwrap_or(Value::Null);
-                    let message = error
-                        .get("message")
-                        .and_then(Value::as_str)
-                        .unwrap_or("remote MCP error");
-                    return Err(mcp(
-                        ErrorClass::Indeterminate,
-                        format!("JSON-RPC {code}: {message}"),
-                    ));
+                    let described = match (error.get("code"), error.get("message")) {
+                        (Some(code), Some(message)) => format!("JSON-RPC {code}: {message}"),
+                        _ => format!("JSON-RPC error object without a code and a message: {error}"),
+                    };
+                    return Err(mcp(ErrorClass::Indeterminate, described));
                 }
                 return value
                     .get("result")

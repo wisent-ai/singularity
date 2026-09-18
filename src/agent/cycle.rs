@@ -65,7 +65,7 @@ impl Agent {
             let calls = completion.tool_calls.clone();
             self.state.conversation.push(ChatMessage {
                 role: Role::Assistant,
-                content: Some(Value::String(completion.content.clone())),
+                content: completion.content.clone().map(Value::String),
                 tool_call_id: None,
                 name: None,
                 tool_calls: (!calls.is_empty()).then_some(calls.clone()),
@@ -73,7 +73,7 @@ impl Agent {
             if calls.is_empty() {
                 self.state.updated_at = Utc::now();
                 self.store.save(&self.state)?;
-                return Ok(self.report("completed", Some(completion.content), actions));
+                return Ok(self.report("completed", completion.content, actions));
             }
             for call in calls {
                 let outcome = self

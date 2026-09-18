@@ -2,7 +2,7 @@ mod policy;
 mod service;
 mod state;
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::fmt;
 use std::path::PathBuf;
 
@@ -120,7 +120,6 @@ pub fn tools() -> Value {
       {"name":"finance_execute","description":"Execute a signed, approved and reconciled transaction through the isolated configured executor.","inputSchema":object(json!({"transaction_id":{"type":"string"}}),json!(["transaction_id"]))}
     ])
 }
-
 
 #[cfg(test)]
 #[path = "../../tests/finance_surface/mod.rs"]

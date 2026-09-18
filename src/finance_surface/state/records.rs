@@ -60,8 +60,7 @@ pub struct CanonicalIntent {
     pub asset: String,
     pub amount_minor: i64,
     pub purpose: String,
-    #[serde(default)]
-    pub parameters: Value,
+    pub parameters: Option<Value>,
     pub expires_at: DateTime<Utc>,
 }
 

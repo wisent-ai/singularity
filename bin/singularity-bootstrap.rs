@@ -36,5 +36,10 @@ fn run() -> Result<i32, singularity::AppError> {
         &args.trust_root,
         &args.runtime_root,
     )?;
-    Ok(status.code().unwrap_or(1))
+    match status.code() {
+        Some(code) => Ok(code),
+        None => Err(singularity::AppError::State(format!(
+            "bootstrapped process was terminated by a signal without an exit code: {status}"
+        ))),
+    }
 }

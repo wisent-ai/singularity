@@ -7,9 +7,9 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use wisent_onboarding_client::{
-    ExperimentAssignment, ExperimentAssignmentRequest, FileStorage, IntegrationTransport,
-    JourneyBundle, JourneyClient, JourneyError, OfflineTransport, ProgressStatus, RuntimeEvent,
-    ScopeKind, Storage, Transport, bundle_from_canonical,
+    bundle_from_canonical, ExperimentAssignment, ExperimentAssignmentRequest, FileStorage,
+    IntegrationTransport, JourneyBundle, JourneyClient, JourneyError, OfflineTransport,
+    ProgressStatus, RuntimeEvent, ScopeKind, Storage, Transport,
 };
 
 use crate::CycleReport;
@@ -21,7 +21,8 @@ const JOURNEY_VERSION_ID: &str = "ec8347d4-243f-4d15-82ab-d3fcf2c25e70";
 const SOURCE_REVISION: &str = "singularity-first-use-2026-09-04.1";
 const FIRST_SUCCESS_FACT: &str = "autonomous_cycle_completed";
 const STATE_REVISION: &str = "cli:first-use:2026-09-04.1";
-const FALLBACK_DEFINITION: &str = include_str!("onboarding_first_use.json");
+/// The journey definition this product ships; the client is started from it.
+const JOURNEY_DEFINITION: &str = include_str!("onboarding_first_use.json");
 
 type Client = JourneyClient<Box<dyn Transport>, FileStorage>;
 
@@ -73,40 +74,69 @@ impl Transport for SingularityTransport {
     }
 }
 
-fn transport() -> Box<dyn Transport> {
-    let endpoint = env::var("STADO_INTEGRATION_API_URL").unwrap_or_default();
-    let token = env::var("SINGULARITY_STADO_INTEGRATION_TOKEN").unwrap_or_default();
-    if !endpoint.trim().is_empty()
-        && !token.trim().is_empty()
-        && let Ok(integration) = IntegrationTransport::new(endpoint.trim(), token)
-    {
-        return Box::new(SingularityTransport(integration));
+fn transport() -> Result<Box<dyn Transport>, JourneyError> {
+    let endpoint = configured("STADO_INTEGRATION_API_URL")?;
+    let token = configured("SINGULARITY_STADO_INTEGRATION_TOKEN")?;
+    match (endpoint, token) {
+        (Some(endpoint), Some(token)) => {
+            let integration = IntegrationTransport::new(&endpoint, token).map_err(|error| {
+                JourneyError::Invalid(format!(
+                    "STADO_INTEGRATION_API_URL {endpoint} is configured but unusable: {error}"
+                ))
+            })?;
+            Ok(Box::new(SingularityTransport(integration)))
+        }
+        (None, None) => Ok(Box::new(OfflineTransport)),
+        (Some(_), None) => Err(JourneyError::Invalid(
+            "STADO_INTEGRATION_API_URL is set without SINGULARITY_STADO_INTEGRATION_TOKEN".into(),
+        )),
+        (None, Some(_)) => Err(JourneyError::Invalid(
+            "SINGULARITY_STADO_INTEGRATION_TOKEN is set without STADO_INTEGRATION_API_URL".into(),
+        )),
     }
-    Box::new(OfflineTransport)
 }
 
-fn state_path() -> PathBuf {
+/// A variable that is set but empty is a deployment that meant to configure something and did
+/// not finish; it is refused rather than read as absent.
+fn configured(name: &str) -> Result<Option<String>, JourneyError> {
+    match env::var(name) {
+        Ok(value) if value.trim().is_empty() => Err(JourneyError::Invalid(format!(
+            "{name} is set to an empty value"
+        ))),
+        Ok(value) => Ok(Some(value.trim().to_owned())),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(JourneyError::Invalid(format!(
+            "{name} is not readable: {error}"
+        ))),
+    }
+}
+
+fn state_path() -> Result<PathBuf, JourneyError> {
     if let Some(path) = env::var_os("SINGULARITY_ONBOARDING_STATE_PATH") {
-        return PathBuf::from(path);
+        return Ok(PathBuf::from(path));
     }
     if let Some(path) = env::var_os("XDG_STATE_HOME") {
-        return PathBuf::from(path).join("singularity/onboarding.json");
+        return Ok(PathBuf::from(path).join("singularity/onboarding.json"));
     }
     if let Some(home) = env::var_os("HOME") {
-        return PathBuf::from(home).join(".local/state/singularity/onboarding.json");
+        return Ok(PathBuf::from(home).join(".local/state/singularity/onboarding.json"));
     }
-    env::temp_dir().join("singularity/onboarding.json")
+    Err(JourneyError::Invalid(
+        "onboarding state has nowhere to live: set SINGULARITY_ONBOARDING_STATE_PATH, XDG_STATE_HOME or HOME".into(),
+    ))
 }
 
-fn stable_subject_hash() -> String {
-    let operator = env::var("USER").unwrap_or_else(|_| "singularity-operator".into());
+fn stable_subject_hash() -> Result<String, JourneyError> {
+    let operator = env::var("USER").map_err(|error| {
+        JourneyError::Invalid(format!("USER is required to identify the device: {error}"))
+    })?;
     let digest = Sha256::digest(format!("{PRODUCT_ID}:device:{operator}").as_bytes());
-    hex::encode(digest)
+    Ok(hex::encode(digest))
 }
 
-fn fallback_bundle() -> Result<JourneyBundle, JourneyError> {
+fn journey_bundle() -> Result<JourneyBundle, JourneyError> {
     bundle_from_canonical(
-        FALLBACK_DEFINITION,
+        JOURNEY_DEFINITION,
         Uuid::parse_str(JOURNEY_VERSION_ID)
             .map_err(|_| JourneyError::Invalid("Singularity journey version id".into()))?,
     )
@@ -116,11 +146,11 @@ async fn start_client(revision: &str) -> Result<Client, JourneyError> {
     let mut client = JourneyClient::new(
         PRODUCT_ID,
         JOURNEY_ID,
-        stable_subject_hash(),
+        stable_subject_hash()?,
         ScopeKind::Device,
-        transport(),
-        FileStorage::new(state_path()),
-        fallback_bundle()?,
+        transport()?,
+        FileStorage::new(state_path()?),
+        journey_bundle()?,
     )?;
     client.start(revision).await?;
     Ok(client)
@@ -187,8 +217,8 @@ pub async fn record_completed_cycle(report: &CycleReport) -> Result<bool, Journe
         return Ok(false);
     }
 
-    let storage = FileStorage::new(state_path());
-    let subject_hash = stable_subject_hash();
+    let storage = FileStorage::new(state_path()?);
+    let subject_hash = stable_subject_hash()?;
     let existing = storage
         .load_progress(PRODUCT_ID, JOURNEY_ID, &subject_hash)
         .await?;
@@ -204,9 +234,7 @@ pub async fn record_completed_cycle(report: &CycleReport) -> Result<bool, Journe
             return Ok(false);
         }
     }
-    journey
-        .observe_first_success(&evidence, &revision)
-        .await?;
+    journey.observe_first_success(&evidence, &revision).await?;
     let completed = journey.complete(&evidence, &revision).await?;
     journey.flush().await?;
     Ok(completed)
@@ -229,17 +257,26 @@ fn current_screen(client: &Client) -> Result<wisent_onboarding_client::Screen, J
 
 fn render_current_step(client: &Client) -> Result<(), JourneyError> {
     let screen = current_screen(client)?;
-    let title = screen
-        .presentation
-        .get("title")
-        .and_then(Value::as_str)
-        .unwrap_or(&screen.title_key);
-    let body = screen
-        .presentation
-        .get("body")
-        .and_then(Value::as_str)
-        .unwrap_or(&screen.body_key);
+    let title = presentation_text(&screen, "title", &screen.title_key)?;
+    let body = presentation_text(&screen, "body", &screen.body_key)?;
     println!("{title}");
     println!("{body}");
     Ok(())
+}
+
+fn presentation_text<'screen>(
+    screen: &'screen wisent_onboarding_client::Screen,
+    field: &str,
+    key: &str,
+) -> Result<&'screen str, JourneyError> {
+    screen
+        .presentation
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            JourneyError::Invalid(format!(
+                "Singularity screen {} has no {field} text for {key}",
+                screen.screen_id
+            ))
+        })
 }

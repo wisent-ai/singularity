@@ -1,10 +1,10 @@
 //! Proposing a transaction, reading its status, and cancelling it.
 use chrono::{Duration, Utc};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use super::{
-    FinanceService, MAX_PURPOSE_CHARS, hash_value, public_status, transition,
-    validate_execution_parameters,
+    hash_value, public_status, transition, validate_execution_parameters, FinanceService,
+    MAX_PURPOSE_CHARS,
 };
 use crate::finance_surface::policy::{validate_asset, validate_id};
 use crate::finance_surface::state::{
@@ -67,7 +67,7 @@ impl FinanceService {
         {
             return Err(SurfaceError::policy("per-transaction limit exceeded"));
         }
-        validate_execution_parameters(&input.parameters)?;
+        validate_execution_parameters(input.parameters.as_ref())?;
         let input_hash = hash_value(
             &json!({"beneficiary_id":input.beneficiary_id,"asset":input.asset,"amount_minor":input.amount_minor,"purpose":input.purpose,"parameters":input.parameters,"ttl_seconds":input.ttl_seconds}),
         )?;

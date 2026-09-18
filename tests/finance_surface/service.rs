@@ -10,9 +10,11 @@ use chrono::Duration;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
-use crate::finance_surface::state::{CanonicalIntent, StateTransition, Transaction, TransactionStatus};
 use crate::finance_surface::policy::{
     ApprovalPolicy, AssetPolicy, Beneficiary, CustodyAuthorities, SignedDocument,
+};
+use crate::finance_surface::state::{
+    CanonicalIntent, StateTransition, Transaction, TransactionStatus,
 };
 
 struct TestDirectory(PathBuf);
@@ -169,7 +171,7 @@ impl Fixture {
                 asset: "USD".into(),
                 amount_minor: amount,
                 purpose: "invoice".into(),
-                parameters: json!({}),
+                parameters: Some(json!({})),
                 expires_at: now + Duration::minutes(10),
             },
             intent_hash: format!("{id:0<64}"),

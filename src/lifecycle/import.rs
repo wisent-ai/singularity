@@ -6,7 +6,9 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::domain::{ActivityEvent, ActivityStore, AgentState, AgentStatus, MemoryEntry, MemorySource};
+use crate::domain::{
+    ActivityEvent, ActivityStore, AgentState, AgentStatus, MemoryEntry, MemorySource,
+};
 use crate::error::AppError;
 
 pub const IMPORT_SCHEMA_VERSION: &str = "singularity-mind-import-v1";
@@ -20,11 +22,8 @@ const MAX_TEXT_BYTES: usize = 65_536;
 pub struct MindImport {
     pub schema_version: String,
     pub source: ImportSource,
-    #[serde(default)]
     pub memories: Vec<ImportItem>,
-    #[serde(default)]
     pub knowledge: Vec<ImportItem>,
-    #[serde(default)]
     pub profile: Vec<ImportItem>,
 }
 
@@ -71,7 +70,10 @@ struct Candidate {
 
 pub(crate) fn read_import_document(path: &Path) -> Result<Vec<u8>, AppError> {
     let metadata = fs::symlink_metadata(path).map_err(|error| {
-        AppError::State(format!("cannot inspect import file {}: {error}", path.display()))
+        AppError::State(format!(
+            "cannot inspect import file {}: {error}",
+            path.display()
+        ))
     })?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(AppError::State(format!(
@@ -100,10 +102,10 @@ pub fn validate_import(input: &MindImport) -> Result<(), AppError> {
     validate(input).map(|_| ())
 }
 
-
 pub async fn import_file(state_dir: &Path, path: &Path) -> Result<ImportReport, AppError> {
     let document = read_import_document(path)?;
-    if let Some(report) = crate::state_service::import_through_service(state_dir, &document).await? {
+    if let Some(report) = crate::state_service::import_through_service(state_dir, &document).await?
+    {
         return Ok(report);
     }
     let input = parse_import_bytes(&document)?;
@@ -223,7 +225,6 @@ pub fn apply_import(
     state.updated_at = Utc::now();
     Ok((state, report))
 }
-
 
 fn validate(input: &MindImport) -> Result<Vec<Candidate>, AppError> {
     if input.schema_version != IMPORT_SCHEMA_VERSION {

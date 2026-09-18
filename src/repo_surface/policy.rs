@@ -269,7 +269,6 @@ pub fn require_owner_only_file(_path: &Path) -> SurfaceResult<()> {
     ))
 }
 
-
 #[cfg(test)]
 #[path = "../../tests/repo_surface/policy.rs"]
 mod tests;

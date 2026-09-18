@@ -2,19 +2,24 @@
 use chrono::Utc;
 use ed25519_dalek::{Signature, Verifier};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
 use crate::finance_surface::policy::{
-    PolicyFile, load_signed, validate_id, verifying_key_from_hex,
+    load_signed, validate_id, verifying_key_from_hex, PolicyFile,
 };
 use crate::finance_surface::state::{StateTransition, Transaction, TransactionStatus};
 use crate::finance_surface::{SurfaceError, SurfaceResult};
 
-use super::{HASH_HEX_CHARS, MAX_PARAMETER_BYTES, MAX_PARAMETER_DEPTH, WormReceipt};
+use super::{WormReceipt, HASH_HEX_CHARS, MAX_PARAMETER_BYTES, MAX_PARAMETER_DEPTH};
 
-pub(crate) fn validate_execution_parameters(value: &Value) -> SurfaceResult<()> {
+/// A proposal that gave no parameters is a proposal with nothing to validate; a `null` in place
+/// of an object is the same absence written out, and anything else is refused.
+pub(crate) fn validate_execution_parameters(value: Option<&Value>) -> SurfaceResult<()> {
+    let Some(value) = value else {
+        return Ok(());
+    };
     if !value.is_null() && !value.is_object() {
         return Err(SurfaceError::invalid("parameters must be a JSON object"));
     }

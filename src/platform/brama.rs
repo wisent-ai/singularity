@@ -42,10 +42,8 @@ struct Choice {
 
 #[derive(Debug, Deserialize)]
 struct AssistantMessage {
-    #[serde(default)]
-    content: String,
-    #[serde(default)]
-    tool_calls: Vec<ToolCall>,
+    content: Option<String>,
+    tool_calls: Option<Vec<ToolCall>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,7 +76,9 @@ struct RemoteError {
 #[derive(Debug, Clone, Serialize)]
 pub struct BramaCompletion {
     pub model: String,
-    pub content: String,
+    /// The assistant text, when the response carried any: a response that ends in tool calls
+    /// carries none, and the absence stays visible instead of reading as an empty answer.
+    pub content: Option<String>,
     pub tool_calls: Vec<ToolCall>,
     pub usage: TokenUsage,
 }
@@ -195,14 +195,16 @@ impl BramaClient {
         let status = response.status();
         let bytes = response.bytes().await.map_err(map_indeterminate)?;
         if !status.is_success() {
-            let message = serde_json::from_slice::<ErrorEnvelope>(&bytes)
-                .map(|value| value.error.message)
-                .unwrap_or_else(|_| {
-                    String::from_utf8_lossy(&bytes)
+            let message = match serde_json::from_slice::<ErrorEnvelope>(&bytes) {
+                Ok(value) => value.error.message,
+                Err(error) => {
+                    let excerpt: String = String::from_utf8_lossy(&bytes)
                         .chars()
                         .take(MAX_ERROR_EXCERPT_CHARS)
-                        .collect()
-                });
+                        .collect();
+                    format!("error body is not a Brama error envelope ({error}): {excerpt}")
+                }
+            };
             let class = if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
                 ErrorClass::Transient
             } else {
@@ -222,28 +224,29 @@ impl BramaClient {
             .into_iter()
             .next()
             .expect("choice length checked");
-        let has_calls = !choice.message.tool_calls.is_empty();
-        match choice.finish_reason.as_str() {
-            "tool_calls" if !has_calls => {
+        let calls = choice.message.tool_calls.filter(|calls| !calls.is_empty());
+        let tool_calls = match (choice.finish_reason.as_str(), calls) {
+            ("tool_calls", None) => {
                 return Err(brama(
                     ErrorClass::Permanent,
                     "tool_calls finish reason without calls",
                 ));
             }
-            "stop" if has_calls => {
+            ("stop", Some(_)) => {
                 return Err(brama(
                     ErrorClass::Permanent,
                     "stop finish reason with tool calls",
                 ));
             }
-            "stop" | "tool_calls" => {}
-            other => {
+            ("tool_calls", Some(calls)) => calls,
+            ("stop", None) => Vec::new(),
+            (other, _) => {
                 return Err(brama(
                     ErrorClass::Permanent,
                     format!("unsupported finish reason: {other}"),
                 ));
             }
-        }
+        };
         let computed_total = parsed
             .usage
             .prompt_tokens
@@ -259,7 +262,7 @@ impl BramaClient {
         Ok(BramaCompletion {
             model: parsed.model,
             content: choice.message.content,
-            tool_calls: choice.message.tool_calls,
+            tool_calls,
             usage: TokenUsage {
                 prompt_tokens: parsed.usage.prompt_tokens,
                 completion_tokens: parsed.usage.completion_tokens,

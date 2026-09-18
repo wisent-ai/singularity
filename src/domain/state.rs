@@ -31,7 +31,6 @@ pub struct MemoryEntry {
     pub kind: String,
     pub text: String,
     pub created_at: DateTime<Utc>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sources: Vec<MemorySource>,
 }
 

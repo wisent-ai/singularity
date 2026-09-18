@@ -1,7 +1,7 @@
 #[path = "../src/finance_surface/mod.rs"]
 mod finance_surface;
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::Path;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -72,17 +72,34 @@ async fn serve(service: finance_surface::FinanceService) -> Result<(), Box<dyn s
                 json!({"jsonrpc":"2.0","id":id,"result":{"tools":finance_surface::tools()}})
             }
             Some("tools/call") => {
-                let params = request.get("params").cloned().unwrap_or(Value::Null);
+                let Some(params) = request.get("params") else {
+                    write_response(
+                        &mut stdout,
+                        &rpc_error(id, -32602, "tools/call requires params"),
+                    )
+                    .await?;
+                    continue;
+                };
                 let name = params.get("name").and_then(Value::as_str);
-                let arguments = params
-                    .get("arguments")
-                    .cloned()
-                    .unwrap_or_else(|| json!({}));
+                let Some(arguments) = params.get("arguments").cloned() else {
+                    write_response(
+                        &mut stdout,
+                        &rpc_error(id, -32602, "tools/call requires an arguments object"),
+                    )
+                    .await?;
+                    continue;
+                };
                 let result = match name {
                     Some(name) => match service.call(name, arguments).await {
-                        Ok(value) => {
-                            json!({"content":[{"type":"text","text":serde_json::to_string(&value).unwrap_or_else(|_|"{}".into())}],"structuredContent":value,"isError":false})
-                        }
+                        Ok(value) => match serde_json::to_string(&value) {
+                            Ok(text) => {
+                                json!({"content":[{"type":"text","text":text}],"structuredContent":value,"isError":false})
+                            }
+                            Err(error) => finance_surface::SurfaceError::invalid(format!(
+                                "tool result is not serializable: {error}"
+                            ))
+                            .tool_result(),
+                        },
                         Err(error) => error.tool_result(),
                     },
                     None => {

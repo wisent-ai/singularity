@@ -1,7 +1,7 @@
 #[path = "../src/repo_surface/mod.rs"]
 mod repo_surface;
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 /// One JSON-RPC line is read up to 2 MiB (a pull-request body travels in it).
@@ -48,17 +48,34 @@ async fn serve() -> Result<(), Box<dyn std::error::Error>> {
                 json!({"jsonrpc":"2.0","id":id,"result":{"tools":repo_surface::tools()}})
             }
             Some("tools/call") => {
-                let params = request.get("params").cloned().unwrap_or(Value::Null);
+                let Some(params) = request.get("params") else {
+                    write_response(
+                        &mut stdout,
+                        &rpc_error(id, -32602, "tools/call requires params"),
+                    )
+                    .await?;
+                    continue;
+                };
                 let name = params.get("name").and_then(Value::as_str);
-                let arguments = params
-                    .get("arguments")
-                    .cloned()
-                    .unwrap_or_else(|| json!({}));
+                let Some(arguments) = params.get("arguments").cloned() else {
+                    write_response(
+                        &mut stdout,
+                        &rpc_error(id, -32602, "tools/call requires an arguments object"),
+                    )
+                    .await?;
+                    continue;
+                };
                 let result = match name {
                     Some(name) => match service.call(name, arguments).await {
-                        Ok(value) => {
-                            json!({"content":[{"type":"text","text":serde_json::to_string(&value).unwrap_or_else(|_| "{}".into())}],"structuredContent":value,"isError":false})
-                        }
+                        Ok(value) => match serde_json::to_string(&value) {
+                            Ok(text) => {
+                                json!({"content":[{"type":"text","text":text}],"structuredContent":value,"isError":false})
+                            }
+                            Err(error) => repo_surface::SurfaceError::invalid(format!(
+                                "tool result is not serializable: {error}"
+                            ))
+                            .tool_result(),
+                        },
                         Err(error) => error.tool_result(),
                     },
                     None => {

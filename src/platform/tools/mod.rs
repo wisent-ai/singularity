@@ -179,10 +179,20 @@ impl ToolCatalog {
                 .await
             {
                 Ok(value) => {
-                    let is_error = value
-                        .get("isError")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false);
+                    // The MCP contract writes `isError` only on a failed call; a flag that is
+                    // present but not a boolean is a malformed answer, not a successful one.
+                    let is_error = match value.get("isError") {
+                        Some(flag) => match flag.as_bool() {
+                            Some(flag) => flag,
+                            None => {
+                                return failed(
+                                    "remote_tool_malformed",
+                                    &format!("isError is not a boolean: {flag}"),
+                                );
+                            }
+                        },
+                        None => false,
+                    };
                     ToolOutcome {
                         status: if is_error {
                             ToolStatus::Failed
@@ -205,11 +215,13 @@ impl ToolCatalog {
             },
             ToolOrigin::MostHealth => match most {
                 Some(most) => match most.health().await {
-                    Ok(value) => success(
-                        serde_json::to_value(value).unwrap_or(Value::Null),
-                        None,
-                        None,
-                    ),
+                    Ok(value) => match serde_json::to_value(value) {
+                        Ok(value) => success(value, None, None),
+                        Err(error) => failed(
+                            "most_malformed",
+                            &format!("Most health is not serializable: {error}"),
+                        ),
+                    },
                     Err(error) => external_failure(error),
                 },
                 None => failed("most_unavailable", "Most credential is not configured"),

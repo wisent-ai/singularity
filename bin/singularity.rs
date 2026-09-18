@@ -3,6 +3,22 @@ use singularity::config::Cli;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
+/// The log filter the agent runs under when `RUST_LOG` says nothing. A `RUST_LOG` that is set
+/// and unparsable is a refusal: the operator asked for a filter the subscriber cannot honour.
+const DEFAULT_LOG_FILTER: &str = "info";
+
+fn log_filter() -> Result<EnvFilter, singularity::AppError> {
+    match std::env::var("RUST_LOG") {
+        Ok(value) => EnvFilter::try_new(&value).map_err(|error| {
+            singularity::AppError::Config(format!("RUST_LOG is not a valid filter: {error}"))
+        }),
+        Err(std::env::VarError::NotPresent) => Ok(EnvFilter::new(DEFAULT_LOG_FILTER)),
+        Err(error) => Err(singularity::AppError::Config(format!(
+            "RUST_LOG is not readable: {error}"
+        ))),
+    }
+}
+
 fn main() {
     let code = match run() {
         Ok(()) => i32::default(),
@@ -18,9 +34,7 @@ fn main() {
 
 fn run() -> Result<(), singularity::AppError> {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
+        .with_env_filter(log_filter()?)
         .init();
     let cli = Cli::parse();
     let runtime = tokio::runtime::Builder::new_multi_thread()

@@ -3,7 +3,7 @@ use std::time::Duration;
 use reqwest::{Client, Response, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use url::Url;
 use uuid::Uuid;
 
@@ -15,9 +15,7 @@ const MAX_ERROR_EXCERPT_CHARS: usize = 800;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MostHealth {
     pub status: String,
-    #[serde(default)]
     pub backends: String,
-    #[serde(default)]
     pub composition: String,
 }
 
@@ -194,7 +192,6 @@ fn map_network(error: reqwest::Error) -> AppError {
 fn map_indeterminate(error: reqwest::Error) -> AppError {
     most(ErrorClass::Indeterminate, error.to_string())
 }
-
 
 #[cfg(test)]
 #[path = "../../tests/platform/most.rs"]

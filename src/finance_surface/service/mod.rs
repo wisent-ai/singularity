@@ -37,7 +37,7 @@ struct Propose {
     amount_minor: i64,
     purpose: String,
     #[serde(default)]
-    parameters: Value,
+    parameters: Option<Value>,
     ttl_seconds: u64,
 }
 #[derive(Deserialize)]
@@ -176,8 +176,8 @@ impl FinanceService {
     }
 }
 
-mod execution;
 mod events;
+mod execution;
 mod proposals;
 mod verify;
 

@@ -93,8 +93,9 @@ The accepted document is strict `singularity-mind-import-v1` JSON:
 }
 ```
 
-The three arrays are optional, but at least one real record is required. Source
-and item IDs must be stable, nonempty, and unique within the document. Unknown
+All three arrays are required and may be empty, but at least one real record is
+required across them. Source and item IDs must be stable, nonempty, and unique
+within the document. Unknown
 fields, malformed JSON, symbolic links, files over 16 MiB, more than 1,000
 records, empty text, NULs, and oversized fields are refused.
 
@@ -229,6 +230,24 @@ SINGULARITY_REQUIRED_SURFACES
 MOST_BASE_URL
 MOST_SERVICE_TOKEN_FILE
 ```
+
+First-use journey and logging:
+
+```text
+STADO_INTEGRATION_API_URL
+SINGULARITY_STADO_INTEGRATION_TOKEN
+SINGULARITY_ONBOARDING_STATE_PATH
+XDG_STATE_HOME
+RUST_LOG
+```
+
+The journey runs offline when neither Stado variable is set; one of the two
+without the other, either of them set to an empty value, or an endpoint the
+integration transport cannot use is refused instead of quietly going offline.
+The journey state needs `SINGULARITY_ONBOARDING_STATE_PATH`, `XDG_STATE_HOME`
+or `HOME`, and the device identity needs `USER`; without them the command says
+so rather than writing somewhere else. A `RUST_LOG` that is set but unparsable
+is refused; unset means `info`.
 
 The bootstrap also binds the runtime to its workload identity, host, role,
 environment, executable digest, code digest and policy sequence.

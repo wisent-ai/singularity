@@ -37,7 +37,7 @@ do
             printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05"}}'
             ;;
         *'"method":"tools/list"'*)
-            printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"identity__read","inputSchema":{"type":"object"}}]}}'
+            printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"identity__read","description":"read the bound identity","inputSchema":{"type":"object"}}]}}'
             ;;
         *'"method":"tools/call"'*)
             printf '{"jsonrpc":"2.0","id":3,"result":{"environmentAgentId":"%s","initializeAgentId":"%s"}}\n' "$SKARBIEC_MCP_AGENT_ID" "$initialize_agent_id"

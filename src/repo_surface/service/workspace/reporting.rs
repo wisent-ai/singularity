@@ -62,9 +62,15 @@ impl RepoService {
             return Err(SurfaceError::conflict("check modified the sealed index"));
         }
         enforce_changed_paths(repo, &state.worktree).await?;
+        let exit_code = output.code.ok_or_else(|| {
+            SurfaceError::conflict(format!(
+                "check {} was terminated by a signal and reported no exit code",
+                input.check
+            ))
+        })?;
         let evidence = CheckEvidence {
             fingerprint: sealed,
-            exit_code: output.code.unwrap_or(-1),
+            exit_code,
             succeeded: output.success,
             checked_at: Utc::now().to_rfc3339(),
             stdout: output.stdout,

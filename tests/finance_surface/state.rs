@@ -34,7 +34,7 @@ fn transaction(id: &str) -> Transaction {
             asset: "USD".into(),
             amount_minor: 10,
             purpose: "invoice".into(),
-            parameters: serde_json::json!({}),
+            parameters: Some(serde_json::json!({})),
             expires_at: now + chrono::Duration::minutes(10),
         },
         intent_hash: "a".repeat(64),
