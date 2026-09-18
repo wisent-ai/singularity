@@ -4,12 +4,11 @@ use super::*;
 
 #[test]
 fn dynamic_catalog_preserves_every_las_tool_and_adds_being_tools() {
-    let offered =
-        ["warsztat__workspace_create", "finance__finance_execute"].map(|name| McpTool {
-            name: name.into(),
-            description: String::new(),
-            input_schema: json!({}),
-        });
+    let offered = ["warsztat__workspace_create", "finance__finance_execute"].map(|name| McpTool {
+        name: name.into(),
+        description: String::new(),
+        input_schema: json!({}),
+    });
     let catalog = ToolCatalog::build(&offered, false).unwrap();
     let names: Vec<_> = catalog
         .definitions()

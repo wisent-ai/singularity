@@ -1,6 +1,11 @@
 // Bootstrap stories, attached to src/bootstrap.rs.
 
 use super::*;
+use chrono::Duration;
+use ed25519_dalek::Signer;
+use sha2::{Digest, Sha256};
+use std::io::{Read, Write};
+use std::os::unix::fs::PermissionsExt;
 
 struct TempDirectory {
     path: PathBuf,
