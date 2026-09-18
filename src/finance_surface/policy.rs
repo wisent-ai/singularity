@@ -9,6 +9,15 @@ use std::path::{Path, PathBuf};
 
 use super::{SurfaceError, SurfaceResult};
 
+/// A beneficiary destination is at most 1 KiB; a proposal may live at most thirty days;
+/// an identifier is at most 128 bytes and an asset code at most 16; a protected file
+/// may grant the group and others no mode bits.
+const MAX_DESTINATION_BYTES: usize = 1024;
+const MAX_PROPOSAL_TTL_SECONDS: u64 = 30 * 24 * 60 * 60;
+const MAX_ID_BYTES: usize = 128;
+const MAX_ASSET_BYTES: usize = 16;
+pub(super) const GROUP_OR_OTHER_ACCESS: u32 = 0o077;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SignedDocument {
@@ -114,7 +123,7 @@ impl PolicyFile {
         }
         for (id, beneficiary) in &self.beneficiaries {
             validate_id("beneficiary id", id)?;
-            if beneficiary.destination.is_empty() || beneficiary.destination.len() > 1024 {
+            if beneficiary.destination.is_empty() || beneficiary.destination.len() > MAX_DESTINATION_BYTES {
                 return Err(SurfaceError::policy("invalid beneficiary destination"));
             }
             if beneficiary.allowed_assets.is_empty()
@@ -171,7 +180,7 @@ impl PolicyFile {
             || self.approval.required_approvals as usize > self.approval.approver_keys.len()
             || self.approval.timelock_seconds == 0
             || self.approval.proposal_ttl_max_seconds == 0
-            || self.approval.proposal_ttl_max_seconds > 30 * 24 * 60 * 60
+            || self.approval.proposal_ttl_max_seconds > MAX_PROPOSAL_TTL_SECONDS
         {
             return Err(SurfaceError::policy("invalid approval policy"));
         }
@@ -334,7 +343,7 @@ pub fn canonical_json(value: &Value) -> SurfaceResult<Vec<u8>> {
 
 pub fn validate_id(kind: &str, value: &str) -> SurfaceResult<()> {
     if value.is_empty()
-        || value.len() > 128
+        || value.len() > MAX_ID_BYTES
         || !value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
@@ -346,7 +355,7 @@ pub fn validate_id(kind: &str, value: &str) -> SurfaceResult<()> {
 
 pub fn validate_asset(value: &str) -> SurfaceResult<()> {
     if value.is_empty()
-        || value.len() > 16
+        || value.len() > MAX_ASSET_BYTES
         || !value
             .bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
@@ -366,7 +375,7 @@ pub fn require_owner_only_file(path: &Path) -> SurfaceResult<()> {
     if metadata.file_type().is_symlink()
         || !metadata.is_file()
         || metadata.uid() != unsafe { geteuid() }
-        || metadata.mode() & 0o077 != 0
+        || metadata.mode() & GROUP_OR_OTHER_ACCESS != 0
     {
         return Err(SurfaceError::policy(
             "protected file must be owner-only, current-user-owned, regular, and not a symlink",

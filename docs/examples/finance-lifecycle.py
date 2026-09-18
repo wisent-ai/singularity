@@ -62,6 +62,9 @@ exec_key, exec_pub = keypair()
 recon_key, recon_pub = keypair()
 receipt_key, receipt_pub = keypair()  # signs external WORM receipts
 
+# The example policy's timelock, and the slack the wait adds on top of it.
+TIMELOCK_SECONDS = 2
+TIMELOCK_SLACK_SECONDS = 0.5
 FIN = tempfile.mkdtemp(prefix="singularity-finance.")
 os.makedirs(f"{FIN}/worm", mode=0o700)
 os.chmod(f"{FIN}/worm", 0o700)  # the service verifies the sink is owner-only
@@ -102,7 +105,7 @@ policy = {
     "approval": {
         "required_approvals": 1,
         "approver_keys": {"treasury-owner": approver_pub},
-        "timelock_seconds": 2,
+        "timelock_seconds": TIMELOCK_SECONDS,
         "proposal_ttl_max_seconds": 3600,
     },
     "custody_authorities": {
@@ -247,7 +250,7 @@ owner_event("approval_granted by treasury-owner", TX, HASH, {
     "type": "approval_granted", "approver_id": "treasury-owner",
     "approval_signature_hex": approver_key.sign(approval_message.encode()).hex()})
 
-time.sleep(2.5)  # the policy's 2-second timelock
+time.sleep(TIMELOCK_SECONDS + TIMELOCK_SLACK_SECONDS)  # the policy's timelock
 call("finance_status after timelock (ready)", "finance_status", {"transaction_id": TX})
 
 attestation = sha("signer-attestation")

@@ -9,6 +9,9 @@ use uuid::Uuid;
 
 use crate::error::{AppError, ErrorClass};
 
+/// A failed Most answer is quoted up to 800 characters.
+const MAX_ERROR_EXCERPT_CHARS: usize = 800;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MostHealth {
     pub status: String,
@@ -137,7 +140,7 @@ async fn parse_response<T: for<'de> Deserialize<'de>>(response: Response) -> Res
     if !status.is_success() {
         let message = String::from_utf8_lossy(&bytes)
             .chars()
-            .take("800".parse().expect("static limit"))
+            .take(MAX_ERROR_EXCERPT_CHARS)
             .collect::<String>();
         let class = if status == StatusCode::SERVICE_UNAVAILABLE {
             ErrorClass::Indeterminate
@@ -238,7 +241,7 @@ mod tests {
         );
         let server = async move {
             let (mut socket, _) = listener.accept().await?;
-            let mut request = vec![u8::default(); "1024".parse().unwrap()];
+            let mut request = vec![u8::default(); 1024];
             let bytes_read = socket.read(&mut request).await?;
             assert_ne!(
                 bytes_read,

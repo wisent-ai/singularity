@@ -12,6 +12,8 @@ use uuid::Uuid;
 use crate::error::AppError;
 
 pub const STATE_SCHEMA_VERSION: &str = "being-v1";
+/// The state keeps the last hundred actions.
+const RECENT_ACTIONS_KEPT: usize = 100;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -306,7 +308,7 @@ impl AgentState {
             status: status.into(),
             at: Utc::now(),
         });
-        let limit: usize = "100".parse().expect("static limit is valid");
+        let limit = RECENT_ACTIONS_KEPT;
         if self.recent_actions.len() > limit {
             self.recent_actions
                 .drain(..self.recent_actions.len() - limit);

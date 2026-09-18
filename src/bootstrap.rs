@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use zeroize::Zeroize;
 
+use crate::config::GROUP_OR_OTHER_ACCESS;
 use crate::error::AppError;
 
 const MANIFEST_DOMAIN: &[u8] = b"SINGULARITY-BOOTSTRAP-MANIFEST\0v1\0";
@@ -22,7 +23,12 @@ const WIRE_VERSION: &str = "skarbiec.redeem.v1";
 const MAX_CONTROL_LINE: usize = 4096;
 const MAX_SECRET_BYTES: usize = 64 * 1024;
 const MAX_MANIFEST_LIFETIME: i64 = 300;
+/// A manifest issued up to thirty seconds in the future is clock skew, not forgery.
+const MAX_ISSUED_AT_SKEW_SECONDS: i64 = 30;
 const BROKER_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// An Ed25519 key is 32 bytes, spelled as 64 hex characters.
+const KEY_BYTES: usize = 32;
+const KEY_HEX_CHARS: usize = 64;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -168,7 +174,7 @@ fn validate_manifest(manifest: &BootstrapManifest) -> Result<(), AppError> {
     let now = Utc::now();
     if manifest.version != "singularity.bootstrap.v1"
         || manifest.policy_sequence == 0
-        || manifest.issued_at > now + Duration::seconds(30)
+        || manifest.issued_at > now + Duration::seconds(MAX_ISSUED_AT_SKEW_SECONDS)
         || manifest.expires_at <= now
         || manifest.expires_at <= manifest.issued_at
         || manifest.expires_at - manifest.issued_at > Duration::seconds(MAX_MANIFEST_LIFETIME)
@@ -304,7 +310,7 @@ fn materialize(
         file.write_all(&secret)?;
         file.sync_all()?;
         let metadata = file.metadata()?;
-        if !metadata.is_file() || metadata.permissions().mode() & 0o077 != 0 {
+        if !metadata.is_file() || metadata.permissions().mode() & GROUP_OR_OTHER_ACCESS != 0 {
             return Err(AppError::Config(
                 "bootstrap credential file is not owner-only".into(),
             ));
@@ -378,7 +384,7 @@ fn require_owner_file(path: &Path) -> Result<(), AppError> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_file()
         || metadata.file_type().is_symlink()
-        || metadata.permissions().mode() & 0o077 != 0
+        || metadata.permissions().mode() & GROUP_OR_OTHER_ACCESS != 0
     {
         return Err(AppError::Config(
             "bootstrap requires absolute regular owner-only files".into(),
@@ -392,7 +398,7 @@ fn prepare_runtime_root(path: &Path) -> Result<(), AppError> {
         let metadata = fs::symlink_metadata(path)?;
         if !metadata.is_dir()
             || metadata.file_type().is_symlink()
-            || metadata.permissions().mode() & 0o077 != 0
+            || metadata.permissions().mode() & GROUP_OR_OTHER_ACCESS != 0
         {
             return Err(AppError::Config(
                 "bootstrap runtime root must be an owner-only directory".into(),
@@ -404,7 +410,7 @@ fn prepare_runtime_root(path: &Path) -> Result<(), AppError> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_dir()
         || metadata.file_type().is_symlink()
-        || metadata.permissions().mode() & 0o077 != 0
+        || metadata.permissions().mode() & GROUP_OR_OTHER_ACCESS != 0
     {
         return Err(AppError::Config(
             "bootstrap runtime root must be an owner-only directory".into(),
@@ -429,17 +435,17 @@ fn valid_capability_binding(
         && !capability.resource.contains('*')
 }
 
-fn read_hex_32(path: &Path, label: &str) -> Result<[u8; 32], AppError> {
+fn read_hex_32(path: &Path, label: &str) -> Result<[u8; KEY_BYTES], AppError> {
     require_owner_file(path)?;
     let mut text = fs::read_to_string(path)?;
     let mut decoded =
         hex::decode(text.trim()).map_err(|_| AppError::Config(format!("invalid {label}")))?;
     text.zeroize();
-    if decoded.len() != 32 {
+    if decoded.len() != KEY_BYTES {
         decoded.zeroize();
         return Err(AppError::Config(format!("invalid {label}")));
     }
-    let mut result = [0_u8; 32];
+    let mut result = [0_u8; KEY_BYTES];
     result.copy_from_slice(&decoded);
     decoded.zeroize();
     Ok(result)
@@ -456,7 +462,7 @@ fn read_hex_64(path: &Path) -> Result<[u8; 64], AppError> {
 }
 
 fn is_lower_hex_64(value: &str) -> bool {
-    value.len() == 64
+    value.len() == KEY_HEX_CHARS
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))

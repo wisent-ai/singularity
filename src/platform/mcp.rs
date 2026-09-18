@@ -23,6 +23,8 @@ const SKARBIEC_PATH_ENV: [&str; 9] = [
     "SKARBIEC_WORM_CHECKPOINT",
 ];
 const SKARBIEC_COMMAND_ENV: &str = "SKARBIEC_WORM_RECEIPT_COMMAND";
+/// An agent id is at most 128 bytes.
+const MAX_AGENT_ID_BYTES: usize = 128;
 
 fn selected(csv: &str, name: &str) -> bool {
     csv.split(',').map(str::trim).any(|item| item == name)
@@ -30,7 +32,7 @@ fn selected(csv: &str, name: &str) -> bool {
 
 fn valid_agent_id(agent_id: &str) -> bool {
     !agent_id.is_empty()
-        && agent_id.len() <= 128
+        && agent_id.len() <= MAX_AGENT_ID_BYTES
         && agent_id
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))

@@ -9,6 +9,13 @@ use url::Url;
 use zeroize::Zeroize;
 
 const MAX_DOCUMENT_BYTES: u64 = 64 * 1024;
+/// The custody service gets two minutes to answer.
+const CUSTODY_TIMEOUT: Duration = Duration::from_secs(120);
+/// Mode bits that would let the group or others read a secret file.
+const GROUP_OR_OTHER_ACCESS: u32 = 0o077;
+/// A SHA-256 digest is 64 hex characters; an Ed25519 signature is 128.
+const SHA256_HEX_CHARS: usize = 64;
+const ED25519_SIGNATURE_HEX_CHARS: usize = 128;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -59,7 +66,7 @@ async fn run() -> Result<(), String> {
     let client = reqwest::Client::builder()
         .no_proxy()
         .redirect(Policy::none())
-        .timeout(Duration::from_secs(120))
+        .timeout(CUSTODY_TIMEOUT)
         .build()
         .map_err(|error| format!("cannot build custody client: {error}"))?;
     let response = client
@@ -139,7 +146,7 @@ fn required_owner_file(name: &str) -> Result<PathBuf, String> {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
         let metadata = std::fs::metadata(&path).map_err(|error| format!("{name}: {error}"))?;
         if metadata.uid() != unsafe { libc::geteuid() }
-            || metadata.permissions().mode() & 0o077 != 0
+            || metadata.permissions().mode() & GROUP_OR_OTHER_ACCESS != 0
         {
             return Err(format!(
                 "{name} must be owner-only and owned by the current user"
@@ -150,9 +157,9 @@ fn required_owner_file(name: &str) -> Result<PathBuf, String> {
 }
 
 fn is_hash(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+    value.len() == SHA256_HEX_CHARS && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn is_signature(value: &str) -> bool {
-    value.len() == 128 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+    value.len() == ED25519_SIGNATURE_HEX_CHARS && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }

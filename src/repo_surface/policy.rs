@@ -5,6 +5,15 @@ use std::path::{Component, Path, PathBuf};
 
 use super::{SurfaceError, SurfaceResult};
 
+/// A check may run at most an hour; a GitHub owner or repository name is at most 100
+/// bytes; an identifier at most 128; a token at most 256; a protected file may grant
+/// the group and others no mode bits.
+const MAX_CHECK_TIMEOUT_SECS: u64 = 3600;
+const MAX_GITHUB_COMPONENT_BYTES: usize = 100;
+const MAX_ID_BYTES: usize = 128;
+const MAX_TOKEN_BYTES: usize = 256;
+pub(super) const GROUP_OR_OTHER_ACCESS: u32 = 0o077;
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PolicyFile {
@@ -113,9 +122,9 @@ impl RepoPolicy {
                     "check {name:?} has unsupported kind"
                 )));
             }
-            if check.timeout_secs == 0 || check.timeout_secs > 3600 {
+            if check.timeout_secs == 0 || check.timeout_secs > MAX_CHECK_TIMEOUT_SECS {
                 return Err(SurfaceError::policy(format!(
-                    "check {name:?} timeout_secs must be 1..=3600"
+                    "check {name:?} timeout_secs must be 1..={MAX_CHECK_TIMEOUT_SECS}"
                 )));
             }
         }
@@ -146,7 +155,7 @@ fn validate_github_repository(value: &str) -> SurfaceResult<()> {
 
 fn validate_github_component(kind: &str, value: &str) -> SurfaceResult<()> {
     if value.is_empty()
-        || value.len() > 100
+        || value.len() > MAX_GITHUB_COMPONENT_BYTES
         || value.starts_with('-')
         || value.starts_with('.')
         || !value
@@ -160,7 +169,7 @@ fn validate_github_component(kind: &str, value: &str) -> SurfaceResult<()> {
 
 pub fn validate_id(kind: &str, value: &str) -> SurfaceResult<()> {
     if value.is_empty()
-        || value.len() > 128
+        || value.len() > MAX_ID_BYTES
         || !value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
@@ -172,7 +181,7 @@ pub fn validate_id(kind: &str, value: &str) -> SurfaceResult<()> {
 
 pub fn validate_token(kind: &str, value: &str) -> SurfaceResult<()> {
     if value.is_empty()
-        || value.len() > 256
+        || value.len() > MAX_TOKEN_BYTES
         || value.starts_with('-')
         || value.contains('\0')
         || value.chars().any(char::is_whitespace)
@@ -236,7 +245,7 @@ pub fn require_owner_only_file(path: &Path) -> SurfaceResult<()> {
             "policy must be a regular, non-symlink file",
         ));
     }
-    if metadata.uid() != unsafe { libc_geteuid() } || metadata.mode() & 0o077 != 0 {
+    if metadata.uid() != unsafe { libc_geteuid() } || metadata.mode() & GROUP_OR_OTHER_ACCESS != 0 {
         return Err(SurfaceError::policy(
             "policy must be owned by the current user and mode 0600 (or stricter)",
         ));

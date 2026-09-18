@@ -4,6 +4,9 @@ mod repo_surface;
 use serde_json::{Value, json};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+/// One JSON-RPC line is read up to 2 MiB (a pull-request body travels in it).
+const MAX_REQUEST_BYTES: usize = 2 * 1024 * 1024;
+
 #[tokio::main]
 async fn main() {
     if let Err(error) = serve().await {
@@ -17,7 +20,7 @@ async fn serve() -> Result<(), Box<dyn std::error::Error>> {
     let mut lines = BufReader::new(io::stdin()).lines();
     let mut stdout = io::stdout();
     while let Some(line) = lines.next_line().await? {
-        if line.len() > 2 * 1024 * 1024 {
+        if line.len() > MAX_REQUEST_BYTES {
             write_response(
                 &mut stdout,
                 &rpc_error(Value::Null, -32600, "request exceeds size limit"),

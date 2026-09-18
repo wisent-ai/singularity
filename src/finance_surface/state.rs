@@ -7,7 +7,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use super::policy::validate_id;
+use super::policy::{GROUP_OR_OTHER_ACCESS, validate_id};
 use super::{SurfaceError, SurfaceResult};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -633,7 +633,7 @@ fn ensure_owner_dir(path: &Path) -> SurfaceResult<()> {
     if m.file_type().is_symlink()
         || !m.is_dir()
         || m.uid() != unsafe { geteuid() }
-        || m.mode() & 0o077 != 0
+        || m.mode() & GROUP_OR_OTHER_ACCESS != 0
     {
         return Err(SurfaceError::policy(
             "state and WORM directories must be owner-only, current-user-owned, and not symlinks",
@@ -653,7 +653,7 @@ fn require_owner_dir(path: &Path) -> SurfaceResult<()> {
     if m.file_type().is_symlink()
         || !m.is_dir()
         || m.uid() != unsafe { geteuid() }
-        || m.mode() & 0o077 != 0
+        || m.mode() & GROUP_OR_OTHER_ACCESS != 0
     {
         return Err(SurfaceError::policy(
             "external WORM sink must be owner-only, current-user-owned, and not a symlink",

@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::policy::validate_id;
+use super::policy::{GROUP_OR_OTHER_ACCESS, validate_id};
 use super::{SurfaceError, SurfaceResult};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -219,7 +219,7 @@ fn require_owner_dir(path: &Path) -> SurfaceResult<()> {
     if metadata.file_type().is_symlink()
         || !metadata.is_dir()
         || metadata.uid() != unsafe { current_euid() }
-        || metadata.mode() & 0o077 != 0
+        || metadata.mode() & GROUP_OR_OTHER_ACCESS != 0
     {
         return Err(SurfaceError::policy(
             "state directory must be owner-only, current-user-owned, and not a symlink",

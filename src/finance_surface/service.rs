@@ -16,6 +16,17 @@ use super::state::{
 };
 use super::{SurfaceError, SurfaceResult};
 
+/// A purpose is at most 512 printable characters; an executor answer at most 64 KiB;
+/// an owner event counts from a day back to five minutes ahead; parameters are at most
+/// 16 KiB and eight levels deep; an evidence hash is 64 hex characters.
+const MAX_PURPOSE_CHARS: usize = 512;
+const MAX_EXECUTOR_RESPONSE_BYTES: usize = 64 * 1024;
+const OWNER_EVENT_MAX_AGE_HOURS: i64 = 24;
+const OWNER_EVENT_MAX_SKEW_MINUTES: i64 = 5;
+const MAX_PARAMETER_BYTES: usize = 16 * 1024;
+const MAX_PARAMETER_DEPTH: usize = 8;
+const HASH_HEX_CHARS: usize = 64;
+
 #[derive(Clone)]
 pub struct FinanceService {
     policy: PolicyFile,
@@ -182,7 +193,7 @@ impl FinanceService {
             ));
         }
         if input.purpose.is_empty()
-            || input.purpose.len() > 512
+            || input.purpose.len() > MAX_PURPOSE_CHARS
             || input.purpose.chars().any(char::is_control)
         {
             return Err(SurfaceError::invalid(
@@ -431,7 +442,7 @@ impl FinanceService {
                 detail.chars().take(512).collect::<String>()
             )));
         }
-        if output.stdout.len() > 64 * 1024 {
+        if output.stdout.len() > MAX_EXECUTOR_RESPONSE_BYTES {
             return Err(SurfaceError::internal(
                 "executor response exceeds size limit",
             ));
@@ -657,8 +668,8 @@ impl FinanceService {
                 "owner event does not approve exact intent hash",
             ));
         }
-        if event.occurred_at < Utc::now() - Duration::hours(24)
-            || event.occurred_at > Utc::now() + Duration::minutes(5)
+        if event.occurred_at < Utc::now() - Duration::hours(OWNER_EVENT_MAX_AGE_HOURS)
+            || event.occurred_at > Utc::now() + Duration::minutes(OWNER_EVENT_MAX_SKEW_MINUTES)
         {
             return Err(SurfaceError::policy(
                 "owner event timestamp outside acceptance window",
@@ -985,12 +996,12 @@ fn validate_execution_parameters(value: &Value) -> SurfaceResult<()> {
     if serde_json::to_vec(value)
         .map_err(|error| SurfaceError::invalid(format!("invalid parameters: {error}")))?
         .len()
-        > 16 * 1024
+        > MAX_PARAMETER_BYTES
     {
         return Err(SurfaceError::invalid("parameters exceed size limit"));
     }
     fn walk(value: &Value, depth: usize) -> SurfaceResult<()> {
-        if depth > 8 {
+        if depth > MAX_PARAMETER_DEPTH {
             return Err(SurfaceError::invalid("parameters exceed depth limit"));
         }
         match value {
@@ -1044,7 +1055,7 @@ fn checked_add(a: i64, b: i64) -> SurfaceResult<i64> {
         .ok_or_else(|| SurfaceError::policy("financial total overflow"))
 }
 fn require_hash(v: &str) -> SurfaceResult<()> {
-    if v.len() != 64 || !v.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if v.len() != HASH_HEX_CHARS || !v.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(SurfaceError::invalid(
             "evidence hash must be 64 hexadecimal characters",
         ));
@@ -1719,7 +1730,7 @@ mod tests {
         let mut transaction = fixture.transaction("ambiguous", 10, TransactionStatus::Signed);
         transaction.reconciliation_required = true;
         fixture.state.save_transaction(&transaction).unwrap();
-        let reference = "a".repeat(64);
+        let reference = "a".repeat(HASH_HEX_CHARS);
         let role_message = format!(
             "singularity-finance-submission-v1:{}:{}:{}:{}:{}",
             fixture.service.policy.policy_id,

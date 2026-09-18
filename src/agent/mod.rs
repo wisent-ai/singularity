@@ -18,6 +18,9 @@ use crate::most::MostClient;
 use crate::tools::{ToolCatalog, ToolStatus};
 use crate::state_service::StateImportService;
 
+/// Listing the LAS tools waits two minutes for the supervisor to come up.
+const LAS_LISTING_DEADLINE: Duration = Duration::from_secs(120);
+
 #[derive(Debug, Serialize)]
 pub struct CycleReport {
     pub cycle: u64,
@@ -556,7 +559,7 @@ async fn list_tools(args: &ToolsArgs) -> Result<(), AppError> {
             args.las_entrypoint.display()
         )));
     }
-    let deadline = Duration::from_secs("120".parse().expect("static duration"));
+    let deadline = LAS_LISTING_DEADLINE;
     let required = Vec::new();
     let mut las = LasSupervisor::spawn(
         &args.las_command,

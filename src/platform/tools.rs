@@ -13,6 +13,11 @@ use crate::error::AppError;
 use crate::mcp::{LasSupervisor, McpTool};
 use crate::most::MostClient;
 
+/// The mind keeps at most a thousand memories; a workspace file read or written
+/// through a tool is at most 2 MiB.
+const MAX_MEMORIES: usize = 1_000;
+const MAX_WORKSPACE_FILE_BYTES: u64 = 2 * 1024 * 1024;
+
 const MOST_HEALTH: &str = "most_health";
 const MOST_CREATE_CHAT: &str = "most_create_chat";
 const MOST_SEND_MESSAGE: &str = "most_send_message";
@@ -444,7 +449,7 @@ fn remember(state: &mut AgentState, arguments: Map<String, Value>) -> ToolOutcom
     };
     let id = entry.id;
     state.mind.memories.push(entry);
-    if state.mind.memories.len() > 1_000 {
+    if state.mind.memories.len() > MAX_MEMORIES {
         state.mind.memories.remove(0);
     }
     success(json!({"memory_id":id}), None, None)
@@ -548,7 +553,7 @@ fn file_read(workspace: &Path, arguments: Map<String, Value>) -> ToolOutcome {
         Err(error) => return failed("file_read", &error.to_string()),
     };
     let metadata = match std::fs::symlink_metadata(&resolved) {
-        Ok(value) if value.is_file() && value.len() <= 2 * 1024 * 1024 => value,
+        Ok(value) if value.is_file() && value.len() <= MAX_WORKSPACE_FILE_BYTES => value,
         Ok(_) => return failed("file_read", "path is not a bounded regular file"),
         Err(error) => return failed("file_read", &error.to_string()),
     };
@@ -565,7 +570,7 @@ fn file_write(workspace: &Path, arguments: Map<String, Value>) -> ToolOutcome {
         Err(error) => return error,
     };
     let content = match arguments.get("content").and_then(Value::as_str) {
-        Some(value) if value.len() <= 2 * 1024 * 1024 && !value.contains('\0') => value,
+        Some(value) if value.len() as u64 <= MAX_WORKSPACE_FILE_BYTES && !value.contains('\0') => value,
         _ => return failed("invalid_arguments", "content is invalid or too large"),
     };
     let path = workspace.join(&relative);

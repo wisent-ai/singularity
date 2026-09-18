@@ -17,6 +17,17 @@ use super::{SurfaceError, SurfaceResult};
 const PATCH_CAP: usize = 1024 * 1024;
 const DIFF_CAP: usize = 1024 * 1024;
 const READ_CAP: usize = 256 * 1024;
+/// A porcelain status entry is `XY path`: two status bytes, a space, at least one byte.
+const MIN_STATUS_ENTRY_BYTES: usize = 4;
+const STATUS_PATH_OFFSET: usize = 3;
+/// A git object id is 40 hex characters (SHA-1) or 64 (SHA-256).
+const SHA1_HEX_CHARS: usize = 40;
+const SHA256_HEX_CHARS: usize = 64;
+/// A commit message is one line of at most 200 characters; a pull request title at most
+/// 256 and its body at most 32 KiB.
+const MAX_COMMIT_MESSAGE_BYTES: usize = 200;
+const MAX_PR_TITLE_BYTES: usize = 256;
+const MAX_PR_BODY_BYTES: usize = 32 * 1024;
 
 #[derive(Clone)]
 pub struct RepoService {
@@ -824,11 +835,11 @@ async fn changed_paths(worktree: &Path) -> SurfaceResult<Vec<PathBuf>> {
             .map(|n| at + n)
             .ok_or_else(|| SurfaceError::command("malformed git status"))?;
         let entry = &bytes[at..end];
-        if entry.len() < 4 || entry[2] != b' ' {
+        if entry.len() < MIN_STATUS_ENTRY_BYTES || entry[2] != b' ' {
             return Err(SurfaceError::command("malformed git status entry"));
         }
         let status = &entry[..2];
-        let path = std::str::from_utf8(&entry[3..])
+        let path = std::str::from_utf8(&entry[STATUS_PATH_OFFSET..])
             .map_err(|_| SurfaceError::invalid("non-UTF-8 repository path"))?;
         paths.push(PathBuf::from(path));
         at = end + 1;
@@ -1059,7 +1070,7 @@ async fn write_tree(worktree: &Path) -> SurfaceResult<String> {
     .stdout
     .trim()
     .to_owned();
-    if !matches!(tree.len(), 40 | 64) || !tree.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if !matches!(tree.len(), SHA1_HEX_CHARS | SHA256_HEX_CHARS) || !tree.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(SurfaceError::command(
             "git write-tree returned an invalid object id",
         ));
@@ -1181,13 +1192,13 @@ fn validated_pull_request_url(
 fn validate_commit_message(v: &str) -> SurfaceResult<()> {
     if v.trim() != v
         || v.is_empty()
-        || v.len() > 200
+        || v.len() > MAX_COMMIT_MESSAGE_BYTES
         || v.contains('\0')
         || v.contains('\n')
         || v.starts_with('-')
     {
         Err(SurfaceError::invalid(
-            "commit message must be a single 1..=200 character line",
+            &format!("commit message must be a single 1..={MAX_COMMIT_MESSAGE_BYTES} character line"),
         ))
     } else {
         Ok(())
@@ -1196,11 +1207,11 @@ fn validate_commit_message(v: &str) -> SurfaceResult<()> {
 fn validate_pr_text(title: &str, body: &str) -> SurfaceResult<()> {
     if title.trim() != title
         || title.is_empty()
-        || title.len() > 256
+        || title.len() > MAX_PR_TITLE_BYTES
         || title.contains('\0')
         || title.contains('\n')
         || title.starts_with('-')
-        || body.len() > 32 * 1024
+        || body.len() > MAX_PR_BODY_BYTES
         || body.contains('\0')
     {
         Err(SurfaceError::invalid("invalid pull request title or body"))

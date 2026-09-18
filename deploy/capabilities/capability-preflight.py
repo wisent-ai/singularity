@@ -19,6 +19,16 @@ REJECTED_VALUE = re.compile(r"(?i)(replace|placeholder|example|changeme|todo|ins
 CONTRACT_TARGETS = frozenset(("weles", "most-service", "brama", "singularity-bootstrap"))
 CLIENT_GROUP = "skarbiec-capability-clients"
 MCP_AGENT_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+# The modes a capability-isolated deployment is held to: secret files grant the group
+# and others nothing, private directories are 0700, shared ones 0750, executables are
+# not group/world writable and are owner-executable, the broker socket is 0660.
+GROUP_OR_OTHER_ACCESS = 0o077
+PRIVATE_DIR_MODE = 0o700
+SHARED_DIR_MODE = 0o750
+GROUP_OR_OTHER_WRITE = 0o022
+OWNER_EXECUTE = 0o100
+BROKER_SOCKET_MODE = 0o660
+HASH_BLOCK_BYTES = 1024 * 1024
 SKARBIEC_MCP_ENV_NAMES = (
     "SKARBIEC_VAULT_FILE",
     "SKARBIEC_CAP_POLICY",
@@ -128,16 +138,16 @@ def require_secure(
         fail(f"wrong group for {path}: expected gid {group}")
     mode = stat.S_IMODE(info.st_mode)
     if kind == "file":
-        if not stat.S_ISREG(info.st_mode) or mode & 0o077:
+        if not stat.S_ISREG(info.st_mode) or mode & GROUP_OR_OTHER_ACCESS:
             fail(f"owner-only regular file required: {path}")
     elif kind == "dir":
-        if not stat.S_ISDIR(info.st_mode) or mode != 0o700:
+        if not stat.S_ISDIR(info.st_mode) or mode != PRIVATE_DIR_MODE:
             fail(f"0700 directory required: {path}")
     elif kind == "shared-dir":
-        if not stat.S_ISDIR(info.st_mode) or mode != 0o750:
+        if not stat.S_ISDIR(info.st_mode) or mode != SHARED_DIR_MODE:
             fail(f"0750 shared directory required: {path}")
     elif kind == "executable":
-        if not stat.S_ISREG(info.st_mode) or mode & 0o022 or not mode & 0o100:
+        if not stat.S_ISREG(info.st_mode) or mode & GROUP_OR_OTHER_WRITE or not mode & OWNER_EXECUTE:
             fail(f"non-writable owner-executable regular file required: {path}")
     else:
         fail(f"internal error: unsupported path kind {kind}")
@@ -146,7 +156,7 @@ def require_secure(
 def digest(path: Path) -> str:
     result = hashlib.sha256()
     with path.open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
+        for block in iter(lambda: handle.read(HASH_BLOCK_BYTES), b""):
             result.update(block)
     return result.hexdigest()
 
@@ -224,7 +234,7 @@ def validate_agent(values: dict[str, str]) -> None:
     require_absolute(socket, "SKARBIEC_CAP_SOCKET")
     reject_symlinks(socket)
     info = os.lstat(socket)
-    if not stat.S_ISSOCK(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o660:
+    if not stat.S_ISSOCK(info.st_mode) or stat.S_IMODE(info.st_mode) != BROKER_SOCKET_MODE:
         fail("broker socket must be a 0660 Unix socket")
     if not os.access(socket, os.R_OK | os.W_OK):
         fail("broker socket is not accessible to this workload UID")

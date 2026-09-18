@@ -10,6 +10,13 @@ use url::Url;
 use crate::domain::{AgentIdentity, Pricing};
 use crate::error::AppError;
 
+/// A stimulus is at most 64 KiB; an identity component at most 128 bytes; a digest is
+/// 64 hex characters; a secret file may grant the group and others no mode bits.
+const MAX_STIMULUS_BYTES: usize = 64 * 1024;
+const MAX_IDENTITY_COMPONENT_BYTES: usize = 128;
+const DIGEST_HEX_CHARS: usize = 64;
+pub const GROUP_OR_OTHER_ACCESS: u32 = 0o077;
+
 #[derive(Debug, Parser)]
 #[command(
     name = "singularity",
@@ -238,11 +245,11 @@ impl RuntimeConfig {
             .map(str::to_owned);
         if stimulus
             .as_deref()
-            .is_some_and(|value| value.len() > 64 * 1024 || value.contains('\0'))
+            .is_some_and(|value| value.len() > MAX_STIMULUS_BYTES || value.contains('\0'))
         {
-            return Err(AppError::Config(
-                "stimulus must be at most 65536 bytes and contain no NUL".into(),
-            ));
+            return Err(AppError::Config(format!(
+                "stimulus must be at most {MAX_STIMULUS_BYTES} bytes and contain no NUL"
+            )));
         }
         let workspace = std::fs::canonicalize(&args.workspace)
             .map_err(|error| AppError::Config(format!("workspace: {error}")))?;
@@ -370,7 +377,7 @@ impl RuntimeConfig {
 
 fn validate_identity_component(value: &str, label: &str) -> Result<(), AppError> {
     if value.is_empty()
-        || value.len() > 128
+        || value.len() > MAX_IDENTITY_COMPONENT_BYTES
         || !value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
@@ -383,13 +390,13 @@ fn validate_identity_component(value: &str, label: &str) -> Result<(), AppError>
 }
 
 fn validate_digest(value: &str, label: &str) -> Result<(), AppError> {
-    if value.len() != 64
+    if value.len() != DIGEST_HEX_CHARS
         || !value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
     {
         return Err(AppError::Config(format!(
-            "{label} must be 64 lowercase hexadecimal characters"
+            "{label} must be {DIGEST_HEX_CHARS} lowercase hexadecimal characters"
         )));
     }
     Ok(())
@@ -421,8 +428,7 @@ pub fn read_secret(path: &PathBuf) -> Result<SecretString, AppError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let forbidden: u32 = "63".parse().expect("static permission mask is valid");
-        if fs::metadata(path)?.permissions().mode() & forbidden != u32::default() {
+        if fs::metadata(path)?.permissions().mode() & GROUP_OR_OTHER_ACCESS != u32::default() {
             return Err(AppError::Secret(format!(
                 "{} must not be group/world accessible",
                 path.display()

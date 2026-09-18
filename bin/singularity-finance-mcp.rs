@@ -5,6 +5,9 @@ use serde_json::{Value, json};
 use std::path::Path;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+/// One JSON-RPC line is read up to 256 KiB.
+const MAX_REQUEST_BYTES: usize = 256 * 1024;
+
 #[tokio::main]
 async fn main() {
     if let Err(error) = run().await {
@@ -42,7 +45,7 @@ async fn serve(service: finance_surface::FinanceService) -> Result<(), Box<dyn s
     let mut lines = BufReader::new(io::stdin()).lines();
     let mut stdout = io::stdout();
     while let Some(line) = lines.next_line().await? {
-        if line.len() > 256 * 1024 {
+        if line.len() > MAX_REQUEST_BYTES {
             write_response(
                 &mut stdout,
                 &rpc_error(Value::Null, -32600, "request exceeds size limit"),

@@ -13,6 +13,9 @@ use crate::error::{AppError, ErrorClass};
 
 type HmacSha = Hmac<Sha256>;
 
+/// A non-JSON error body is quoted up to 800 characters.
+const MAX_ERROR_EXCERPT_CHARS: usize = 800;
+
 #[derive(Debug, Serialize)]
 struct CompletionRequest<'a> {
     model: &'a str,
@@ -197,7 +200,7 @@ impl BramaClient {
                 .unwrap_or_else(|_| {
                     String::from_utf8_lossy(&bytes)
                         .chars()
-                        .take("800".parse().expect("static limit"))
+                        .take(MAX_ERROR_EXCERPT_CHARS)
                         .collect()
                 });
             let class = if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
