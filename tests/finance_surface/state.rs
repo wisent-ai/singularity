@@ -1,6 +1,7 @@
 // Append-only state store stories, attached to src/finance_surface/state.rs.
 
 use super::*;
+use std::collections::BTreeMap;
 
 struct TestDirectory(PathBuf);
 
@@ -97,11 +98,9 @@ fn finance_contract_reopen_rejects_a_corrupted_audit_record() {
         Err(error) => error,
     };
 
-    assert!(
-        error
-            .to_string()
-            .starts_with("state_error: invalid audit record:")
-    );
+    assert!(error
+        .to_string()
+        .starts_with("state_error: invalid audit record:"));
 }
 
 #[test]
@@ -150,10 +149,8 @@ fn finance_contract_reopen_recovers_an_unapplied_commit_journal() {
             .response,
         response
     );
-    assert!(
-        directory
-            .0
-            .join("commit-applied/crash-commit.json")
-            .exists()
-    );
+    assert!(directory
+        .0
+        .join("commit-applied/crash-commit.json")
+        .exists());
 }
