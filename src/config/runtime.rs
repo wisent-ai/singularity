@@ -2,7 +2,6 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use clap::Parser;
 use rust_decimal::Decimal;
 use secrecy::SecretString;
 use url::Url;

@@ -2,7 +2,6 @@
 use std::fs;
 use std::path::PathBuf;
 
-use clap::Parser;
 use secrecy::SecretString;
 use url::Url;
 
