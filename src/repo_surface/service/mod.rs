@@ -49,12 +49,12 @@ struct WorkspacePatch {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WorkspaceOnly {
+pub(crate) struct WorkspaceOnly {
     workspace_id: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct WorkspaceCheck {
+pub(crate) struct WorkspaceCheck {
     workspace_id: String,
     check: String,
 }
