@@ -12,7 +12,6 @@ Requires: python3 with the `cryptography` package, and the
 singularity-finance-mcp binary (SINGULARITY_FINANCE_MCP env, default:
 target/release/singularity-finance-mcp relative to the repo root).
 """
-import hashlib
 import json
 import os
 import subprocess
@@ -21,37 +20,13 @@ import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from finance_signing import canonical, keypair, sha, signed_envelope, ts, write_owner_only
 
 MCP = os.environ.get(
     "SINGULARITY_FINANCE_MCP",
     os.path.join(os.path.dirname(__file__), "../../target/release/singularity-finance-mcp"),
 )
 MCP = os.path.abspath(MCP)
-
-# --- signing: the exact canonical-JSON contract of src/finance_surface/policy.rs
-def canonical(value) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-
-def keypair():
-    key = Ed25519PrivateKey.generate()
-    return key, key.public_key().public_bytes_raw().hex()
-
-def signed_envelope(document, key) -> str:
-    return json.dumps(
-        {"document": document, "signature_hex": key.sign(canonical(document)).hex()}
-    )
-
-def write_owner_only(path, content):
-    with open(path, "w", opener=lambda p, f: os.open(p, f, 0o600)) as fh:
-        fh.write(content)
-    os.chmod(path, 0o600)
-
-def ts(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-
-def sha(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
 
 # --- seven distinct authorities, as the policy validator requires
 doc_key, doc_pub = keypair()          # signs policy, lease, owner events
