@@ -12,7 +12,7 @@ pub mod mcp;
 pub mod most;
 pub mod onboarding;
 pub mod state_service;
-#[path = "platform/tools.rs"]
+#[path = "platform/tools/mod.rs"]
 pub mod tools;
 
 pub use agent::{Agent, CycleReport};
