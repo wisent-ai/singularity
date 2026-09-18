@@ -2,7 +2,6 @@
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::Deserialize;
 use serde_json::Value;
-use sha2::Digest;
 use std::fs;
 use std::path::Path;
 
