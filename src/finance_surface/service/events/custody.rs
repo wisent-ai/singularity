@@ -10,7 +10,7 @@ use crate::finance_surface::policy::validate_id;
 use crate::finance_surface::state::{Transaction, TransactionStatus};
 use crate::finance_surface::{SurfaceError, SurfaceResult};
 
-use super::{
+use super::super::{
     FinanceService, OwnerEvent, require_hash, transition, verify_approval, verify_role,
     verify_worm_receipt,
 };

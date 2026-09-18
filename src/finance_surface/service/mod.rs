@@ -176,10 +176,8 @@ impl FinanceService {
     }
 }
 
-mod custody;
 mod execution;
-mod outcome;
-mod owner;
+mod events;
 mod proposals;
 mod verify;
 
