@@ -110,7 +110,10 @@ impl<'a> Owner<'a> {
                 String::from_utf8_lossy(&output.stderr)
             )
         })?;
-        if output.status.success() != success || value["ok"].as_bool() != Some(success) {
+        if output.status.success() != success
+            || value["ok"].as_bool() != Some(success)
+            || value["schema_version"] != 2
+        {
             return Err(format!(
                 "unexpected CLI result for {arguments:?}: status={}, envelope={value}",
                 output.status
