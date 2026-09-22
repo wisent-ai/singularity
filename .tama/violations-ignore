@@ -2,3 +2,19 @@
 # from .github/banner.toml and replaced whole on every run, so a repository
 # audit reads it as generated output instead of asking somebody to split it.
 assets/readme-banner.svg
+# The repository root. Every file below is read from the root by the
+# tool named beside it, so none of them can move into a folder and the
+# five-files-per-folder rule cannot be met here. Written by
+# `tama declare-root`, which refuses to write this while the root still
+# holds a file somebody could move.
+#   .gitignore — git
+#   .wisent-release.json — the Wisent release tooling
+#   Cargo.lock — cargo
+#   Cargo.toml — cargo
+#   LICENSE — GitHub reads the licence from the root
+#   README.md — GitHub shows it on the repository page
+#   landing.brief.json — the landing tooling
+#   landing.config.json — the landing tooling
+#   landing.plan.json — the landing tooling
+#   platform-entitlements.json — the pack's release tooling reads it by that exact path
+.
