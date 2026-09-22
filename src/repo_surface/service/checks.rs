@@ -1,11 +1,10 @@
-//! Staging, sealing and the checks a commit and a pull request must pass.
-use serde_json::Value;
+//! Staging, sealing and exact-source checks before publication.
 use std::path::Path;
 
 use super::repository::*;
 use super::*;
 use crate::repo_surface::command::git;
-use crate::repo_surface::policy::{is_protected_branch, RepoPolicy};
+use crate::repo_surface::policy::RepoPolicy;
 use crate::repo_surface::state::WorkspaceState;
 use crate::repo_surface::{SurfaceError, SurfaceResult};
 
@@ -104,11 +103,8 @@ pub(super) fn commit_ready(state: &WorkspaceState, repo: &RepoPolicy) -> Surface
         .commit
         .clone()
         .ok_or_else(|| SurfaceError::conflict("workspace must be committed first"))?;
-    if state.branch == repo.base_branch
-        || is_protected_branch(&state.branch)
-        || !state.branch.starts_with(&repo.branch_prefix)
-    {
-        return Err(SurfaceError::policy("workspace branch is not publishable"));
+    if state.branch != repo.base_branch || state.worktree != repo.root {
+        return Err(SurfaceError::policy("workspace is not the canonical main checkout"));
     }
     Ok(commit)
 }
@@ -117,6 +113,11 @@ pub(super) async fn committed_head(
     repo: &RepoPolicy,
 ) -> SurfaceResult<String> {
     let commit = commit_ready(state, repo)?;
+    let branch = successful(git(&state.worktree, &["branch", "--show-current"], None, 30).await?,
+        "verify canonical publication branch")?;
+    if branch.stdout.trim() != repo.base_branch {
+        return Err(SurfaceError::conflict("canonical branch changed before publication"));
+    }
     let status = successful(
         git(
             &state.worktree,
@@ -146,35 +147,6 @@ pub(super) async fn committed_head(
     }
     Ok(commit)
 }
-pub(super) fn validated_pull_request_url(
-    value: &Value,
-    repo: &RepoPolicy,
-    state: &WorkspaceState,
-    commit: &str,
-) -> SurfaceResult<String> {
-    let head_owner = value
-        .get("headRepositoryOwner")
-        .and_then(|owner| owner.get("login"))
-        .and_then(Value::as_str);
-    if value.get("baseRefName").and_then(Value::as_str) != Some(&repo.base_branch)
-        || value.get("headRefName").and_then(Value::as_str) != Some(&state.branch)
-        || value.get("headRefOid").and_then(Value::as_str) != Some(commit)
-        || head_owner != Some(repo.github_head_owner.as_str())
-    {
-        return Err(SurfaceError::conflict(
-            "pull request does not match the policy repository, branches, and commit",
-        ));
-    }
-    if value.get("state").and_then(Value::as_str) != Some("OPEN") {
-        return Err(SurfaceError::conflict("proposal pull request is not open"));
-    }
-    value
-        .get("url")
-        .and_then(Value::as_str)
-        .filter(|url| !url.is_empty())
-        .map(str::to_owned)
-        .ok_or_else(|| SurfaceError::command("gh response omitted pull request URL"))
-}
 
 pub(super) fn validate_commit_message(v: &str) -> SurfaceResult<()> {
     if v.trim() != v
@@ -187,21 +159,6 @@ pub(super) fn validate_commit_message(v: &str) -> SurfaceResult<()> {
         Err(SurfaceError::invalid(&format!(
             "commit message must be a single 1..={MAX_COMMIT_MESSAGE_BYTES} character line"
         )))
-    } else {
-        Ok(())
-    }
-}
-pub(super) fn validate_pr_text(title: &str, body: &str) -> SurfaceResult<()> {
-    if title.trim() != title
-        || title.is_empty()
-        || title.len() > MAX_PR_TITLE_BYTES
-        || title.contains('\0')
-        || title.contains('\n')
-        || title.starts_with('-')
-        || body.len() > MAX_PR_BODY_BYTES
-        || body.contains('\0')
-    {
-        Err(SurfaceError::invalid("invalid pull request title or body"))
     } else {
         Ok(())
     }

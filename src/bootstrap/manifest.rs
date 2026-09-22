@@ -26,7 +26,7 @@ pub(super) fn verify_manifest(
 
 pub(super) fn validate_manifest(manifest: &BootstrapManifest) -> Result<(), AppError> {
     let now = Utc::now();
-    if manifest.version != "singularity.bootstrap.v1"
+    if manifest.version != "singularity.bootstrap.v2"
         || manifest.policy_sequence == 0
         || manifest.issued_at > now + Duration::seconds(MAX_ISSUED_AT_SKEW_SECONDS)
         || manifest.expires_at <= now
@@ -43,6 +43,7 @@ pub(super) fn validate_manifest(manifest: &BootstrapManifest) -> Result<(), AppE
         &manifest.code_digest,
         &manifest.policy_digest,
         &manifest.capabilities.brama.id,
+        &manifest.capabilities.brama_bearer.id,
         &manifest.capabilities.most.id,
     ] {
         if !is_lower_hex_64(digest) {
@@ -52,9 +53,16 @@ pub(super) fn validate_manifest(manifest: &BootstrapManifest) -> Result<(), AppE
         }
     }
     if manifest.capabilities.brama.id == manifest.capabilities.most.id
+        || manifest.capabilities.brama_bearer.id == manifest.capabilities.brama.id
+        || manifest.capabilities.brama_bearer.id == manifest.capabilities.most.id
         || !valid_capability_binding(
             &manifest.capabilities.brama,
             "singularity.brama.bootstrap",
+            "brama:",
+        )
+        || !valid_capability_binding(
+            &manifest.capabilities.brama_bearer,
+            "singularity.brama.authorization",
             "brama:",
         )
         || !valid_capability_binding(

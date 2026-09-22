@@ -1,17 +1,17 @@
+mod auth;
+mod catalog;
+mod constants;
+pub use catalog::Quote;
 use std::time::Duration;
 
-use hmac::{Hmac, Mac};
 use reqwest::{Client, StatusCode};
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use url::Url;
 
 use crate::domain::{ChatMessage, TokenUsage, ToolCall, ToolDefinition};
 use crate::error::{AppError, ErrorClass};
-
-type HmacSha = Hmac<Sha256>;
 
 /// A non-JSON error body is quoted up to 800 characters.
 const MAX_ERROR_EXCERPT_CHARS: usize = 800;
@@ -27,7 +27,6 @@ struct CompletionRequest<'a> {
 
 #[derive(Debug, Deserialize)]
 struct CompletionResponse {
-    #[allow(dead_code)]
     id: String,
     model: String,
     choices: Vec<Choice>,
@@ -51,6 +50,16 @@ struct Usage {
     prompt_tokens: u64,
     completion_tokens: u64,
     total_tokens: u64,
+    #[serde(default)]
+    prompt_tokens_details: PromptTokenDetails,
+    #[serde(default)]
+    cache_write_tokens: u64,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PromptTokenDetails {
+    #[serde(default)]
+    cached_tokens: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,14 +82,17 @@ struct RemoteError {
     message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BramaCompletion {
+    pub id: String,
     pub model: String,
     /// The assistant text, when the response carried any: a response that ends in tool calls
     /// carries none, and the absence stays visible instead of reading as an empty answer.
     pub content: Option<String>,
     pub tool_calls: Vec<ToolCall>,
     pub usage: TokenUsage,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
 }
 
 pub struct BramaClient {
@@ -89,6 +101,7 @@ pub struct BramaClient {
     model: String,
     agent_id: String,
     secret: SecretString,
+    bearer: SecretString,
     max_tokens: u32,
     temperature: f64,
 }
@@ -99,6 +112,7 @@ impl BramaClient {
         model: String,
         agent_id: String,
         secret: SecretString,
+        bearer: SecretString,
         max_tokens: u32,
         temperature: f64,
         timeout: Duration,
@@ -107,52 +121,43 @@ impl BramaClient {
             .timeout(timeout)
             .build()
             .map_err(map_network)?;
-        Ok(Self {
+        Ok(Self::from_client(
             http,
             base_url,
             model,
             agent_id,
             secret,
+            bearer,
             max_tokens,
             temperature,
-        })
+        ))
+    }
+
+    /// Use an explicitly constructed transport, including callers that wait for completion.
+    pub fn from_client(
+        http: Client,
+        base_url: Url,
+        model: String,
+        agent_id: String,
+        secret: SecretString,
+        bearer: SecretString,
+        max_tokens: u32,
+        temperature: f64,
+    ) -> Self {
+        Self {
+            http,
+            base_url,
+            model,
+            agent_id,
+            secret,
+            bearer,
+            max_tokens,
+            temperature,
+        }
     }
 
     pub fn set_model(&mut self, model: String) {
         self.model = model;
-    }
-
-    pub async fn health(&self) -> Result<(), AppError> {
-        let value: Value = self
-            .http
-            .get(self.endpoint("health")?)
-            .send()
-            .await
-            .map_err(map_network)?
-            .error_for_status()
-            .map_err(map_network)?
-            .json()
-            .await
-            .map_err(map_network)?;
-        if value.get("status").and_then(Value::as_str) != Some("ok") {
-            return Err(brama(ErrorClass::Permanent, "health response is not ok"));
-        }
-        Ok(())
-    }
-
-    pub async fn models(&self) -> Result<Vec<String>, AppError> {
-        let response: ModelsResponse = self
-            .http
-            .get(self.endpoint("v1/models")?)
-            .send()
-            .await
-            .map_err(map_network)?
-            .error_for_status()
-            .map_err(map_network)?
-            .json()
-            .await
-            .map_err(map_network)?;
-        Ok(response.data.into_iter().map(|entry| entry.id).collect())
     }
 
     pub async fn complete(
@@ -168,26 +173,9 @@ impl BramaClient {
             tools,
         };
         let body = serde_json::to_vec(&request)?;
-        let timestamp = chrono::Utc::now().timestamp().to_string();
-        let body_hash = hex::encode(Sha256::digest(&body));
-        let signed = format!("{}:{}:{}", self.agent_id, timestamp, body_hash);
-        let mut mac =
-            HmacSha::new_from_slice(self.secret.expose_secret().as_bytes()).map_err(|error| {
-                brama(
-                    ErrorClass::Permanent,
-                    format!("cannot initialize signer: {error}"),
-                )
-            })?;
-        mac.update(signed.as_bytes());
-        let signature = hex::encode(mac.finalize().into_bytes());
         let response = self
-            .http
-            .post(self.endpoint("v1/chat/completions")?)
+            .authenticate(self.http.post(self.endpoint("v1/chat/completions")?), &body)?
             .header("content-type", "application/json")
-            .header("x-agent-id", &self.agent_id)
-            .header("x-agent-timestamp", timestamp)
-            .header("x-agent-body-sha256", body_hash)
-            .header("x-agent-signature", signature)
             .body(body)
             .send()
             .await
@@ -260,6 +248,7 @@ impl BramaClient {
             ));
         }
         Ok(BramaCompletion {
+            id: parsed.id,
             model: parsed.model,
             content: choice.message.content,
             tool_calls,
@@ -268,6 +257,8 @@ impl BramaClient {
                 completion_tokens: parsed.usage.completion_tokens,
                 total_tokens: computed_total,
             },
+            cache_read_tokens: parsed.usage.prompt_tokens_details.cached_tokens,
+            cache_write_tokens: parsed.usage.cache_write_tokens,
         })
     }
 

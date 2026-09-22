@@ -1,7 +1,7 @@
 #[path = "../src/repo_surface/mod.rs"]
 mod repo_surface;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 /// One JSON-RPC line is read up to 2 MiB (a pull-request body travels in it).

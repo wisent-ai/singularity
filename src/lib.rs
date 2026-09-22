@@ -5,6 +5,7 @@ pub mod bootstrap;
 pub mod brama;
 pub mod config;
 pub mod domain;
+pub mod ecosystem;
 pub mod error;
 #[path = "lifecycle/import.rs"]
 pub mod import;

@@ -38,6 +38,7 @@ pub(super) fn print_startup_import(report: &crate::import::ImportReport) -> Resu
 
 pub async fn execute(command: Command, cancellation: CancellationToken) -> Result<(), AppError> {
     match command {
+        Command::Ecosystem(args) => crate::ecosystem::execute(args, cancellation).await,
         Command::Run(args) => {
             let startup_import = startup_import(&args)?;
             let (mut agent, startup_report) = Agent::bootstrap_with_import(
@@ -118,6 +119,7 @@ pub(super) async fn doctor(args: &CommonArgs) -> Result<(), AppError> {
         config.brama_model.clone(),
         config.identity.agent_id.clone(),
         config.brama_secret.clone(),
+        config.brama_bearer.clone(),
         config.max_tokens,
         config.temperature,
         config.http_timeout,
@@ -157,7 +159,6 @@ pub(super) async fn doctor(args: &CommonArgs) -> Result<(), AppError> {
         &config.las_release_trust_store,
         &config.las_release_watermark,
         &config.required_surfaces,
-        config.mcp_timeout,
     )
     .await?;
     let tools = las.tools().len();
@@ -191,7 +192,6 @@ pub(super) async fn list_tools(args: &ToolsArgs) -> Result<(), AppError> {
         &args.las_release_trust_store,
         &args.las_release_watermark,
         &required,
-        deadline,
     )
     .await?;
     let catalog = ToolCatalog::build(las.tools(), false)?;

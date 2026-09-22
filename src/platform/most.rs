@@ -3,7 +3,7 @@ use std::time::Duration;
 use reqwest::{Client, Response, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use url::Url;
 use uuid::Uuid;
 

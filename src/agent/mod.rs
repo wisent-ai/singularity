@@ -12,7 +12,7 @@ use crate::mcp::LasSupervisor;
 use crate::most::MostClient;
 use crate::tools::ToolCatalog;
 
-/// Listing the LAS tools waits two minutes for the supervisor to come up.
+/// Tool listing's child shutdown grace; MCP requests themselves wait for completion.
 const LAS_LISTING_DEADLINE: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Serialize)]
@@ -102,6 +102,7 @@ impl Agent {
             config.brama_model.clone(),
             config.identity.agent_id.clone(),
             config.brama_secret.clone(),
+            config.brama_bearer.clone(),
             config.max_tokens,
             config.temperature,
             config.http_timeout,
@@ -117,7 +118,6 @@ impl Agent {
             &config.las_release_trust_store,
             &config.las_release_watermark,
             &config.required_surfaces,
-            config.mcp_timeout,
         )
         .await?;
         let catalog = match ToolCatalog::build(las.tools(), config.most_token.is_some()) {

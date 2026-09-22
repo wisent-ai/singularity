@@ -6,8 +6,8 @@ use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signer, SigningKey};
 use uuid::Uuid;
 use zeroize::Zeroize;
@@ -115,15 +115,15 @@ pub(super) fn materialize(
 pub(super) fn launch(
     manifest: &BootstrapManifest,
     brama_path: &Path,
+    bearer_path: &Path,
     most_path: &Path,
 ) -> Result<ExitStatus, AppError> {
+    let (home, path) = crate::config::environment::runtime_paths()?;
     Command::new(&manifest.singularity_executable)
         .args(&manifest.singularity_args)
         .env_clear()
-        .env(
-            "PATH",
-            "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
-        )
+        .env("HOME", home)
+        .env("PATH", path)
         .env("LANG", "C.UTF-8")
         .env("LC_ALL", "C.UTF-8")
         .env("SINGULARITY_AGENT_ID", &manifest.agent_id)
@@ -143,6 +143,7 @@ pub(super) fn launch(
             manifest.policy_sequence.to_string(),
         )
         .env("BRAMA_HMAC_SECRET_FILE", brama_path)
+        .env("BRAMA_BEARER_TOKEN_FILE", bearer_path)
         .env("MOST_SERVICE_TOKEN_FILE", most_path)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())

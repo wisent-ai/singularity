@@ -11,7 +11,7 @@ use zeroize::Zeroize;
 
 use crate::error::AppError;
 
-const MANIFEST_DOMAIN: &[u8] = b"SINGULARITY-BOOTSTRAP-MANIFEST\0v1\0";
+const MANIFEST_DOMAIN: &[u8] = b"SINGULARITY-BOOTSTRAP-MANIFEST\0v2\0";
 const PROOF_DOMAIN: &[u8] = b"SKARBIEC-WORKLOAD-PROOF\0v1\0";
 const WIRE_VERSION: &str = "skarbiec.redeem.v1";
 const MAX_CONTROL_LINE: usize = 4096;
@@ -51,6 +51,7 @@ pub struct BootstrapManifest {
 #[serde(deny_unknown_fields)]
 pub struct BootstrapCapabilities {
     pub brama: BootstrapCapability,
+    pub brama_bearer: BootstrapCapability,
     pub most: BootstrapCapability,
 }
 
@@ -121,6 +122,7 @@ pub fn run_bootstrap(
     DirBuilder::new().mode(0o700).create(&runtime_dir)?;
     let cleanup = RuntimeCleanup::new(runtime_dir);
     let brama_path = cleanup.path().join("brama.hmac");
+    let bearer_path = cleanup.path().join("brama.token");
     let most_path = cleanup.path().join("most.token");
     let result = (|| {
         materialize(
@@ -132,13 +134,20 @@ pub fn run_bootstrap(
         )?;
         materialize(
             &manifest.broker_socket,
+            &manifest.capabilities.brama_bearer.id,
+            &manifest.workload_id,
+            &signing_key,
+            &bearer_path,
+        )?;
+        materialize(
+            &manifest.broker_socket,
             &manifest.capabilities.most.id,
             &manifest.workload_id,
             &signing_key,
             &most_path,
         )?;
         validate_manifest(&manifest)?;
-        launch(&manifest, &brama_path, &most_path)
+        launch(&manifest, &brama_path, &bearer_path, &most_path)
     })();
 
     drop(cleanup);

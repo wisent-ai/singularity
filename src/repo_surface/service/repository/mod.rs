@@ -1,13 +1,13 @@
 //! Reading and writing the repository: git invocations, the jail, the paths a patch touches.
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::repo_surface::command::git;
-use crate::repo_surface::policy::{validate_relative_path, RepoPolicy};
+use crate::repo_surface::policy::{RepoPolicy, validate_relative_path};
 use crate::repo_surface::state::WorkspaceState;
 use crate::repo_surface::{SurfaceError, SurfaceResult};
 
@@ -54,7 +54,7 @@ pub(super) fn request_fingerprint(operation: &str, value: &Value) -> SurfaceResu
     Ok(hex::encode(Sha256::digest(bytes)))
 }
 pub(super) fn status_json(s: &WorkspaceState) -> Value {
-    json!({"workspace_id":s.id,"repo_id":s.repo_id,"branch":s.branch,"base_commit":s.base_commit,"sealed_fingerprint":s.sealed_fingerprint,"checks":s.checks,"commit":s.commit,"published":s.published,"pull_request_url":s.pull_request_url,"final_gate":"external CI and human review"})
+    json!({"workspace_id":s.id,"repo_id":s.repo_id,"branch":s.branch,"base_commit":s.base_commit,"sealed_fingerprint":s.sealed_fingerprint,"checks":s.checks,"commit":s.commit,"published":s.published,"final_gate":"independent acceptance and qualified product delivery"})
 }
 
 pub(super) fn ensure_allowed(repo: &RepoPolicy, path: &Path) -> SurfaceResult<()> {
@@ -157,5 +157,7 @@ pub(super) fn reject_symlink_components(root: &Path, relative: &Path) -> Surface
 }
 
 mod patching;
+mod commit;
+pub(super) use commit::reconcile_commit;
 
 pub(super) use patching::*;

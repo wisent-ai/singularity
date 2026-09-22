@@ -1,7 +1,7 @@
 #[path = "../src/finance_surface/mod.rs"]
 mod finance_surface;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::Path;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 

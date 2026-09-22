@@ -4,14 +4,14 @@
 //! end or suspend it are in `outcome`. The match below is the only place that decides
 //! which of them an event is, and it stays exhaustive over `OwnerAction`.
 use chrono::{Duration, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::Path;
 
 use crate::finance_surface::policy::{load_signed, validate_id};
 use crate::finance_surface::state::RequestRecord;
 use crate::finance_surface::{SurfaceError, SurfaceResult};
 
-use super::{hash_value, public_status, FinanceService, OwnerAction, OwnerEvent};
+use super::{FinanceService, OwnerAction, OwnerEvent, hash_value, public_status};
 use super::{OWNER_EVENT_MAX_AGE_HOURS, OWNER_EVENT_MAX_SKEW_MINUTES};
 
 /// The ledger identifier of an owner event is the first forty characters of the hash of

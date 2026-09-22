@@ -232,7 +232,7 @@ fn write_owner_only(path: &Path, contents: &[u8]) {
 
 fn manifest_with_expiry(expires_at: DateTime<Utc>) -> BootstrapManifest {
     BootstrapManifest {
-        version: "singularity.bootstrap.v1".to_owned(),
+        version: "singularity.bootstrap.v2".to_owned(),
         issued_at: expires_at - Duration::seconds(60),
         expires_at,
         agent_id: "agent-42".to_owned(),
@@ -256,6 +256,12 @@ fn manifest_with_expiry(expires_at: DateTime<Utc>) -> BootstrapManifest {
                 purpose: "singularity.brama.bootstrap".to_owned(),
                 resource: "brama:agent-42".to_owned(),
             },
+            brama_bearer: BootstrapCapability {
+                id: "7".repeat(64),
+                target: "singularity-bootstrap".to_owned(),
+                purpose: "singularity.brama.authorization".to_owned(),
+                resource: "brama:agent-42".to_owned(),
+            },
             most: BootstrapCapability {
                 id: "6".repeat(64),
                 target: "singularity-bootstrap".to_owned(),
@@ -277,7 +283,7 @@ fn verify_manifest_requires_an_exact_domain_separated_signature() {
         hex::encode(signing_key.verifying_key().as_bytes()).as_bytes(),
     );
 
-    let manifest_bytes = br#"{"version":"singularity.bootstrap.v1","agent_id":"agent-42"}"#;
+    let manifest_bytes = br#"{"version":"singularity.bootstrap.v2","agent_id":"agent-42"}"#;
     let mut domain_separated = Vec::with_capacity(MANIFEST_DOMAIN.len() + manifest_bytes.len());
     domain_separated.extend_from_slice(MANIFEST_DOMAIN);
     domain_separated.extend_from_slice(manifest_bytes);
@@ -292,7 +298,7 @@ fn verify_manifest_requires_an_exact_domain_separated_signature() {
         "the exact domain-separated manifest bytes must verify"
     );
 
-    let tampered_bytes = br#"{"version":"singularity.bootstrap.v1","agent_id":"agent-43"}"#;
+    let tampered_bytes = br#"{"version":"singularity.bootstrap.v2","agent_id":"agent-43"}"#;
     assert!(
         verify_manifest(tampered_bytes, &signature_path, &trust_root_path).is_err(),
         "changing the signed manifest bytes must invalidate the signature"

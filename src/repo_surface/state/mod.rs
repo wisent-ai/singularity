@@ -20,7 +20,6 @@ pub struct WorkspaceState {
     pub checks: BTreeMap<String, CheckEvidence>,
     pub commit: Option<String>,
     pub published: bool,
-    pub pull_request_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -76,11 +75,12 @@ impl StateStore {
             create_owner_dir(&root)?;
         }
         for child in [
-            "workspaces",
+            "repositories",
             "records",
             "requests",
             "locks",
             "request-locks",
+            "repository-locks",
         ] {
             let path = root.join(child);
             if path.exists() {
@@ -92,68 +92,15 @@ impl StateStore {
         Ok(Self { root })
     }
 
-    pub fn worktree_path(&self, id: &str) -> SurfaceResult<PathBuf> {
-        validate_id("workspace id", id)?;
-        Ok(self.root.join("workspaces").join(id))
-    }
 
-    #[cfg(unix)]
     pub fn lock_workspace(&self, id: &str) -> SurfaceResult<WorkspaceLock> {
-        use std::os::fd::AsRawFd;
-        use std::os::unix::fs::OpenOptionsExt;
         validate_id("workspace id", id)?;
-        let path = self.root.join("locks").join(format!("{id}.lock"));
-        let file = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .open(path)
-            .map_err(|error| SurfaceError::state(format!("cannot open workspace lock: {error}")))?;
-        if unsafe { flock(file.as_raw_fd(), LOCK_EX) } != 0 {
-            return Err(SurfaceError::state(format!(
-                "cannot acquire workspace lock: {}",
-                std::io::Error::last_os_error()
-            )));
-        }
-        Ok(WorkspaceLock { file })
+        locking::acquire(&self.root.join("locks").join(format!("{id}.lock")))
     }
 
-    #[cfg(not(unix))]
-    pub fn lock_workspace(&self, _id: &str) -> SurfaceResult<WorkspaceLock> {
-        Err(SurfaceError::policy("workspace locking requires Unix"))
-    }
-
-    #[cfg(unix)]
     pub fn lock_request(&self, request_id: &str) -> SurfaceResult<WorkspaceLock> {
-        use std::os::fd::AsRawFd;
-        use std::os::unix::fs::OpenOptionsExt;
         validate_id("request_id", request_id)?;
-        let path = self
-            .root
-            .join("request-locks")
-            .join(format!("{request_id}.lock"));
-        let file = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .mode(0o600)
-            .open(path)
-            .map_err(|error| SurfaceError::state(format!("cannot open request lock: {error}")))?;
-        if unsafe { flock(file.as_raw_fd(), LOCK_EX) } != 0 {
-            return Err(SurfaceError::state(format!(
-                "cannot acquire request lock: {}",
-                std::io::Error::last_os_error()
-            )));
-        }
-        Ok(WorkspaceLock { file })
-    }
-
-    #[cfg(not(unix))]
-    pub fn lock_request(&self, _request_id: &str) -> SurfaceResult<WorkspaceLock> {
-        Err(SurfaceError::policy("request locking requires Unix"))
+        locking::acquire(&self.root.join("request-locks").join(format!("{request_id}.lock")))
     }
 
     fn record_path(&self, id: &str) -> SurfaceResult<PathBuf> {
@@ -195,5 +142,6 @@ impl StateStore {
 }
 
 mod locking;
+mod claims;
 
 use locking::*;

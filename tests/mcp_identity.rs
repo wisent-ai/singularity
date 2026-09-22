@@ -6,7 +6,6 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use singularity::{AppError, ErrorClass, LasSupervisor};
 
-const REQUEST_DEADLINE: Duration = Duration::from_secs(10);
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(1);
 const AMBIENT_CHILD_MARKER: &str = "SINGULARITY_MCP_IDENTITY_AMBIENT_CHILD";
 
@@ -72,7 +71,6 @@ async fn spawn_skarbiec(
         &fixture.script,
         &fixture.script,
         &[],
-        REQUEST_DEADLINE,
     )
     .await
 }
@@ -203,7 +201,6 @@ async fn active_skarbiec_rejects_missing_or_malformed_identity_before_process_sp
             fixture_path,
             fixture_path,
             &[],
-            REQUEST_DEADLINE,
         )
         .await
         {

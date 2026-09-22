@@ -57,7 +57,6 @@ async fn warsztat_contract_staged_tree_change_invalidates_seal() {
         checks: BTreeMap::new(),
         commit: None,
         published: false,
-        pull_request_url: None,
     };
     fs::write(tracked, "changed after seal\n").unwrap();
     git_ok(&directory.0, &["add", "--", "proposal.txt"]).await;

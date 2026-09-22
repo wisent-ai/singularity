@@ -2,7 +2,7 @@
 use std::collections::HashMap;
 
 use serde::Deserialize;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use super::*;

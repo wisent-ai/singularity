@@ -2,17 +2,17 @@
 use chrono::Utc;
 use ed25519_dalek::{Signature, Verifier};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
 use crate::finance_surface::policy::{
-    load_signed, validate_id, verifying_key_from_hex, PolicyFile,
+    PolicyFile, load_signed, validate_id, verifying_key_from_hex,
 };
 use crate::finance_surface::state::{StateTransition, Transaction, TransactionStatus};
 use crate::finance_surface::{SurfaceError, SurfaceResult};
 
-use super::{WormReceipt, HASH_HEX_CHARS, MAX_PARAMETER_BYTES, MAX_PARAMETER_DEPTH};
+use super::{HASH_HEX_CHARS, MAX_PARAMETER_BYTES, MAX_PARAMETER_DEPTH, WormReceipt};
 
 /// A proposal that gave no parameters is a proposal with nothing to validate; a `null` in place
 /// of an object is the same absence written out, and anything else is refused.

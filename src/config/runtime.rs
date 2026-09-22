@@ -23,6 +23,7 @@ pub struct RuntimeConfig {
     pub brama_url: Url,
     pub brama_model: String,
     pub brama_secret: SecretString,
+    pub brama_bearer: SecretString,
     pub max_tokens: u32,
     pub temperature: f64,
     pub las_command: String,
@@ -37,7 +38,6 @@ pub struct RuntimeConfig {
     pub required_surfaces: Vec<String>,
     pub most_url: Url,
     pub http_timeout: Duration,
-    pub mcp_timeout: Duration,
     pub shutdown_grace: Duration,
 }
 
@@ -161,6 +161,8 @@ impl RuntimeConfig {
                     },
                 )?),
             },
+            brama_bearer: read_secret(args.brama_bearer_file.as_ref().ok_or_else(||
+                AppError::Secret("BRAMA_BEARER_TOKEN_FILE is required: an agent signature does not replace Brama caller authorization".into()))?)?,
             max_tokens: args.max_tokens,
             temperature: args.temperature,
             las_command: args.las_command.clone(),
@@ -175,7 +177,6 @@ impl RuntimeConfig {
             most_url: parse_http_url(&args.most_url, "MOST_BASE_URL")?,
             most_token: args.most_token_file.as_ref().map(read_secret).transpose()?,
             http_timeout: Duration::from_secs(args.http_timeout_secs),
-            mcp_timeout: Duration::from_secs(args.mcp_timeout_secs),
             shutdown_grace: Duration::from_secs(args.shutdown_grace_secs),
         })
     }

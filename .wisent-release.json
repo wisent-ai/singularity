@@ -12,15 +12,15 @@
       "runner_platform": "darwin-arm64",
       "quality": [
         {
-          "name": "cargo-check",
+          "name": "cargo-tests",
           "argv": [
-            "./scripts/release-quality.sh"
+            "./release/quality.sh"
           ]
         }
       ],
       "build": {
         "argv": [
-          "./scripts/release-build.sh"
+          "./release/build.sh"
         ]
       },
       "stage": {
@@ -35,15 +35,15 @@
       "runner_platform": "linux-amd64",
       "quality": [
         {
-          "name": "cargo-check",
+          "name": "cargo-tests",
           "argv": [
-            "./scripts/release-quality.sh"
+            "./release/quality.sh"
           ]
         }
       ],
       "build": {
         "argv": [
-          "./scripts/release-build.sh"
+          "./release/build.sh"
         ]
       },
       "stage": {

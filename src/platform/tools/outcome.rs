@@ -1,7 +1,7 @@
 //! What a tool answers with, and the check every model-visible value passes.
 
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::domain::{ChatMessage, ToolCall};

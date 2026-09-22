@@ -1,3 +1,4 @@
+pub(crate) mod environment;
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -9,6 +10,7 @@ const MAX_STIMULUS_BYTES: usize = 64 * 1024;
 const MAX_IDENTITY_COMPONENT_BYTES: usize = 128;
 const DIGEST_HEX_CHARS: usize = 64;
 pub const GROUP_OR_OTHER_ACCESS: u32 = 0o077;
+const GROUP_OR_OTHER_WRITE_ACCESS: u32 = 0o022;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -31,6 +33,8 @@ pub enum Command {
     Import(ImportArgs),
     /// Show the first-use walkthrough
     Onboarding(OnboardingArgs),
+    /// Direct and inspect the durable ecosystem portfolio.
+    Ecosystem(crate::ecosystem::EcosystemArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -155,6 +159,8 @@ pub struct CommonArgs {
     pub brama_model: String,
     #[arg(long, env = "BRAMA_HMAC_SECRET_FILE")]
     pub brama_secret_file: Option<PathBuf>,
+    #[arg(long, env = "BRAMA_BEARER_TOKEN_FILE")]
+    pub brama_bearer_file: Option<PathBuf>,
     #[arg(long, env = "BRAMA_MAX_TOKENS", default_value = "2048")]
     pub max_tokens: u32,
     #[arg(long, env = "BRAMA_TEMPERATURE", default_value = "0.2")]
@@ -191,8 +197,6 @@ pub struct CommonArgs {
     pub most_token_file: Option<PathBuf>,
     #[arg(long, env = "SINGULARITY_HTTP_TIMEOUT_SECS", default_value = "120")]
     pub http_timeout_secs: u64,
-    #[arg(long, env = "SINGULARITY_MCP_TIMEOUT_SECS", default_value = "120")]
-    pub mcp_timeout_secs: u64,
     #[arg(long, env = "SINGULARITY_SHUTDOWN_GRACE_SECS", default_value = "10")]
     pub shutdown_grace_secs: u64,
 }

@@ -26,9 +26,7 @@ pub struct RepoPolicy {
     pub root: PathBuf,
     pub remote: String,
     pub base_branch: String,
-    pub branch_prefix: String,
     pub github_repository: String,
-    pub github_head_owner: String,
     pub allowed_paths: Vec<PathBuf>,
     pub checks: BTreeMap<String, CheckPolicy>,
     pub required_checks: Vec<String>,
@@ -80,24 +78,10 @@ impl RepoPolicy {
         }
         validate_token("remote", &self.remote)?;
         validate_branch("base_branch", &self.base_branch)?;
-        validate_branch_prefix(&self.branch_prefix)?;
+        if self.base_branch != "main" {
+            return Err(SurfaceError::policy("canonical repository operations require main"));
+        }
         validate_github_repository(&self.github_repository)?;
-        validate_github_component("github_head_owner", &self.github_head_owner)?;
-        let repository_owner = self
-            .github_repository
-            .split_once('/')
-            .expect("validated GitHub repository contains one slash")
-            .0;
-        if self.github_head_owner != repository_owner {
-            return Err(SurfaceError::policy(
-                "github_head_owner must match the owner of github_repository",
-            ));
-        }
-        if is_protected_branch(&self.branch_prefix) {
-            return Err(SurfaceError::policy(
-                "branch_prefix cannot be a protected branch",
-            ));
-        }
         if self.allowed_paths.is_empty() {
             return Err(SurfaceError::policy("allowed_paths must not be empty"));
         }
@@ -211,16 +195,6 @@ pub fn validate_branch(kind: &str, value: &str) -> SurfaceResult<()> {
     Ok(())
 }
 
-fn validate_branch_prefix(value: &str) -> SurfaceResult<()> {
-    let prefix = value
-        .strip_suffix('/')
-        .ok_or_else(|| SurfaceError::policy("branch_prefix must end with /"))?;
-    validate_branch("branch_prefix", prefix)
-}
-
-pub fn is_protected_branch(value: &str) -> bool {
-    matches!(value.trim_end_matches('/'), "main" | "master")
-}
 
 pub fn validate_relative_path(path: &Path) -> SurfaceResult<()> {
     if path.as_os_str().is_empty() || path.is_absolute() {
@@ -269,6 +243,3 @@ pub fn require_owner_only_file(_path: &Path) -> SurfaceResult<()> {
     ))
 }
 
-#[cfg(test)]
-#[path = "../../tests/repo_surface/policy.rs"]
-mod tests;

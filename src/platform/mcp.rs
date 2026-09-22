@@ -57,7 +57,6 @@ pub struct LasSupervisor {
     stdout: BufReader<ChildStdout>,
     next_id: u64,
     tools: Vec<McpTool>,
-    request_deadline: Duration,
 }
 
 impl LasSupervisor {
@@ -73,7 +72,6 @@ impl LasSupervisor {
         release_trust_store: &Path,
         release_watermark: &Path,
         required_surfaces: &[String],
-        request_deadline: Duration,
     ) -> Result<Self, AppError> {
         if let Some(value) = agent_id
             && !valid_agent_id(value)
@@ -92,17 +90,17 @@ impl LasSupervisor {
             ));
         }
 
+        let (home, path) = crate::config::environment::runtime_paths()?;
         let mut process = Command::new(command);
         process
             .arg(entrypoint)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
+            .kill_on_drop(true)
             .env_clear()
-            .env(
-                "PATH",
-                "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
-            )
+            .env("HOME", home)
+            .env("PATH", path)
             .env("LANG", "C.UTF-8")
             .env("LC_ALL", "C.UTF-8")
             .env("LAS_ONLY", only)
@@ -127,6 +125,12 @@ impl LasSupervisor {
                 agent_id.expect("Skarbiec identity checked above"),
             );
         }
+        if (only.trim().is_empty() || selected(only, "warsztat"))
+            && !skip.is_some_and(|surfaces| selected(surfaces, "warsztat")) {
+            for name in ["JEDEN_REPO_POLICY_FILE", "JEDEN_REPO_STATE_DIR"] {
+                if let Some(value) = std::env::var_os(name) { process.env(name, value); }
+            }
+        }
         let mut child = process
             .spawn()
             .map_err(|error| mcp(ErrorClass::Permanent, format!("cannot start Las: {error}")))?;
@@ -144,7 +148,6 @@ impl LasSupervisor {
             stdout: BufReader::new(stdout),
             next_id: u64::default(),
             tools: vec![],
-            request_deadline,
         };
         let mut initialize_params = json!({"protocolVersion":PROTOCOL_VERSION,"capabilities":{},"clientInfo":{"name":"singularity","version":env!("CARGO_PKG_VERSION")}});
         if let Some(value) = agent_id {
@@ -157,23 +160,24 @@ impl LasSupervisor {
                 "Las negotiated an unsupported MCP version",
             ));
         }
-        let list: ToolList =
-            serde_json::from_value(supervisor.request("tools/list", json!({})).await?)?;
-        for surface in required_surfaces {
-            let prefix = format!("{surface}__");
-            if !list.tools.iter().any(|tool| tool.name.starts_with(&prefix)) {
-                return Err(mcp(
-                    ErrorClass::Permanent,
-                    format!("required Las surface unavailable: {surface}"),
-                ));
-            }
-        }
-        supervisor.tools = list.tools;
+        supervisor.refresh(required_surfaces).await?;
         Ok(supervisor)
     }
 
     pub fn tools(&self) -> &[McpTool] {
         &self.tools
+    }
+
+    pub async fn refresh(&mut self, required_surfaces: &[String]) -> Result<(), AppError> {
+        let list: ToolList = serde_json::from_value(self.request("tools/list", json!({})).await?)?;
+        for surface in required_surfaces {
+            let prefix = format!("{surface}__");
+            if !list.tools.iter().any(|tool| tool.name.starts_with(&prefix)) {
+                return Err(mcp(ErrorClass::Permanent, format!("required Las surface unavailable: {surface}")));
+            }
+        }
+        self.tools = list.tools;
+        Ok(())
     }
 
     pub async fn call_tool(&mut self, name: &str, arguments: Value) -> Result<Value, AppError> {
@@ -250,10 +254,7 @@ impl LasSupervisor {
                     .ok_or_else(|| mcp(ErrorClass::Permanent, "Las response has no result"));
             }
         };
-        tokio::select! {
-            result = wait => result,
-            _ = sleep(self.request_deadline) => Err(mcp(ErrorClass::Indeterminate, format!("Las request deadline exceeded: {method}"))),
-        }
+        wait.await
     }
 
     pub async fn shutdown(&mut self, grace: Duration) -> Result<(), AppError> {

@@ -1,13 +1,13 @@
 //! The workspace tools: creating one, reading a file, applying a patch, the diff, the seal, the checks.
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs;
 
 use super::checks::*;
 use super::repository::*;
 use super::*;
 use crate::repo_surface::command::git;
-use crate::repo_surface::policy::{is_protected_branch, validate_branch, validate_id};
+use crate::repo_surface::policy::validate_id;
 use crate::repo_surface::state::WorkspaceState;
 use crate::repo_surface::{SurfaceError, SurfaceResult};
 
@@ -35,6 +35,15 @@ impl RepoService {
             .repositories
             .get(&input.repo_id)
             .ok_or_else(|| SurfaceError::policy("repository is not allowlisted"))?;
+        if let Some(existing) = self.state.existing_workspace(&input.workspace_id)? {
+            if existing.repo_id != input.repo_id {
+                return Err(SurfaceError::conflict("workspace_id is bound to a different repository"));
+            }
+            self.repo(&existing)?;
+            let response = status_json(&existing);
+            self.record(&input.request_id, "workspace_create", &existing.id, fp, &response)?;
+            return Ok(response);
+        }
         let filters = git(
             &repo.root,
             &[
@@ -71,16 +80,24 @@ impl RepoService {
         if !status.stdout.is_empty() {
             return Err(SurfaceError::conflict("source repository is not clean"));
         }
-        let worktree = self.state.worktree_path(&input.workspace_id)?;
-        if worktree.exists() {
-            return Err(SurfaceError::conflict("workspace already exists"));
+        let worktree = repo.root.clone();
+        let branch = successful(git(&repo.root, &["branch", "--show-current"], None, 30).await?,
+            "read canonical branch")?.stdout.trim().to_owned();
+        if branch != repo.base_branch {
+            return Err(SurfaceError::policy("canonical checkout is not on main; no branch was changed"));
         }
-        let branch = format!("{}{}", repo.branch_prefix, input.workspace_id);
-        validate_branch("generated branch", &branch)?;
-        if is_protected_branch(&branch) || branch == repo.base_branch {
-            return Err(SurfaceError::policy("generated branch is protected"));
+        let worktrees = successful(git(&repo.root, &["worktree", "list", "--porcelain"], None, 30).await?,
+            "inspect canonical checkout ownership")?;
+        if worktrees.stdout.lines().filter(|line| line.starts_with("worktree ")).count() != 1 {
+            return Err(SurfaceError::policy("repository has multiple checkouts; none was removed"));
         }
-        let base_ref = format!("{}/{}", repo.remote, repo.base_branch);
+        let origin = successful(git(&repo.root, &["config", "--get", &format!("remote.{}.url",repo.remote)], None, 30).await?,
+            "read canonical origin")?.stdout.trim().trim_end_matches(".git").to_owned();
+        if origin != format!("https://github.com/{}",repo.github_repository)
+            && origin != format!("git@github.com:{}",repo.github_repository) {
+            return Err(SurfaceError::policy("canonical origin differs from the policy repository"));
+        }
+        let base_ref = "HEAD";
         let base = successful(
             git(
                 &repo.root,
@@ -94,25 +111,7 @@ impl RepoService {
         .stdout
         .trim()
         .to_owned();
-        successful(
-            git(
-                &repo.root,
-                &[
-                    "worktree",
-                    "add",
-                    "-b",
-                    &branch,
-                    worktree
-                        .to_str()
-                        .ok_or_else(|| SurfaceError::invalid("non-UTF-8 state path"))?,
-                    &base,
-                ],
-                None,
-                120,
-            )
-            .await?,
-            "create isolated worktree",
-        )?;
+        self.state.claim_repository(&input.repo_id, &input.workspace_id)?;
         let state = WorkspaceState {
             id: input.workspace_id.clone(),
             repo_id: input.repo_id,
@@ -124,7 +123,6 @@ impl RepoService {
             checks: Default::default(),
             commit: None,
             published: false,
-            pull_request_url: None,
         };
         self.state.save_workspace(&state)?;
         let response = status_json(&state);

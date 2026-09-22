@@ -62,6 +62,23 @@ unsafe fn current_euid() -> u32 {
     unsafe { geteuid() }
 }
 
+#[cfg(unix)]
+pub(super) fn acquire(path: &Path) -> SurfaceResult<super::WorkspaceLock> {
+    use std::os::{fd::AsRawFd, unix::fs::OpenOptionsExt};
+    let file = fs::OpenOptions::new().read(true).write(true).create(true)
+        .truncate(false).mode(0o600).open(path)
+        .map_err(|error| SurfaceError::state(format!("cannot open {}: {error}", path.display())))?;
+    if unsafe { flock(file.as_raw_fd(), LOCK_EX) } != 0 {
+        return Err(SurfaceError::state(format!("cannot acquire {}: {}", path.display(), std::io::Error::last_os_error())));
+    }
+    Ok(super::WorkspaceLock { file })
+}
+
+#[cfg(not(unix))]
+pub(super) fn acquire(_path: &Path) -> SurfaceResult<super::WorkspaceLock> {
+    Err(SurfaceError::policy("repository operation locking requires Unix"))
+}
+
 pub(super) fn read_owner_json<T: for<'de> Deserialize<'de>>(
     path: &Path,
     kind: &str,
@@ -91,6 +108,9 @@ pub(super) fn atomic_owner_json<T: Serialize>(path: &Path, value: &T) -> Surface
             .map_err(|e| SurfaceError::state(format!("cannot persist state file: {e}")))?;
         fs::rename(&tmp, path)
             .map_err(|e| SurfaceError::state(format!("cannot install state file: {e}")))?;
+        fs::File::open(path.parent().ok_or_else(|| SurfaceError::state("state file has no parent"))?)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| SurfaceError::state(format!("cannot sync state directory: {error}")))?;
         Ok(())
     })();
     if result.is_err() {
@@ -130,6 +150,9 @@ pub(super) fn atomic_owner_json_new<T: Serialize>(path: &Path, value: &T) -> Sur
         fs::remove_file(&tmp).map_err(|error| {
             SurfaceError::state(format!("cannot remove request temp file: {error}"))
         })?;
+        fs::File::open(path.parent().ok_or_else(|| SurfaceError::state("request file has no parent"))?)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| SurfaceError::state(format!("cannot sync request directory: {error}")))?;
         Ok(())
     })();
     if result.is_err() {

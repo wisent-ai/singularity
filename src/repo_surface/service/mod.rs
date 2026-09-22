@@ -15,11 +15,8 @@ const STATUS_PATH_OFFSET: usize = 3;
 /// A git object id is 40 hex characters (SHA-1) or 64 (SHA-256).
 const SHA1_HEX_CHARS: usize = 40;
 const SHA256_HEX_CHARS: usize = 64;
-/// A commit message is one line of at most 200 characters; a pull request title at most
-/// 256 and its body at most 32 KiB.
+/// A commit message is one line of at most 200 characters.
 const MAX_COMMIT_MESSAGE_BYTES: usize = 200;
-const MAX_PR_TITLE_BYTES: usize = 256;
-const MAX_PR_BODY_BYTES: usize = 32 * 1024;
 
 #[derive(Clone)]
 pub struct RepoService {
@@ -71,14 +68,6 @@ struct Publish {
     workspace_id: String,
     request_id: String,
 }
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PullRequest {
-    workspace_id: String,
-    title: String,
-    body: String,
-    request_id: String,
-}
 
 impl RepoService {
     pub fn new(policy: PolicyFile, state: StateStore) -> Self {
@@ -95,17 +84,19 @@ impl RepoService {
             "workspace_check" => self.workspace_check(parse(arguments)?).await,
             "commit_create" => self.commit_create(parse(arguments)?).await,
             "branch_publish" => self.branch_publish(parse(arguments)?).await,
-            "pull_request_open" => self.pull_request_open(parse(arguments)?).await,
             "proposal_status" => self.proposal_status(parse(arguments)?).await,
             _ => Err(SurfaceError::invalid("unknown tool")),
         }
     }
 
     pub(super) fn repo<'a>(&'a self, state: &WorkspaceState) -> SurfaceResult<&'a RepoPolicy> {
-        self.policy
-            .repositories
-            .get(&state.repo_id)
-            .ok_or_else(|| SurfaceError::policy("workspace repository is no longer allowed"))
+        let repo = self.policy.repositories.get(&state.repo_id)
+            .ok_or_else(|| SurfaceError::policy("workspace repository is no longer allowed"))?;
+        if state.worktree != repo.root || state.branch != repo.base_branch {
+            return Err(SurfaceError::policy("workspace is not the canonical main checkout; legacy isolated workspaces are not adopted"));
+        }
+        self.state.require_repository_owner(&state.repo_id, &state.id)?;
+        Ok(repo)
     }
 
     pub(super) fn replay(

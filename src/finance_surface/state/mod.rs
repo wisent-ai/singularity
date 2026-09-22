@@ -127,7 +127,7 @@ mod files;
 mod records;
 
 pub(crate) use files::*;
-use files::{flock, LOCK_EX, LOCK_UN};
+use files::{LOCK_EX, LOCK_UN, flock};
 pub use records::*;
 use records::{LeaseAnchor, PolicyAnchor};
 

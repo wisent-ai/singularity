@@ -23,7 +23,6 @@ pub struct CommandOutput {
 enum EnvironmentProfile {
     Local,
     GitNetwork,
-    Github,
 }
 
 async fn drain_capped<R: AsyncRead + Unpin>(mut reader: R) -> std::io::Result<(Vec<u8>, bool)> {
@@ -102,7 +101,6 @@ async fn run_fixed(
     let inherited = match environment {
         EnvironmentProfile::Local => &[][..],
         EnvironmentProfile::GitNetwork => &["HOME", "SSH_AUTH_SOCK"][..],
-        EnvironmentProfile::Github => &["HOME", "XDG_CONFIG_HOME", "GH_TOKEN", "GH_HOST"][..],
     };
     for name in inherited {
         if let Some(value) = std::env::var_os(name) {
@@ -218,26 +216,6 @@ pub async fn git_network(
     .await
 }
 
-pub async fn gh(cwd: &Path, args: &[String], timeout_secs: u64) -> SurfaceResult<CommandOutput> {
-    let candidates = [
-        Path::new("/opt/homebrew/bin/gh"),
-        Path::new("/usr/local/bin/gh"),
-        Path::new("/usr/bin/gh"),
-    ];
-    let program = candidates
-        .into_iter()
-        .find(|p| p.is_file())
-        .ok_or_else(|| SurfaceError::command("gh executable not found in approved locations"))?;
-    run_fixed(
-        program,
-        args,
-        cwd,
-        None,
-        timeout_secs,
-        EnvironmentProfile::Github,
-    )
-    .await
-}
 
 #[cfg(unix)]
 const SIGKILL: i32 = 9;

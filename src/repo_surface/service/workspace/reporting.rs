@@ -1,6 +1,6 @@
 //! The workspace tools that report on a workspace: its diff, its seal and its checks.
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::*;
 use crate::repo_surface::command::git;

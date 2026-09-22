@@ -1,7 +1,7 @@
 //! The mind tools: remembering, recalling, and the agent rewriting its own prompt and rules.
 
 use chrono::Utc;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 use super::*;

@@ -11,8 +11,8 @@ use crate::finance_surface::state::{Transaction, TransactionStatus};
 use crate::finance_surface::{SurfaceError, SurfaceResult};
 
 use super::super::{
-    require_hash, transition, verify_approval, verify_role, verify_worm_receipt, FinanceService,
-    OwnerEvent,
+    FinanceService, OwnerEvent, require_hash, transition, verify_approval, verify_role,
+    verify_worm_receipt,
 };
 
 impl FinanceService {

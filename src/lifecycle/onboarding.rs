@@ -7,9 +7,9 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use wisent_onboarding_client::{
-    bundle_from_canonical, ExperimentAssignment, ExperimentAssignmentRequest, FileStorage,
-    IntegrationTransport, JourneyBundle, JourneyClient, JourneyError, OfflineTransport,
-    ProgressStatus, RuntimeEvent, ScopeKind, Storage, Transport,
+    ExperimentAssignment, ExperimentAssignmentRequest, FileStorage, IntegrationTransport,
+    JourneyBundle, JourneyClient, JourneyError, OfflineTransport, ProgressStatus, RuntimeEvent,
+    ScopeKind, Storage, Transport, bundle_from_canonical,
 };
 
 use crate::CycleReport;

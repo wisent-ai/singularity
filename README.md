@@ -47,6 +47,12 @@ Every cycle:
 A normal assistant response ends only the current cycle. `run` continues until
 the process is cancelled or the balance reaches zero.
 
+The `ecosystem` profile keeps a durable portfolio of observations, independently
+reviewed opportunities, initiatives, executions and measured outcomes. Read the
+[ecosystem operation contract](https://singularity.wisent.com/docs/ecosystem)
+for its fixed policy, recovery rules, owner API and qualification requirements.
+Provisioning and release are not evidence of customer value.
+
 ## Persistent mind
 
 Singularity exposes these built-in tools to itself:
@@ -183,6 +189,13 @@ singularity import      import attributed memory, knowledge, and profile JSON
 singularity onboarding  show first use; add --import-file or --reset
 singularity doctor      verify Brama, Las, Most and required surfaces
 singularity tools       print the dynamic and built-in tool catalogue
+singularity ecosystem run --policy FILE  run the delegated portfolio
+singularity ecosystem status --json     read the live portfolio owner
+singularity ecosystem opportunities     read retained hypotheses and decisions
+singularity ecosystem initiatives       read execution and delivery state
+singularity ecosystem explain ID        read decision and delivery evidence
+singularity ecosystem pause             stop new admission without replaying effects
+singularity ecosystem resume            resume within the original delegation
 ```
 
 ## Configuration

@@ -2,7 +2,7 @@ use std::fs;
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::error::AppError;
-use crate::import::{parse_import_bytes, ImportReport, MindImport};
+use crate::import::{ImportReport, MindImport, parse_import_bytes};
 
 const SOCKET_FILE: &str = "state-import.sock";
 const WIRE_VERSION: u32 = 1;
