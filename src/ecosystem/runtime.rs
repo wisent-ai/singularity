@@ -1,10 +1,11 @@
-use super::{RunArgs, Shared, State, control, direction, execution, observe, outcomes, protocol};
+use super::{RunArgs, Shared, State, control, direction, execution, observe, outcomes};
 use super::{model::Policy, store::Store};
 use crate::{AppError, BramaClient, RuntimeConfig};
 use rust_decimal::Decimal;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
+    io::Write,
     os::{
         fd::AsRawFd,
         unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
@@ -20,7 +21,7 @@ fn policy(args: &RunArgs, config: &RuntimeConfig) -> Result<Policy, AppError> {
         ));
     }
     let policy: Policy = serde_json::from_slice(&bytes)?;
-    if policy.schema_version != protocol::SCHEMA_VERSION
+    if policy.schema_version != Policy::SCHEMA_VERSION
         || policy.id.trim().is_empty()
         || policy.model.trim().is_empty()
         || policy.model != config.brama_model
@@ -86,7 +87,7 @@ pub(super) async fn run(args: RunArgs, cancellation: CancellationToken) -> Resul
         )));
     }
     let shared = Shared(Arc::new(Mutex::new(State {
-        store: Store::open(&directory, &policy, &config.identity)?,
+        store: Store::open(&directory, &policy, &config.identity, args.start_paused)?,
         policy,
         config: config.clone(),
         directory: directory.clone(),
@@ -94,7 +95,20 @@ pub(super) async fn run(args: RunArgs, cancellation: CancellationToken) -> Resul
     shared.lock()?.store.set_meta("las_catalog_ready", &false)?;
     direction::recover(&shared.lock()?.store)?;
     execution::recover(&shared)?;
-    let _service = control::Service::start(&directory, shared.clone())?;
+    let _service = control::Service::start(&config.state_dir, shared.clone())?;
+    if args.ready_json {
+        let event = serde_json::json!({
+            "schema_version":control::protocol::SCHEMA_VERSION,
+            "event":"ecosystem_control_ready",
+            "socket":directory.join(control::protocol::SOCKET_FILE),
+            "paused":shared.lock()?.store.paused()?,
+            "source_revision":option_env!("WISENT_SOURCE_COMMIT")
+        });
+        let mut stdout = std::io::stdout().lock();
+        serde_json::to_writer(&mut stdout, &event)?;
+        stdout.write_all(b"\n")?;
+        stdout.flush()?;
+    }
     let http = reqwest::Client::builder()
         .build()
         .map_err(|e| AppError::Runtime(format!("Brama transport: {e}")))?;

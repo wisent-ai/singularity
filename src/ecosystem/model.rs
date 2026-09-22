@@ -26,6 +26,10 @@ pub struct Policy {
     pub sources: Vec<Source>,
 }
 
+impl Policy {
+    pub const SCHEMA_VERSION: u32 = 1;
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Source {

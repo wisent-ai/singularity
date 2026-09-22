@@ -189,10 +189,12 @@ singularity import      import attributed memory, knowledge, and profile JSON
 singularity onboarding  show first use; add --import-file or --reset
 singularity doctor      verify Brama, Las, Most and required surfaces
 singularity tools       print the dynamic and built-in tool catalogue
-singularity ecosystem run --policy FILE  run the delegated portfolio
+singularity ecosystem run --policy FILE [--start-paused] [--ready-json]  run the delegated portfolio
 singularity ecosystem status --json     read the live portfolio owner
-singularity ecosystem opportunities     read retained hypotheses and decisions
-singularity ecosystem initiatives       read execution and delivery state
+singularity ecosystem opportunities     read a page of hypotheses and decisions
+singularity ecosystem initiatives       read a page of execution and delivery state
+singularity ecosystem records [KIND]    browse retained evidence and event summaries
+singularity ecosystem record KIND ID    read revision-bound evidence fragments
 singularity ecosystem explain ID        read decision and delivery evidence
 singularity ecosystem pause             stop new admission without replaying effects
 singularity ecosystem resume            resume within the original delegation

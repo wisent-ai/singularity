@@ -5,10 +5,10 @@ mod execution;
 mod model;
 mod observe;
 mod outcomes;
-mod store;
 mod runtime;
-use runtime::run;
+mod store;
 use control::protocol;
+use runtime::run;
 
 use crate::config::CommonArgs;
 use crate::{AppError, RuntimeConfig};
@@ -32,8 +32,12 @@ pub enum EcosystemCommand {
     /// Run the durable autonomous portfolio within a fixed delegated policy.
     Run(RunArgs),
     Status(ClientArgs),
-    Opportunities(ClientArgs),
-    Initiatives(ClientArgs),
+    Opportunities(PageArgs),
+    Initiatives(PageArgs),
+    /// List bounded record summaries, newest inserts first.
+    Records(RecordsArgs),
+    /// Read a UTF-8 fragment; use next_offset and content_sha256 to continue.
+    Record(RecordArgs),
     Explain(ExplainArgs),
     /// Stop admitting new work; retain and observe already dispatched operations.
     Pause(ClientArgs),
@@ -46,6 +50,12 @@ pub struct RunArgs {
     /// Owner-approved policy whose SHA-256 equals --policy-digest.
     #[arg(long)]
     pub policy: PathBuf,
+    /// Pause admissions before opening control; recorded work still reconciles.
+    #[arg(long)]
+    pub start_paused: bool,
+    /// Emit a flushed JSON event once local control is listening; dependencies may still be unavailable.
+    #[arg(long)]
+    pub ready_json: bool,
 }
 #[derive(Debug, Args)]
 pub struct ClientArgs {
@@ -57,6 +67,38 @@ pub struct ClientArgs {
 #[derive(Debug, Args)]
 pub struct ExplainArgs {
     pub id: String,
+    #[command(flatten)]
+    pub client: ClientArgs,
+}
+#[derive(Debug, Args)]
+pub struct PageArgs {
+    #[command(flatten)]
+    pub client: ClientArgs,
+    /// Continuation returned in next_cursor; omit to start a fresh listing.
+    #[arg(long)]
+    pub before: Option<i64>,
+    #[arg(long, default_value_t = protocol::DEFAULT_PAGE_SIZE)]
+    pub limit: u32,
+}
+#[derive(Debug, Args)]
+pub struct RecordsArgs {
+    pub kind: Option<String>,
+    #[arg(long)]
+    pub initiative_id: Option<String>,
+    #[command(flatten)]
+    pub page: PageArgs,
+}
+#[derive(Debug, Args)]
+pub struct RecordArgs {
+    pub kind: String,
+    pub id: String,
+    #[arg(long, default_value_t = 0)]
+    pub offset: u64,
+    #[arg(long, default_value_t = protocol::DEFAULT_RECORD_BYTES)]
+    pub bytes: u32,
+    /// The first fragment's content_sha256; required after offset zero.
+    #[arg(long)]
+    pub revision: Option<String>,
     #[command(flatten)]
     pub client: ClientArgs,
 }
@@ -77,7 +119,11 @@ impl Shared {
     }
     fn admission_open(&self) -> Result<bool, AppError> {
         let state = self.lock()?;
-        Ok(!state.store.paused()? && state.store.meta::<bool>("las_catalog_ready")?.unwrap_or(false))
+        Ok(!state.store.paused()?
+            && state
+                .store
+                .meta::<bool>("las_catalog_ready")?
+                .unwrap_or(false))
     }
     fn failure(&self, operation: &str, error: &AppError) -> Result<(), AppError> {
         let retryable = !matches!(
@@ -99,22 +145,40 @@ impl Shared {
 }
 
 pub async fn execute(args: EcosystemArgs, cancellation: CancellationToken) -> Result<(), AppError> {
-    let (method, client, id) = match args.command {
+    let (method, client, params) = match args.command {
         EcosystemCommand::Run(args) => return run(args, cancellation).await,
-        EcosystemCommand::Status(args) => ("status", args, None),
-        EcosystemCommand::Opportunities(args) => ("opportunities", args, None),
-        EcosystemCommand::Initiatives(args) => ("initiatives", args, None),
-        EcosystemCommand::Explain(args) => ("explain", args.client, Some(args.id)),
-        EcosystemCommand::Pause(args) => ("pause", args, None),
-        EcosystemCommand::Resume(args) => ("resume", args, None),
+        EcosystemCommand::Status(args) => ("status", args, json!({})),
+        EcosystemCommand::Opportunities(args) => (
+            "opportunities",
+            args.client,
+            json!({"before":args.before,"limit":args.limit}),
+        ),
+        EcosystemCommand::Initiatives(args) => (
+            "initiatives",
+            args.client,
+            json!({"before":args.before,"limit":args.limit}),
+        ),
+        EcosystemCommand::Records(args) => (
+            "records",
+            args.page.client,
+            json!({"kind":args.kind,"initiative_id":args.initiative_id,"before":args.page.before,"limit":args.page.limit}),
+        ),
+        EcosystemCommand::Record(args) => (
+            "record",
+            args.client,
+            json!({"kind":args.kind,"id":args.id,"offset":args.offset,"bytes":args.bytes,"revision":args.revision}),
+        ),
+        EcosystemCommand::Explain(args) => ("explain", args.client, json!({"id":args.id})),
+        EcosystemCommand::Pause(args) => ("pause", args, json!({})),
+        EcosystemCommand::Resume(args) => ("resume", args, json!({})),
     };
-    let response = match control::request(&client.state_dir, method, id.as_deref()).await {
+    let response = match control::request(&client.state_dir, method, &params).await {
         Ok(response) => response,
         Err(error) => {
             if client.json {
                 println!(
                     "{}",
-                    json!({"schema_version":protocol::SCHEMA_VERSION,"ok":false,"error":{"code":"owner_unavailable","operation":method,"message":error.to_string(),"retryable":true}})
+                    json!({"schema_version":protocol::SCHEMA_VERSION,"ok":false,"error":{"code":"control_request_failed","operation":format!("ecosystem.{method}"),"message":error.to_string(),"retryable":false}})
                 );
             }
             return Err(error);
@@ -122,7 +186,7 @@ pub async fn execute(args: EcosystemArgs, cancellation: CancellationToken) -> Re
     };
     println!(
         "{}",
-        serde_json::to_string_pretty(if client.json {
+        serde_json::to_string_pretty(if client.json || response["ok"] != true {
             &response
         } else {
             &response["result"]
@@ -138,4 +202,3 @@ pub async fn execute(args: EcosystemArgs, cancellation: CancellationToken) -> Re
     }
     Ok(())
 }
-

@@ -1,9 +1,11 @@
 use super::{delivery, provision, settle, source};
-use crate::ecosystem::{Shared, model::*, observe, protocol::SCHEMA_VERSION};
 use crate::AppError;
+use crate::ecosystem::{Shared, model::*, observe};
 use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+
+const JEDEN_SCHEMA_VERSION: u32 = 1;
 
 pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Result<(), AppError> {
     let policy = shared.lock()?.policy.clone();
@@ -48,8 +50,16 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
     if shared.lock()?.store.paused()? && previous.is_none() {
         return Ok(());
     }
-    if previous.is_none() && !shared.lock()?.store.meta::<bool>("las_catalog_ready")?.unwrap_or(false) {
-        return Err(AppError::State("signed Las catalogue is unavailable; no new execution was dispatched".into()));
+    if previous.is_none()
+        && !shared
+            .lock()?
+            .store
+            .meta::<bool>("las_catalog_ready")?
+            .unwrap_or(false)
+    {
+        return Err(AppError::State(
+            "signed Las catalogue is unavailable; no new execution was dispatched".into(),
+        ));
     }
     if !policy.allow_write || !policy.allow_command {
         return Err(AppError::Config(
@@ -67,7 +77,7 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
                 .ok_or_else(|| AppError::State("product surface has no repository identity".into()))
         })
         .collect::<Result<std::collections::BTreeSet<_>, _>>()?;
-    let request = json!({"schema_version":SCHEMA_VERSION,"request_id":request_id,"initiative_id":initiative.id,
+    let request = json!({"schema_version":JEDEN_SCHEMA_VERSION,"request_id":request_id,"initiative_id":initiative.id,
         "objective":initiative.objective,"cwd":cwd,"evidence_refs":opportunity.evidence_refs,
         "budget_usd":initiative.budget_usd.to_string(),"repositories":repositories,
         "allow_write":policy.allow_write,"allow_command":policy.allow_command});
@@ -116,7 +126,11 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
         .ok_or_else(|| AppError::Config("execution request path is not UTF-8".into()))?;
     let paused = {
         let state = shared.lock()?;
-        state.store.paused()? || !state.store.meta::<bool>("las_catalog_ready")?.unwrap_or(false)
+        state.store.paused()?
+            || !state
+                .store
+                .meta::<bool>("las_catalog_ready")?
+                .unwrap_or(false)
     };
     let response = if paused {
         observe::jeden(shared, &["pursue", "--status", &request_id, "--json"]).await?
@@ -138,7 +152,7 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
         )
         .await?
     };
-    if response["schema_version"] != SCHEMA_VERSION
+    if response["schema_version"] != JEDEN_SCHEMA_VERSION
         || response["request_id"] != request_id
         || response["initiative_id"] != initiative.id
     {
