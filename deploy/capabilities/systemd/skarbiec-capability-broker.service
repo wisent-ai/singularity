@@ -1,5 +1,5 @@
 [Unit]
-Description=Skarbiec capability broker
+Description=Skarbiec, the host's one Skarbiec process, serving only its capability socket
 After=local-fs.target
 Before=wisent-agent@.service
 ConditionPathIsExecutable=/opt/wisent/releases/skarbiec-entitlements-router
@@ -11,7 +11,7 @@ Group=skarbiec-capability-clients
 UMask=0077
 EnvironmentFile=/etc/wisent/capabilities/skarbiec-broker.env
 ExecStartPre=/opt/wisent/libexec/capability-preflight.py broker-linux /etc/wisent/capabilities/skarbiec-broker.env
-ExecStart=/opt/wisent/releases/skarbiec-entitlements-router capability-serve
+ExecStart=/opt/wisent/releases/skarbiec-entitlements-router serve --no-http
 RuntimeDirectory=skarbiec-capability
 RuntimeDirectoryMode=0750
 StateDirectory=skarbiec-capability

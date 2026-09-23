@@ -43,7 +43,10 @@ def main() -> int:
     if args.kind == "broker-linux":
         validate_broker(values)
         executable = values["SKARBIEC_BINARY"]
-        argv = [executable, "capability-serve"]
+        # The host's one Skarbiec process, serving only its capability socket:
+        # this deployment allows the broker no TCP, and Skarbiec has no
+        # separate broker command any more.
+        argv = [executable, "serve", "--no-http"]
     else:
         validate_agent(values)
         executable = values["SINGULARITY_BOOTSTRAP_BINARY"]

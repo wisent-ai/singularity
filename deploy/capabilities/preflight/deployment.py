@@ -29,6 +29,7 @@ def validate_deployment(root: Path) -> None:
         "RestrictAddressFamilies=AF_UNIX",
         "IPAddressDeny=any",
         "SocketBindDeny=any",
+        "serve --no-http",
     ))
     if "PrivateUsers=" in broker:
         fail("broker must see host peer UID/GID; PrivateUsers is forbidden")
