@@ -33,6 +33,7 @@ fn main() {
 }
 
 fn run() -> Result<(), singularity::AppError> {
+    singularity::bootstrap::adopt_credentials()?;
     tracing_subscriber::fmt()
         .with_env_filter(log_filter()?)
         .init();

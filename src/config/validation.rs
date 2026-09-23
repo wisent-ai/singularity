@@ -67,11 +67,14 @@ pub fn read_secret(path: &PathBuf) -> Result<SecretString, AppError> {
             )));
         }
     }
-    let value = fs::read_to_string(path)?
-        .trim_end_matches(['\r', '\n'])
-        .to_owned();
+    let value = zeroize::Zeroizing::new(fs::read_to_string(path)?);
+    secret_value(&value, &path.display().to_string())
+}
+
+pub(crate) fn secret_value(value: &str, source: &str) -> Result<SecretString, AppError> {
+    let value = value.trim_end_matches(['\r', '\n']);
     if value.is_empty() {
-        return Err(AppError::Secret(format!("{} is empty", path.display())));
+        return Err(AppError::Secret(format!("{source} is empty")));
     }
-    Ok(SecretString::from(value))
+    Ok(SecretString::from(value.to_owned()))
 }

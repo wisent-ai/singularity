@@ -267,6 +267,18 @@ is refused; unset means `info`.
 The bootstrap also binds the runtime to its workload identity, host, role,
 environment, executable digest, code digest and policy sequence.
 
+`singularity-bootstrap` is not a resident wrapper. It verifies the signed
+manifest, redeems the Brama HMAC, Brama bearer and Most token from Skarbiec,
+writes each into an owner-only file that it unlinks at once, and then replaces
+its own process image with `singularity` (same PID, same service unit). The
+credentials cross that exec only as open descriptors named by
+`SINGULARITY_BRAMA_HMAC_FD`, `SINGULARITY_BRAMA_BEARER_FD` and
+`SINGULARITY_MOST_TOKEN_FD`; no credential file exists on disk while the agent
+runs. `singularity` refuses a descriptor that is not an unlinked, owner-only,
+non-empty regular file, keeps them close-on-exec, and hands them on only to a
+child agent it spawns itself. A `*_FILE` variable set explicitly still takes
+precedence over the handoff.
+
 ## State
 
 The owner-only state directory contains:

@@ -117,14 +117,18 @@ pub(super) async fn spawn_child(
         Ok(value) => value,
         Err(error) => return failed("child_executable", &error.to_string()),
     };
-    let spawned = Command::new(executable)
+    let mut command = Command::new(executable);
+    command
         .arg("run")
         .env("SINGULARITY_AGENT_NAME", &name)
         .env("SINGULARITY_AGENT_TICKER", &ticker)
         .env("SINGULARITY_SPECIALTY", &specialty)
         .env("SINGULARITY_STATE_DIR", &child_state)
-        .env("SINGULARITY_RESUME", "false")
-        .spawn();
+        .env("SINGULARITY_RESUME", "false");
+    if let Err(error) = crate::bootstrap::inherit_for_child(command.as_std_mut()) {
+        return failed("child_credentials", &error.to_string());
+    }
+    let spawned = command.spawn();
     match spawned {
         Ok(child) => {
             state.mind.children.push(ChildRecord {

@@ -43,6 +43,7 @@ pub struct RuntimeConfig {
 
 impl RuntimeConfig {
     pub fn from_args(args: &CommonArgs) -> Result<Self, AppError> {
+        let inherited = crate::bootstrap::inherited_credentials()?;
         let stimulus = args
             .stimulus
             .as_deref()
@@ -150,9 +151,10 @@ impl RuntimeConfig {
             resume: args.resume,
             brama_url: parse_http_url(&args.brama_url, "BRAMA_BASE_URL")?,
             brama_model: args.brama_model.clone(),
-            brama_secret: match args.brama_secret_file.as_ref() {
-                Some(path) => read_secret(path)?,
-                None => SecretString::from(std::env::var("WISENT_APP_AGENT_AUTH_SECRET").map_err(
+            brama_secret: match (args.brama_secret_file.as_ref(), inherited) {
+                (Some(path), _) => read_secret(path)?,
+                (None, Some(credentials)) => credentials.brama.clone(),
+                (None, None) => SecretString::from(std::env::var("WISENT_APP_AGENT_AUTH_SECRET").map_err(
                     |_| {
                         AppError::Secret(
                             "BRAMA_HMAC_SECRET_FILE or WISENT_APP_AGENT_AUTH_SECRET is required"
@@ -161,8 +163,13 @@ impl RuntimeConfig {
                     },
                 )?),
             },
-            brama_bearer: read_secret(args.brama_bearer_file.as_ref().ok_or_else(||
-                AppError::Secret("BRAMA_BEARER_TOKEN_FILE is required: an agent signature does not replace Brama caller authorization".into()))?)?,
+            brama_bearer: match (args.brama_bearer_file.as_ref(), inherited) {
+                (Some(path), _) => read_secret(path)?,
+                (None, Some(credentials)) => credentials.bearer.clone(),
+                (None, None) => return Err(AppError::Secret(
+                    "BRAMA_BEARER_TOKEN_FILE or a bootstrap handoff is required: an agent signature does not replace Brama caller authorization".into()
+                )),
+            },
             max_tokens: args.max_tokens,
             temperature: args.temperature,
             las_command: args.las_command.clone(),
@@ -175,7 +182,11 @@ impl RuntimeConfig {
             las_release_watermark: args.las_release_watermark.clone(),
             required_surfaces,
             most_url: parse_http_url(&args.most_url, "MOST_BASE_URL")?,
-            most_token: args.most_token_file.as_ref().map(read_secret).transpose()?,
+            most_token: match (args.most_token_file.as_ref(), inherited) {
+                (Some(path), _) => Some(read_secret(path)?),
+                (None, Some(credentials)) => Some(credentials.most.clone()),
+                (None, None) => None,
+            },
             http_timeout: Duration::from_secs(args.http_timeout_secs),
             shutdown_grace: Duration::from_secs(args.shutdown_grace_secs),
         })

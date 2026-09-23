@@ -1,10 +1,11 @@
 //! Redeeming a capability with Skarbiec and materializing the secret it answers with.
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::{FileTypeExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Command, Stdio};
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -90,11 +91,12 @@ pub(super) fn materialize(
     workload_id: &str,
     signing_key: &SigningKey,
     destination: &Path,
-) -> Result<(), AppError> {
+) -> Result<File, AppError> {
     let mut secret = redeem(socket, capability_id, workload_id, signing_key)?;
     let result = (|| {
         let mut file = OpenOptions::new()
             .create_new(true)
+            .read(true)
             .write(true)
             .mode(0o600)
             .open(destination)?;
@@ -106,7 +108,8 @@ pub(super) fn materialize(
                 "bootstrap credential file is not owner-only".into(),
             ));
         }
-        Ok(())
+        fs::remove_file(destination)?;
+        Ok(file)
     })();
     secret.zeroize();
     result
@@ -114,12 +117,11 @@ pub(super) fn materialize(
 
 pub(super) fn launch(
     manifest: &BootstrapManifest,
-    brama_path: &Path,
-    bearer_path: &Path,
-    most_path: &Path,
-) -> Result<ExitStatus, AppError> {
+    credentials: &[File; 3],
+) -> Result<std::convert::Infallible, AppError> {
     let (home, path) = crate::config::environment::runtime_paths()?;
-    Command::new(&manifest.singularity_executable)
+    let mut command = Command::new(&manifest.singularity_executable);
+    command
         .args(&manifest.singularity_args)
         .env_clear()
         .env("HOME", home)
@@ -142,12 +144,9 @@ pub(super) fn launch(
             "SINGULARITY_POLICY_SEQUENCE",
             manifest.policy_sequence.to_string(),
         )
-        .env("BRAMA_HMAC_SECRET_FILE", brama_path)
-        .env("BRAMA_BEARER_TOKEN_FILE", bearer_path)
-        .env("MOST_SERVICE_TOKEN_FILE", most_path)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map_err(AppError::Io)
+        .stderr(Stdio::inherit());
+    super::credentials::pass_files(&mut command, credentials);
+    Err(AppError::Io(command.exec()))
 }

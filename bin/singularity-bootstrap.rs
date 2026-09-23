@@ -30,16 +30,11 @@ fn main() {
 
 fn run() -> Result<i32, singularity::AppError> {
     let args = Args::parse();
-    let status = singularity::bootstrap::run_bootstrap(
+    let never = singularity::bootstrap::run_bootstrap(
         &args.manifest,
         &args.manifest_signature,
         &args.trust_root,
         &args.runtime_root,
     )?;
-    match status.code() {
-        Some(code) => Ok(code),
-        None => Err(singularity::AppError::State(format!(
-            "bootstrapped process was terminated by a signal without an exit code: {status}"
-        ))),
-    }
+    match never {}
 }

@@ -1,7 +1,6 @@
 use std::fs::{self, DirBuilder};
 use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
-use std::process::ExitStatus;
 
 use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
@@ -88,7 +87,7 @@ pub fn run_bootstrap(
     signature_path: &Path,
     trust_root_path: &Path,
     runtime_root: &Path,
-) -> Result<ExitStatus, AppError> {
+) -> Result<std::convert::Infallible, AppError> {
     for path in [manifest_path, signature_path, trust_root_path] {
         require_owner_file(path)?;
     }
@@ -124,39 +123,41 @@ pub fn run_bootstrap(
     let brama_path = cleanup.path().join("brama.hmac");
     let bearer_path = cleanup.path().join("brama.token");
     let most_path = cleanup.path().join("most.token");
-    let result = (|| {
-        materialize(
-            &manifest.broker_socket,
-            &manifest.capabilities.brama.id,
-            &manifest.workload_id,
-            &signing_key,
-            &brama_path,
-        )?;
-        materialize(
-            &manifest.broker_socket,
-            &manifest.capabilities.brama_bearer.id,
-            &manifest.workload_id,
-            &signing_key,
-            &bearer_path,
-        )?;
-        materialize(
-            &manifest.broker_socket,
-            &manifest.capabilities.most.id,
-            &manifest.workload_id,
-            &signing_key,
-            &most_path,
-        )?;
-        validate_manifest(&manifest)?;
-        launch(&manifest, &brama_path, &bearer_path, &most_path)
-    })();
-
+    let brama = materialize(
+        &manifest.broker_socket,
+        &manifest.capabilities.brama.id,
+        &manifest.workload_id,
+        &signing_key,
+        &brama_path,
+    )?;
+    let bearer = materialize(
+        &manifest.broker_socket,
+        &manifest.capabilities.brama_bearer.id,
+        &manifest.workload_id,
+        &signing_key,
+        &bearer_path,
+    )?;
+    let most = materialize(
+        &manifest.broker_socket,
+        &manifest.capabilities.most.id,
+        &manifest.workload_id,
+        &signing_key,
+        &most_path,
+    )?;
+    validate_manifest(&manifest)?;
+    // Each credential is already unlinked but held by its open descriptor.
+    // Remove the empty directory before exec; no guardian process is needed.
     drop(cleanup);
-    result
+    launch(&manifest, &[brama, bearer, most])
 }
 
+mod credentials;
 mod files;
 mod manifest;
 mod redeem;
+
+pub use credentials::adopt_credentials;
+pub(crate) use credentials::{inherit_for_child, inherited_credentials};
 
 use files::*;
 use manifest::*;

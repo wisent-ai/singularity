@@ -166,6 +166,7 @@ impl RuntimeCleanup {
 impl Drop for RuntimeCleanup {
     fn drop(&mut self) {
         secure_remove(&self.directory.join("brama.hmac"));
+        secure_remove(&self.directory.join("brama.token"));
         secure_remove(&self.directory.join("most.token"));
         let _ = fs::remove_dir(&self.directory);
     }
