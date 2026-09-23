@@ -1,0 +1,21 @@
+{
+  "status": "stopped",
+  "logs": [
+    {
+      "timestamp": "2026-02-07T06:33:28.278719",
+      "tag": "OBJECTIVE",
+      "message": "Updated: New mission"
+    }
+  ],
+  "state": {
+    "name": "Agent",
+    "ticker": "AGENT",
+    "agent_type": "general",
+    "balance_usd": 100.0,
+    "total_api_cost": 0.0,
+    "total_tokens_used": 0,
+    "runway_cycles": 10000.0,
+    "cycle": 0,
+    "updated_at": "2026-02-07T06:33:28.278715"
+  }
+}
