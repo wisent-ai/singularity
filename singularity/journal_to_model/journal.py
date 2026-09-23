@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 
-DEFAULT_JOURNAL_PATH = Path(__file__).parent / "data" / "journal.jsonl"
+DEFAULT_JOURNAL_PATH = Path(__file__).parents[1] / "data" / "journal.jsonl"
 MAX_CONTEXT_SESSIONS = 5  # How many past sessions to include in context
 MAX_CONTEXT_CHARS = 2000  # Max chars for context summary
 

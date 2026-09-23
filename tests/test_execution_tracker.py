@@ -1,6 +1,6 @@
 """Tests for ExecutionTracker."""
 import pytest
-from singularity.execution_tracker import ExecutionTracker, ToolStats
+from singularity.execution_modules.execution_tracker import ExecutionTracker, ToolStats
 
 
 class TestToolStats:

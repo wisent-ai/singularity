@@ -4,7 +4,7 @@ import pytest
 import time
 from unittest.mock import AsyncMock, MagicMock
 from dataclasses import dataclass
-from singularity.retry_executor import RetryExecutor, SkillHealth, TRANSIENT_PATTERNS
+from singularity.retry_to_tool.retry_executor import RetryExecutor, SkillHealth, TRANSIENT_PATTERNS
 
 
 @dataclass

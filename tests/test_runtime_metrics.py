@@ -1,6 +1,6 @@
 """Tests for RuntimeMetrics."""
 import time
-from singularity.runtime_metrics import RuntimeMetrics
+from singularity.retry_to_tool.runtime_metrics import RuntimeMetrics
 
 
 def test_initial_state():

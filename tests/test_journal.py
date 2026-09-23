@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from singularity.journal import AgentJournal
+from singularity.journal_to_model.journal import AgentJournal
 
 
 @pytest.fixture

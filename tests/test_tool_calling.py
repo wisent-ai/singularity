@@ -1,6 +1,6 @@
 """Tests for native tool calling support."""
 import pytest
-from singularity.tool_calling import (
+from singularity.retry_to_tool.tool_calling import (
     _param_description_to_schema,
     tools_to_anthropic_format,
     tools_to_openai_format,

@@ -1,7 +1,7 @@
 """Tests for automatic skill discovery."""
 
 import pytest
-from singularity.skill_discovery import discover_skills, discover_skills_with_metadata
+from singularity.skill.skill_discovery import discover_skills, discover_skills_with_metadata
 from singularity.skills.base import Skill
 
 

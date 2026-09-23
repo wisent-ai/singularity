@@ -1,6 +1,6 @@
 """Tests for TokenManager — context window management."""
 
-from singularity.token_manager import (
+from singularity.retry_to_tool.token_manager import (
     TokenManager,
     estimate_tokens,
     get_context_limit,

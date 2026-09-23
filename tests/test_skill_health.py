@@ -1,6 +1,6 @@
 """Tests for SkillHealthMonitor."""
 
-from singularity.skill_health import SkillHealthMonitor
+from singularity.skill.skill_health import SkillHealthMonitor
 
 
 def _action(tool, status, message=""):

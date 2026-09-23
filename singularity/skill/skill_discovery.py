@@ -5,7 +5,7 @@ Scans the skills package to find all Skill subclasses without requiring
 hardcoded imports. This replaces the manual import list in autonomous_agent.py.
 
 Usage:
-    from singularity.skill_discovery import discover_skills
+    from singularity.skill.skill_discovery import discover_skills
     skill_classes = discover_skills()
     # Returns list of Skill subclasses found in singularity/skills/
 """
@@ -40,7 +40,7 @@ def discover_skills(
         List of Skill subclass types, deduplicated and sorted by name.
     """
     if package_path is None:
-        package_path = str(Path(__file__).parent / "skills")
+        package_path = str(Path(__file__).parents[1] / "skills")
 
     exclude = exclude or set()
     discovered: Dict[str, Type[Skill]] = {}

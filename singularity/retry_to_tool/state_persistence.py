@@ -36,7 +36,7 @@ class StatePersistence:
         if state_dir:
             self.state_dir = Path(state_dir)
         else:
-            self.state_dir = Path(__file__).parent / "data"
+            self.state_dir = Path(__file__).parents[1] / "data"
         
         self.state_dir.mkdir(parents=True, exist_ok=True)
         

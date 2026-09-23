@@ -1,7 +1,7 @@
 """Tests for ExecutionEngine - validation, timing, and error context."""
 import asyncio
 import pytest
-from singularity.execution import ExecutionEngine
+from singularity.execution_modules.execution import ExecutionEngine
 from singularity.skills.base import (
     Skill, SkillManifest, SkillAction, SkillResult, SkillRegistry,
 )

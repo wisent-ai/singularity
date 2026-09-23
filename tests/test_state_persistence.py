@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from singularity.state_persistence import (
+from singularity.retry_to_tool.state_persistence import (
     StatePersistence,
     extract_agent_state,
     restore_agent_state,

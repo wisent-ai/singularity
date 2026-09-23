@@ -2,7 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta
-from singularity.model_selector import (
+from singularity.journal_to_model.model_selector import (
     CostAwareModelSelector,
     ModelTier,
     ModelRecommendation,

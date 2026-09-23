@@ -2,7 +2,7 @@
 
 import asyncio
 import pytest
-from singularity.llm_retry import (
+from singularity.journal_to_model.llm_retry import (
     RetryConfig, RetryStats, LLMRetryWrapper,
     is_transient_error, calculate_delay, retry_llm_call,
 )

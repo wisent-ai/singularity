@@ -1,6 +1,6 @@
 """Tests for LoopDetector."""
 import pytest
-from singularity.loop_detector import LoopDetector, LoopAlert
+from singularity.journal_to_model.loop_detector import LoopDetector, LoopAlert
 
 
 def _action(tool, params=None, status="success", message=""):
