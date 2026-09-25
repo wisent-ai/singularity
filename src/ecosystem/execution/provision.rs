@@ -86,7 +86,7 @@ pub async fn ensure(
         &initiative.id,
         &response,
         Some(&initiative.id),
-        "Read back Wisent Products creation state; provisioning is not implementation",
+        "Read back stado product creation state; provisioning is not implementation",
     )?;
     if response["schema_version"] != PRODUCTS_CREATION_SCHEMA_VERSION
         || response["request_id"] != request_id
@@ -95,7 +95,7 @@ pub async fn ensure(
         || response["state"] != "provisioned"
     {
         return Err(AppError::State(format!(
-            "Wisent Products did not provision the exact requested product: {response}"
+            "stado product did not provision the exact requested product: {response}"
         )));
     }
     initiative.product_id = Some(id.into());

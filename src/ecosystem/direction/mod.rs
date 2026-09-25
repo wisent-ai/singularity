@@ -166,7 +166,7 @@ pub fn materialize(shared: &Shared) -> Result<(), AppError> {
             opportunity_id: opportunity.id,
             title: opportunity.title,
             objective: format!(
-                "{}\nExpected outcome: {}\nReject when: {}\nEvidence: {}\nRead canonical product documentation first. Deliver reusable functionality through all applicable CLI and graphical surfaces with canonical documentation and real tests. Work only in each repository's canonical main checkout; no worktrees or copied checkouts. Commit and push the reviewed implementation. Do not promote releases in this implementation stage. New products must use Wisent Products creation, not an ad-hoc repository. A scaffold, mock, build or unverifiable claim is not completion.",
+                "{}\nExpected outcome: {}\nReject when: {}\nEvidence: {}\nRead canonical product documentation first. Deliver reusable functionality through all applicable CLI and graphical surfaces with canonical documentation and real tests. Work only in each repository's canonical main checkout; no worktrees or copied checkouts. Commit and push the reviewed implementation. Do not promote releases in this implementation stage. New products must use stado product create, not an ad-hoc repository. A scaffold, mock, build or unverifiable claim is not completion.",
                 opportunity.description,
                 opportunity.expected_outcome,
                 opportunity.rejection_condition,

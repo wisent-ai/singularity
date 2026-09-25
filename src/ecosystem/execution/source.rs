@@ -61,7 +61,7 @@ pub async fn product(shared: &Shared, id: &str) -> Result<Value, AppError> {
         .and_then(|rows| rows.iter().find(|row| row["id"].as_str() == Some(id)))
         .cloned()
         .ok_or_else(|| {
-            AppError::State(format!("Wisent Products has no registered product {id}"))
+            AppError::State(format!("the Stado product catalog has no registered product {id}"))
         })?;
     let state = shared.lock()?;
     state.store.put(
@@ -69,7 +69,7 @@ pub async fn product(shared: &Shared, id: &str) -> Result<Value, AppError> {
         id,
         &product,
         None,
-        "Read current product identity from Wisent Products",
+        "Read current product identity from the Stado product catalog",
     )?;
     Ok(product)
 }

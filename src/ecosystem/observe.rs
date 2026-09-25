@@ -26,12 +26,13 @@ pub async fn command(program: &str, args: &[&str]) -> Result<Value, AppError> {
     })
 }
 
+/// One `stado product` operation against the workspace's canonical catalog.
 pub async fn products(shared: &Shared, args: &[&str]) -> Result<Value, AppError> {
     let root = shared.lock()?.policy.workspace_root.clone();
-    let catalog = root.join("wisent-products/catalog/products.yml");
-    let mut child = Command::new("wisent-products");
-    child.arg("--catalog").arg(&catalog).args(args).env("WISENT_WORKSPACE", &root);
-    let operation = format!("wisent-products --catalog {} {}", catalog.display(), args.join(" "));
+    let catalog = root.join("stado/catalog/products.yml");
+    let mut child = Command::new("stado");
+    child.arg("product").arg("--catalog").arg(&catalog).args(args).env("WISENT_WORKSPACE", &root);
+    let operation = format!("stado product --catalog {} {}", catalog.display(), args.join(" "));
     let output = process::text(child, &operation).await?;
     serde_json::from_str(&output).map_err(|error| AppError::Runtime(format!("{operation}: invalid JSON: {error}")))
 }
@@ -66,7 +67,7 @@ pub async fn monitor(shared: Shared, source: Source) -> Result<(), AppError> {
             continue;
         }
         let (program, args): (&str, &[&str]) = match source {
-            Source::ProductCatalog => ("wisent-products", &["catalog", "--json"]),
+            Source::ProductCatalog => ("stado", &["catalog", "--json"]),
             Source::ProductAnalytics => ("echo-cli", &["analytics", "7"]),
             Source::MarketResearch => ("echo-cli", &["market"]),
             Source::OperatorDecisions => ("oko-cli", &["transcripts", "tasks", "--open", "--read-only", "--json"]),
