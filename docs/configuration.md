@@ -62,6 +62,21 @@ or `HOME`, and the device identity needs `USER`; without them the command says
 so rather than writing somewhere else. A `RUST_LOG` that is set but unparsable
 is refused; unset means `info`.
 
+Ecosystem store:
+
+```text
+SINGULARITY_STADO_HOME
+```
+
+The ecosystem store is the fleet database `singularity`, reached through
+`stado-database`: Stado resolves it, Skarbiec answers its address to
+`singularity-database-client`, whose bearer lies in
+`<home>/.stado/singularity-database-client-skarbiec-token`. The home is
+`SINGULARITY_STADO_HOME` when set, else `HOME`, so a being whose `HOME` is
+isolated still reaches the fleet as its host. A failure names the step that
+failed (locate Stado, resolve database, resolve Skarbiec route, read credential
+field, read pooler_url, connect).
+
 The bootstrap also binds the runtime to its workload identity, host, role,
 environment, executable digest, code digest and policy sequence.
 
