@@ -1,19 +1,16 @@
 //! Where the ecosystem store lives: the fleet database `singularity`,
 //! reached the one way every Wisent product reaches its database —
-//! `stado_database::connect` (Stado resolve, the Skarbiec route, the
+//! `stado_database` (Stado resolve, the Skarbiec route, the
 //! `singularity-database-client` bearer) — as a SeaORM connection. The
 //! tables are the entities below; the migrator creates them.
 //!
-//! The store is called from synchronous code, some of it inside a Tokio
-//! worker where blocking on a future is not allowed; one dedicated thread
-//! owns a runtime and the connection, and every operation is sent to it.
+//! The store is called from synchronous code, so it uses Stado's shared
+//! synchronous client and hands it the store's entity work with `run`.
 
 use super::{AppError, Result};
 use sea_orm::DatabaseConnection;
 use sea_orm_migration::prelude::*;
 use std::future::Future;
-use std::pin::Pin;
-use std::sync::mpsc;
 
 /// `HOME` holding `.stado/` when the process's own `HOME` is isolated.
 const STADO_HOME_VARIABLE: &str = "SINGULARITY_STADO_HOME";
@@ -129,89 +126,35 @@ fn failed(step: &str, detail: impl std::fmt::Display) -> AppError {
     AppError::State(format!("ecosystem database: {step}: {detail}"))
 }
 
-async fn open() -> Result<DatabaseConnection> {
-    let database = stado_database::FleetDatabase::for_product("singularity", STADO_HOME_VARIABLE)
-        .map_err(|error| AppError::State(error.to_string()))?;
-    let connection = stado_database::connect(&database)
-        .await
-        .map_err(|error| AppError::State(error.to_string()))?;
-    Migrator::up(&connection, None)
-        .await
-        .map_err(|error| failed("creating the ecosystem tables", error))?;
-    Ok(connection)
-}
-
-type Answer = Pin<Box<dyn Future<Output = ()> + Send>>;
-type Job = Box<dyn FnOnce(DatabaseConnection) -> Answer + Send>;
-
-/// The thread that owns the connection.
+/// The being's connection: Stado's shared synchronous client, handed the
+/// store's entity work with `run`.
 pub(super) struct Db {
-    jobs: mpsc::Sender<Job>,
+    client: stado_database::sync::Client,
 }
 
 impl Db {
-    /// Resolve and connect on the owning thread; a refusal names the step.
+    /// Resolve, connect and create the tables; a refusal names the step.
     pub(super) fn start() -> Result<Self> {
-        let (jobs, inbox) = mpsc::channel::<Job>();
-        let (ready, connected) = mpsc::sync_channel::<Result<()>>(1);
-        std::thread::Builder::new()
-            .name("ecosystem-database".into())
-            .spawn(move || {
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(runtime) => runtime,
-                    Err(error) => {
-                        let _ = ready.send(Err(failed("starting the database runtime", error)));
-                        return;
-                    }
-                };
-                let connection = match runtime.block_on(open()) {
-                    Ok(connection) => {
-                        let _ = ready.send(Ok(()));
-                        connection
-                    }
-                    Err(error) => {
-                        let _ = ready.send(Err(error));
-                        return;
-                    }
-                };
-                // The pool replaces a dropped connection by itself.
-                for job in inbox {
-                    runtime.block_on(job(connection.clone()));
-                }
-            })
-            .map_err(|error| failed("starting the database thread", error))?;
-        connected
-            .recv()
-            .map_err(|_| failed("starting the database thread", "it ended before connecting"))??;
-        Ok(Self { jobs })
+        let database =
+            stado_database::FleetDatabase::for_product("singularity", STADO_HOME_VARIABLE)
+                .map_err(|error| AppError::State(error.to_string()))?;
+        let client = stado_database::sync::Client::connect(&database)
+            .map_err(|error| AppError::State(error.to_string()))?;
+        client
+            .run(|db| async move { Migrator::up(&db, None).await })
+            .map_err(|error| failed("creating the ecosystem tables", error))?
+            .map_err(|error| failed("creating the ecosystem tables", error))?;
+        Ok(Self { client })
     }
 
     /// Run `work` against the connection and wait for its answer.
-    pub(super) fn run<R, F>(
-        &self,
-        work: impl FnOnce(DatabaseConnection) -> F + Send + 'static,
-    ) -> Result<R>
+    pub(super) fn run<R, F>(&self, work: impl FnOnce(DatabaseConnection) -> F) -> Result<R>
     where
         R: Send + 'static,
         F: Future<Output = Result<R>> + Send + 'static,
     {
-        let (reply, answer) = mpsc::sync_channel::<Result<R>>(1);
-        let job: Job = Box::new(move |connection| {
-            Box::pin(async move {
-                let _ = reply.send(work(connection).await);
-            })
-        });
-        self.jobs
-            .send(job)
-            .map_err(|_| failed("sending an operation", "the database thread has ended"))?;
-        answer.recv().map_err(|_| {
-            failed(
-                "reading an answer",
-                "the database thread ended mid-operation",
-            )
-        })?
+        self.client
+            .run(work)
+            .map_err(|error| failed("running an operation", error))?
     }
 }
