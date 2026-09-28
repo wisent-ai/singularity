@@ -198,7 +198,21 @@ singularity ecosystem record KIND ID    read revision-bound evidence fragments
 singularity ecosystem explain ID        read decision and delivery evidence
 singularity ecosystem pause             stop new admission without replaying effects
 singularity ecosystem resume            resume within the original delegation
+singularity capability-preflight agent|broker-linux|broker-macos ENV_FILE [--exec]
+                                        check a capability-isolated unit, then start it
+singularity capability-preflight deployment-static DIR  check deploy/capabilities
 ```
+
+`capability-preflight` is the `ExecStartPre` of the units in
+`deploy/capabilities`. It reads the unit's environment file (literal
+`NAME=VALUE` lines only; a quoted or expanded value, a placeholder marker, or a
+secret passed by value instead of as a `_FILE`/`_PATH` reference is refused),
+requires every file it names to be owner-only and not a symlink, checks the
+release binary's SHA-256, and for an agent also the bootstrap manifest and the
+0660 broker socket. `--exec` then replaces the process with the checked one
+(the broker's `serve --no-http`, or `singularity-bootstrap`) under a cleared
+environment. `broker-macos` is always refused: launchd has no egress sandbox.
+Every refusal prints `capability-preflight: <reason>` and exits 78.
 
 ## Configuration
 

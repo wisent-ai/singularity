@@ -1,6 +1,7 @@
 #[path = "agent/mod.rs"]
 pub mod agent;
 pub mod bootstrap;
+pub mod capability_preflight;
 #[path = "platform/brama.rs"]
 pub mod brama;
 pub mod config;

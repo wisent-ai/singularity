@@ -10,7 +10,8 @@
   <string>REPLACE_WITH_DEDICATED_SKARBIEC_GID</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/wisent/libexec/capability-preflight.py</string>
+    <string>/opt/wisent/releases/singularity</string>
+    <string>capability-preflight</string>
     <string>broker-macos</string>
     <string>/Library/Application Support/Wisent/capabilities/skarbiec-broker.env</string>
     <string>--exec</string>
