@@ -70,7 +70,7 @@ pub async fn monitor(shared: Shared, source: Source) -> Result<(), AppError> {
             Source::ProductCatalog => ("stado", &["catalog", "--json"]),
             Source::ProductAnalytics => ("echo-cli", &["analytics", "7"]),
             Source::MarketResearch => ("echo-cli", &["market"]),
-            Source::OperatorDecisions => ("oko-cli", &["transcripts", "tasks", "--open", "--read-only", "--json"]),
+            Source::OperatorDecisions => ("oko", &["transcripts", "tasks", "--open", "--read-only", "--json"]),
             Source::FleetServices => ("stado", &["service", "list", "--json"]),
         };
         let result = match source {
