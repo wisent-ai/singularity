@@ -49,9 +49,9 @@ pursuit = { git = "https://github.com/wisent-ai/pursuit", rev = "8955ef3db3a91a2
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rust_decimal = { version = "1", features = ["serde"] }
-native-tls = "0.2.14"
-postgres = "0.19.10"
-postgres-native-tls = "0.5.1"
+sea-orm = { version = "1.1", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "postgres-array"] }
+sea-orm-migration = { version = "1.1", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+stado-database = { git = "https://github.com/wisent-ai/stado", package = "stado-database" }
 secrecy = "0.10"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }

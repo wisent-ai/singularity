@@ -1,194 +1,148 @@
-//! Where the ecosystem store lives: the fleet database `singularity`. Stado
-//! names the Skarbiec item that holds its address (`stado database
-//! resolve`), and Skarbiec answers the pooler URL and the provider's root
-//! certificate to the consumer `singularity-database-client`, whose bearer
-//! Stado keeps in `~/.stado/singularity-database-client-skarbiec-token`.
+//! Where the ecosystem store lives: the fleet database `singularity`,
+//! reached the one way every Wisent product reaches its database —
+//! `stado_database::connect` (Stado resolve, the Skarbiec route, the
+//! `singularity-database-client` bearer) — as a SeaORM connection. The
+//! tables are the entities below; the migrator creates them.
 //!
-//! The synchronous Postgres client runs its own runtime, which may not be
-//! entered from a Tokio worker; so one dedicated thread owns the connection
-//! and every store operation is sent to it and answered back.
+//! The store is called from synchronous code, some of it inside a Tokio
+//! worker where blocking on a future is not allowed; one dedicated thread
+//! owns a runtime and the connection, and every operation is sent to it.
 
 use super::{AppError, Result};
-use postgres::Client;
-use postgres::config::SslMode;
-use serde::Deserialize;
-use serde::de::DeserializeOwned;
-use serde_json::Value;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use sea_orm::DatabaseConnection;
+use sea_orm_migration::prelude::*;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::mpsc;
 
-const DATABASE: &str = "singularity";
-/// Who asks Stado's directory; the database lists `singularity` as consumer.
-const DIRECTORY_CONSUMER: &str = "singularity";
-/// Who reads the credential item; it may read exactly the two fields below.
-const CREDENTIAL_CONSUMER: &str = "singularity-database-client";
-const TOKEN_FILE: &str = "singularity-database-client-skarbiec-token";
+/// `HOME` holding `.stado/` when the process's own `HOME` is isolated.
+const STADO_HOME_VARIABLE: &str = "SINGULARITY_STADO_HOME";
 
-#[derive(Deserialize)]
-struct Resolution {
-    credential_item: String,
+/// Tables and indexes of the ecosystem store; `data` stays text so a record's
+/// digest and byte offsets are those of the JSON the being wrote.
+const SCHEMA: &str = "
+    CREATE TABLE IF NOT EXISTS ecosystem_metadata (being TEXT NOT NULL, key TEXT NOT NULL,
+        value TEXT NOT NULL, PRIMARY KEY(being,key));
+    CREATE TABLE IF NOT EXISTS ecosystem_records (seq BIGSERIAL UNIQUE, being TEXT NOT NULL,
+        kind TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL, content_sha256 TEXT NOT NULL, PRIMARY KEY(being,kind,id));
+    CREATE TABLE IF NOT EXISTS ecosystem_reservations (being TEXT NOT NULL, id TEXT NOT NULL,
+        amount TEXT NOT NULL, state TEXT NOT NULL, actual TEXT, PRIMARY KEY(being,id));
+    CREATE INDEX IF NOT EXISTS ecosystem_observations_source_time ON ecosystem_records
+        (being,(data::jsonb->>'source'),created_at DESC,id DESC) WHERE kind='observation';
+    CREATE INDEX IF NOT EXISTS ecosystem_records_initiative_time ON ecosystem_records
+        (being,kind,(data::jsonb->>'initiative_id'),created_at,id);
+    CREATE INDEX IF NOT EXISTS ecosystem_records_state_time ON ecosystem_records
+        (being,kind,(data::jsonb->>'state'),created_at,id);
+    CREATE INDEX IF NOT EXISTS ecosystem_records_sequence ON ecosystem_records(being,seq);";
+
+/// `ecosystem_metadata`: one JSON value of a being, by key.
+pub(super) mod metadata {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "ecosystem_metadata")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub being: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub key: String,
+        pub value: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
 }
 
-#[derive(Deserialize)]
-struct Route {
-    url: String,
+/// `ecosystem_records`: one record of a being; `seq` orders the history.
+pub(super) mod record {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "ecosystem_records")]
+    pub struct Model {
+        pub seq: i64,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub being: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub kind: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub data: String,
+        pub created_at: String,
+        pub updated_at: String,
+        pub content_sha256: String,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+/// `ecosystem_reservations`: one reserved spend of a being and its outcome.
+pub(super) mod reservation {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+    #[sea_orm(table_name = "ecosystem_reservations")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub being: String,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: String,
+        pub amount: String,
+        pub state: String,
+        pub actual: Option<String>,
+    }
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+struct Migrator;
+
+impl MigratorTrait for Migrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        vec![Box::new(EcosystemTables)]
+    }
+}
+
+struct EcosystemTables;
+
+impl MigrationName for EcosystemTables {
+    fn name(&self) -> &str {
+        "m20260928_000001_ecosystem"
+    }
+}
+
+#[async_trait::async_trait]
+impl MigrationTrait for EcosystemTables {
+    async fn up(&self, manager: &SchemaManager) -> std::result::Result<(), DbErr> {
+        manager
+            .get_connection()
+            .execute_unprepared(SCHEMA)
+            .await
+            .map(|_| ())
+    }
 }
 
 fn failed(step: &str, detail: impl std::fmt::Display) -> AppError {
     AppError::State(format!("ecosystem database: {step}: {detail}"))
 }
 
-fn home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default()
+async fn open() -> Result<DatabaseConnection> {
+    let database = stado_database::FleetDatabase::for_product("singularity", STADO_HOME_VARIABLE)
+        .map_err(|error| AppError::State(error.to_string()))?;
+    let connection = stado_database::connect(&database)
+        .await
+        .map_err(|error| AppError::State(error.to_string()))?;
+    Migrator::up(&connection, None)
+        .await
+        .map_err(|error| failed("creating the ecosystem tables", error))?;
+    Ok(connection)
 }
 
-fn stado() -> Result<PathBuf> {
-    let stado = home().join(".stado/bin/stado");
-    if stado.is_file() {
-        Ok(stado)
-    } else {
-        Err(failed(
-            "locating Stado",
-            format!(
-                "Stado is not installed at {}; the ecosystem store is found through Stado",
-                stado.display()
-            ),
-        ))
-    }
-}
-
-/// `stado <arguments>`, with exactly `environment` when one is given, so no
-/// ambient variable selects the identity a credential read runs under.
-fn run(arguments: &[&str], environment: Option<&[(&str, String)]>) -> Result<String> {
-    let operation = format!("stado {}", arguments.join(" "));
-    let mut command = Command::new(stado()?);
-    command.args(arguments).stdin(Stdio::null());
-    if let Some(environment) = environment {
-        command.env_clear();
-        for (name, value) in environment {
-            command.env(name, value);
-        }
-    }
-    let output = command
-        .output()
-        .map_err(|error| failed(&operation, format!("could not start: {error}")))?;
-    if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr);
-        return Err(failed(
-            &operation,
-            format!("exited {}: {}", output.status, detail.trim()),
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
-fn answer<T: DeserializeOwned>(arguments: &[&str]) -> Result<T> {
-    let output = run(arguments, None)?;
-    serde_json::from_str(&output).map_err(|error| {
-        failed(
-            &format!("stado {}", arguments.join(" ")),
-            format!("unreadable JSON: {error}"),
-        )
-    })
-}
-
-/// A value answered as a JSON string, as `{"value": …}`, or as text.
-fn decoded(output: &str) -> Option<String> {
-    let value = match serde_json::from_str::<Value>(output) {
-        Ok(Value::String(value)) => value,
-        Ok(Value::Object(object)) => object.get("value")?.as_str()?.to_owned(),
-        Ok(_) => return None,
-        Err(_) => output.to_owned(),
-    };
-    let value = value.trim().to_owned();
-    (!value.is_empty()).then_some(value)
-}
-
-fn read_field(route: &str, item: &str, field: &str) -> Result<String> {
-    let environment = [
-        ("HOME", home().display().to_string()),
-        (
-            "PATH",
-            std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".into()),
-        ),
-        ("TMPDIR", std::env::temp_dir().display().to_string()),
-        ("STADO_CREDENTIALS_ADMIN_URL", route.to_owned()),
-        (
-            "STADO_CREDENTIALS_ADMIN_CONSUMER",
-            CREDENTIAL_CONSUMER.to_owned(),
-        ),
-        (
-            "STADO_CREDENTIALS_ADMIN_TOKEN_FILE",
-            home().join(".stado").join(TOKEN_FILE).display().to_string(),
-        ),
-    ];
-    let output = run(
-        &["secrets", "get", item, "--field", field],
-        Some(&environment),
-    )?;
-    decoded(&output).ok_or_else(|| {
-        failed(
-            &format!("stado secrets get {item} --field {field} as {CREDENTIAL_CONSUMER}"),
-            "answered an empty value",
-        )
-    })
-}
-
-/// A client of the fleet database, over TLS verified against the provider
-/// root certificate the credential item carries.
-fn connect() -> Result<Client> {
-    let resolution: Resolution = answer(&[
-        "database",
-        "resolve",
-        DATABASE,
-        "--consumer",
-        DIRECTORY_CONSUMER,
-        "--json",
-    ])?;
-    let route: Route = answer(&[
-        "service",
-        "directory",
-        "connect",
-        "skarbiec",
-        "--consumer",
-        DIRECTORY_CONSUMER,
-        "--json",
-    ])?;
-    let item = resolution.credential_item;
-    let url = read_field(&route.url, &item, "pooler_url")?;
-    let certificate = read_field(&route.url, &item, "ca_certificate")?;
-    let certificate =
-        native_tls::Certificate::from_pem(certificate.as_bytes()).map_err(|error| {
-            failed(
-                &format!("{item}#ca_certificate"),
-                format!("not a PEM certificate: {error}"),
-            )
-        })?;
-    let tls = native_tls::TlsConnector::builder()
-        .add_root_certificate(certificate)
-        .build()
-        .map_err(|error| failed("building the TLS connector", error))?;
-    let mut config: postgres::Config = url.parse().map_err(|error| {
-        failed(
-            &format!("{item}#pooler_url"),
-            format!("not a Postgres connection URL: {error}"),
-        )
-    })?;
-    config.ssl_mode(SslMode::Require);
-    config
-        .connect(postgres_native_tls::MakeTlsConnector::new(tls))
-        .map_err(|error| {
-            failed(
-                &format!("connecting to {DATABASE} through {item}#pooler_url"),
-                error,
-            )
-        })
-}
-
-type Job = Box<dyn FnOnce(&mut Client) + Send>;
+type Answer = Pin<Box<dyn Future<Output = ()> + Send>>;
+type Job = Box<dyn FnOnce(DatabaseConnection) -> Answer + Send>;
 
 /// The thread that owns the connection.
 pub(super) struct Db {
@@ -203,18 +157,29 @@ impl Db {
         std::thread::Builder::new()
             .name("ecosystem-database".into())
             .spawn(move || {
-                let mut client = match connect() {
-                    Ok(client) => {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        let _ = ready.send(Err(failed("starting the database runtime", error)));
+                        return;
+                    }
+                };
+                let connection = match runtime.block_on(open()) {
+                    Ok(connection) => {
                         let _ = ready.send(Ok(()));
-                        client
+                        connection
                     }
                     Err(error) => {
                         let _ = ready.send(Err(error));
                         return;
                     }
                 };
+                // The pool replaces a dropped connection by itself.
                 for job in inbox {
-                    job(&mut client);
+                    runtime.block_on(job(connection.clone()));
                 }
             })
             .map_err(|error| failed("starting the database thread", error))?;
@@ -225,15 +190,22 @@ impl Db {
     }
 
     /// Run `work` against the connection and wait for its answer.
-    pub(super) fn run<R: Send + 'static>(
+    pub(super) fn run<R, F>(
         &self,
-        work: impl FnOnce(&mut Client) -> Result<R> + Send + 'static,
-    ) -> Result<R> {
+        work: impl FnOnce(DatabaseConnection) -> F + Send + 'static,
+    ) -> Result<R>
+    where
+        R: Send + 'static,
+        F: Future<Output = Result<R>> + Send + 'static,
+    {
         let (reply, answer) = mpsc::sync_channel::<Result<R>>(1);
+        let job: Job = Box::new(move |connection| {
+            Box::pin(async move {
+                let _ = reply.send(work(connection).await);
+            })
+        });
         self.jobs
-            .send(Box::new(move |client| {
-                let _ = reply.send(work(client));
-            }))
+            .send(job)
             .map_err(|_| failed("sending an operation", "the database thread has ended"))?;
         answer.recv().map_err(|_| {
             failed(

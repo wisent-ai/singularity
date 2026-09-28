@@ -1,5 +1,8 @@
-use super::{AppError, Result, Store, datas, sql};
+use super::fleet::record;
+use super::{AppError, Result, Store, datas, field_is, of_kind, sql};
 use crate::ecosystem::model::{Observation, Source};
+use sea_orm::sea_query::Expr;
+use sea_orm::{EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::de::DeserializeOwned;
 
 impl Store {
@@ -16,38 +19,36 @@ impl Store {
             }
         }
         let being = self.being.clone();
-        let records = self.db.run(move |client| {
+        let records = self.db.run(move |db| async move {
             let mut records = Vec::with_capacity(keys.len());
-            for key in &keys {
-                if let Some(row) = client
-                    .query_opt(
-                        "SELECT data FROM ecosystem_records WHERE being=$1 AND kind='observation'
-                         AND data::jsonb->>'source'=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
-                        &[&being, key],
-                    )
+            for key in keys {
+                if let Some(row) = record::Entity::find()
+                    .filter(record::Column::Being.eq(being.clone()))
+                    .filter(record::Column::Kind.eq("observation"))
+                    .filter(field_is("source", key))
+                    .order_by_desc(record::Column::CreatedAt)
+                    .order_by_desc(record::Column::Id)
+                    .limit(1)
+                    .one(&db)
+                    .await
                     .map_err(sql)?
                 {
-                    records.push(row.get::<_, String>(0));
+                    records.push(row);
                 }
             }
             Ok(records)
         })?;
-        records
-            .iter()
-            .map(|record| serde_json::from_str(record).map_err(AppError::from))
-            .collect()
+        datas(records)
     }
 
     pub fn related<T: DeserializeOwned>(&self, kind: &str, initiative: &str) -> Result<Vec<T>> {
         let (being, kind, initiative) =
             (self.being.clone(), kind.to_owned(), initiative.to_owned());
-        datas(self.db.run(move |client| {
-            client
-                .query(
-                    "SELECT data FROM ecosystem_records WHERE being=$1 AND kind=$2
-                     AND data::jsonb->>'initiative_id'=$3 ORDER BY created_at,id",
-                    &[&being, &kind, &initiative],
-                )
+        datas(self.db.run(move |db| async move {
+            of_kind(being, kind)
+                .filter(field_is("initiative_id", initiative))
+                .all(&db)
+                .await
                 .map_err(sql)
         })?)
     }
@@ -55,28 +56,28 @@ impl Store {
     pub fn in_states<T: DeserializeOwned>(&self, kind: &str, states: &[&str]) -> Result<Vec<T>> {
         let (being, kind) = (self.being.clone(), kind.to_owned());
         let states: Vec<String> = states.iter().map(|state| (*state).to_owned()).collect();
-        datas(self.db.run(move |client| {
-            client
-                .query(
-                    "SELECT data FROM ecosystem_records WHERE being=$1 AND kind=$2
-                     AND data::jsonb->>'state' = ANY($3) ORDER BY created_at,id",
-                    &[&being, &kind, &states],
-                )
+        datas(self.db.run(move |db| async move {
+            of_kind(being, kind)
+                .filter(Expr::cust_with_values(
+                    "data::jsonb->>'state' = ANY($1)",
+                    [states],
+                ))
+                .all(&db)
+                .await
                 .map_err(sql)
         })?)
     }
 
-    pub fn active_count(&self) -> Result<i64> {
+    pub fn active_count(&self) -> Result<u64> {
         let being = self.being.clone();
-        self.db.run(move |client| {
-            Ok(client
-                .query_one(
-                    "SELECT count(*) FROM ecosystem_records WHERE being=$1 AND kind='initiative'
-                     AND data::jsonb->>'state' NOT IN ('completed','stopped','failed')",
-                    &[&being],
-                )
-                .map_err(sql)?
-                .get(0))
+        self.db.run(move |db| async move {
+            of_kind(being, "initiative".into())
+                .filter(Expr::cust(
+                    "data::jsonb->>'state' NOT IN ('completed','stopped','failed')",
+                ))
+                .count(&db)
+                .await
+                .map_err(sql)
         })
     }
 }

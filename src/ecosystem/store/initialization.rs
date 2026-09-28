@@ -1,24 +1,8 @@
+use super::fleet::{metadata, record, reservation};
 use super::{AppError, Policy, Result, Store, fleet, meta_text, parsed, set_meta_text, sql};
+use sea_orm::{ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
 use serde_json::{Value, json};
 use std::path::Path;
-
-/// Tables and indexes of the ecosystem store; `data` stays text so a record's
-/// digest and byte offsets are those of the JSON the being wrote.
-const SCHEMA: &str = "
-    CREATE TABLE IF NOT EXISTS ecosystem_metadata (being TEXT NOT NULL, key TEXT NOT NULL,
-        value TEXT NOT NULL, PRIMARY KEY(being,key));
-    CREATE TABLE IF NOT EXISTS ecosystem_records (seq BIGSERIAL UNIQUE, being TEXT NOT NULL,
-        kind TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL, content_sha256 TEXT NOT NULL, PRIMARY KEY(being,kind,id));
-    CREATE TABLE IF NOT EXISTS ecosystem_reservations (being TEXT NOT NULL, id TEXT NOT NULL,
-        amount TEXT NOT NULL, state TEXT NOT NULL, actual TEXT, PRIMARY KEY(being,id));
-    CREATE INDEX IF NOT EXISTS ecosystem_observations_source_time ON ecosystem_records
-        (being,(data::jsonb->>'source'),created_at DESC,id DESC) WHERE kind='observation';
-    CREATE INDEX IF NOT EXISTS ecosystem_records_initiative_time ON ecosystem_records
-        (being,kind,(data::jsonb->>'initiative_id'),created_at,id);
-    CREATE INDEX IF NOT EXISTS ecosystem_records_state_time ON ecosystem_records
-        (being,kind,(data::jsonb->>'state'),created_at,id);
-    CREATE INDEX IF NOT EXISTS ecosystem_records_sequence ON ecosystem_records(being,seq);";
 
 impl Store {
     pub fn open(
@@ -41,23 +25,22 @@ impl Store {
         let being = identity.agent_id.clone();
         let db = fleet::Db::start()?;
         let scope = being.clone();
-        db.run(move |client| {
-            client.batch_execute(SCHEMA).map_err(sql)?;
-            let mut tx = client.transaction().map_err(sql)?;
+        db.run(move |db| async move {
+            let tx = db.begin().await.map_err(sql)?;
             let being = scope.as_str();
-            if let Some(version) = parsed::<u32>(meta_text(&mut tx, being, "schema_version")?)? {
+            if let Some(version) = parsed::<u32>(meta_text(&tx, being, "schema_version").await?)? {
                 if version != 2 {
                     return Err(AppError::State(format!("unsupported ecosystem schema {version}")));
                 }
-                let previous = parsed::<Value>(meta_text(&mut tx, being, "policy")?)?
+                let previous = parsed::<Value>(meta_text(&tx, being, "policy").await?)?
                     .ok_or_else(|| AppError::State("ecosystem policy missing".into()))?;
                 if previous != policy_value {
                     return Err(AppError::State("ecosystem authority differs from its persisted policy; authority cannot change on resume".into()));
                 }
-                if parsed::<Value>(meta_text(&mut tx, being, "owner")?)?.as_ref() != Some(&owner) {
+                if parsed::<Value>(meta_text(&tx, being, "owner").await?)?.as_ref() != Some(&owner) {
                     return Err(AppError::State("ecosystem owner differs from its persisted principal; execution credentials cannot change owner on resume".into()));
                 }
-                if parsed::<u64>(meta_text(&mut tx, being, "policy_sequence")?)?
+                if parsed::<u64>(meta_text(&tx, being, "policy_sequence").await?)?
                     .is_none_or(|previous| previous > sequence)
                 {
                     return Err(AppError::State(
@@ -65,19 +48,28 @@ impl Store {
                     ));
                 }
             } else {
-                let occupied: bool = tx
-                    .query_one(
-                        "SELECT EXISTS(SELECT 1 FROM ecosystem_metadata WHERE being=$1)
-                            OR EXISTS(SELECT 1 FROM ecosystem_records WHERE being=$1)
-                            OR EXISTS(SELECT 1 FROM ecosystem_reservations WHERE being=$1)",
-                        &[&being],
-                    )
+                let occupied = metadata::Entity::find()
+                    .filter(metadata::Column::Being.eq(being))
+                    .one(&tx)
+                    .await
                     .map_err(sql)?
-                    .get(0);
+                    .is_some()
+                    || record::Entity::find()
+                        .filter(record::Column::Being.eq(being))
+                        .one(&tx)
+                        .await
+                        .map_err(sql)?
+                        .is_some()
+                    || reservation::Entity::find()
+                        .filter(reservation::Column::Being.eq(being))
+                        .one(&tx)
+                        .await
+                        .map_err(sql)?
+                        .is_some();
                 if occupied {
                     return Err(AppError::State("ecosystem schema version is missing from nonempty state; refusing to adopt its records or authority".into()));
                 }
-                for (key, value) in [
+                let rows = [
                     ("schema_version", json!(2)),
                     ("policy", policy_value),
                     ("owner", owner),
@@ -85,19 +77,23 @@ impl Store {
                     ("paused", json!(false)),
                     ("spent_usd", json!("0")),
                     ("reserved_usd", json!("0")),
-                ] {
-                    tx.execute(
-                        "INSERT INTO ecosystem_metadata(being,key,value) VALUES ($1,$2,$3)",
-                        &[&being, &key, &value.to_string()],
-                    )
+                ]
+                .into_iter()
+                .map(|(key, value)| metadata::ActiveModel {
+                    being: Set(being.to_owned()),
+                    key: Set(key.to_owned()),
+                    value: Set(value.to_string()),
+                });
+                metadata::Entity::insert_many(rows)
+                    .exec_without_returning(&tx)
+                    .await
                     .map_err(sql)?;
-                }
             }
-            set_meta_text(&mut tx, being, "policy_sequence", &json!(sequence).to_string())?;
+            set_meta_text(&tx, being, "policy_sequence", &json!(sequence).to_string()).await?;
             if start_paused {
-                set_meta_text(&mut tx, being, "paused", "true")?;
+                set_meta_text(&tx, being, "paused", "true").await?;
             }
-            tx.commit().map_err(sql)
+            tx.commit().await.map_err(sql)
         })?;
         let store = Self { db, being };
         store.put(

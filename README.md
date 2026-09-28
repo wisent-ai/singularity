@@ -222,6 +222,17 @@ Onboarding progress is stored separately at
 `~/.local/state/singularity/onboarding.json`) and can be redirected with
 `SINGULARITY_ONBOARDING_STATE_PATH`.
 
+The ecosystem store (metadata, records and spend reservations, every row keyed
+by the being's agent id) lives in the fleet database `singularity`, reached
+through Stado's shared connector `stado-database` as a SeaORM connection:
+`stado database resolve singularity`, the Skarbiec route, and the
+`singularity-database-client` bearer in
+`~/.stado/singularity-database-client-skarbiec-token`
+(`SINGULARITY_STADO_HOME` names that home when `HOME` is isolated). A
+`sea-orm-migration` migrator creates the tables. A leftover
+`ecosystem.sqlite3` in the state directory is refused at startup, and every
+connection failure names the step that failed.
+
 State schema `being-v1` is a clean cutover. The previous supervisor state and
 the old Python runtime are not compatibility paths.
 
