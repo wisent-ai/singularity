@@ -2,7 +2,6 @@ mod evidence;
 mod owner;
 use evidence::{Evidence, Result, SOURCE_REVISION};
 use owner::Owner;
-use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf};
@@ -91,28 +90,24 @@ fn journey(evidence: &mut Evidence) -> Result<()> {
         "owner launch record identity",
     )?
     .to_owned();
-    let db = Connection::open_with_flags(
-        owner.state.join("ecosystem.sqlite3"),
-        OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|e| format!("inspect real owner database: {e}"))?;
-    let persisted: String = db
-        .query_row(
-            "SELECT data FROM records WHERE kind='owner_launch' AND id=?1",
-            [&id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    drop(db);
-    let digest = format!("{:x}", Sha256::digest(persisted.as_bytes()));
+    let head = owner.cli(&["record", "owner_launch", &id, "--bytes", "127"], true)?;
+    let digest = text(
+        &head["result"]["content_sha256"],
+        "owner launch content digest",
+    )?
+    .to_owned();
+    let persisted = fragments(&mut owner, &id, &digest)?;
+    require(
+        format!("{:x}", Sha256::digest(persisted.as_bytes())) == digest,
+        "record bytes read from the fleet database do not hash to the digest stored with them",
+    )?;
     owner.evidence.snapshot(
         "persisted_launch",
         json!({"id":id,"bytes":persisted,"sha256":digest}),
     )?;
-    let reconstructed = fragments(&mut owner, &id, &digest)?;
     require(
-        reconstructed == persisted,
-        "fragment reassembly differs from persisted SQLite bytes",
+        fragments(&mut owner, &id, &digest)? == persisted,
+        "a second reassembly differs from the bytes the fleet database holds",
     )?;
     refusal_cases(&mut owner, &id, &digest, &persisted)?;
     owner.stop()?;

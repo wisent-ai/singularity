@@ -1,6 +1,5 @@
 use super::super::control::protocol::{MAX_PAGE_SIZE, MAX_RECORD_BYTES, MAX_RESPONSE_BYTES};
 use super::{AppError, Digest, Result, Sha256, Store, sql};
-use rusqlite::{OptionalExtension, params};
 use serde_json::{Value, json};
 
 fn page_bounds(before: Option<i64>, limit: u32) -> Result<()> {
@@ -13,6 +12,7 @@ fn page_bounds(before: Option<i64>, limit: u32) -> Result<()> {
 }
 
 impl Store {
+    /// Newest first; the cursor is the record's sequence number in the store.
     pub fn records(
         &self,
         kind: Option<&str>,
@@ -21,40 +21,43 @@ impl Store {
         limit: u32,
     ) -> Result<Value> {
         page_bounds(before, limit)?;
-        let filter = match (kind, initiative) {
-            (Some(_), Some(_)) => "kind=?1 AND json_extract(data,'$.initiative_id')=?2",
-            (Some(_), None) => "kind=?1",
-            (None, Some(_)) => "json_extract(data,'$.initiative_id')=?2",
-            (None, None) => "1",
-        };
-        let mut statement = self.connection.prepare(&format!(
-            "SELECT rowid,kind,id,created_at,updated_at,length(CAST(data AS BLOB)),
-                substr(CAST(coalesce(json_extract(data,'$.title'),json_extract(data,'$.source'),
-                    json_extract(data,'$.purpose'),json_extract(data,'$.operation'),json_extract(data,'$.detail'),id) AS TEXT),1,160),
-                substr(CAST(coalesce(json_extract(data,'$.state'),json_extract(data,'$.status')) AS TEXT),1,64)
-             FROM records WHERE {filter} AND (?3 IS NULL OR rowid<?3)
-             ORDER BY rowid DESC LIMIT ?4"
-        )).map_err(sql)?;
-        let mut rows = statement
-            .query(params![kind, initiative, before, limit + 1])
-            .map_err(sql)?;
+        let being = self.being.clone();
+        let kind = kind.map(str::to_owned);
+        let initiative = initiative.map(str::to_owned);
+        let fetch = i64::from(limit) + 1;
+        let rows = self.db.run(move |client| {
+            client
+                .query(
+                    "SELECT seq,kind,id,created_at,updated_at,octet_length(data)::bigint,
+                        left(coalesce(data::jsonb->>'title',data::jsonb->>'source',data::jsonb->>'purpose',
+                            data::jsonb->>'operation',data::jsonb->>'detail',id),160),
+                        left(coalesce(data::jsonb->>'state',data::jsonb->>'status'),64)
+                     FROM ecosystem_records WHERE being=$1
+                        AND ($2::text IS NULL OR kind=$2)
+                        AND ($3::text IS NULL OR data::jsonb->>'initiative_id'=$3)
+                        AND ($4::bigint IS NULL OR seq<$4)
+                     ORDER BY seq DESC LIMIT $5",
+                    &[&being, &kind, &initiative, &before, &fetch],
+                )
+                .map_err(sql)
+        })?;
         let mut items = Vec::with_capacity(limit as usize);
         let mut last_cursor = None;
         let mut next_cursor = None;
-        while let Some(row) = rows.next().map_err(sql)? {
+        for row in rows {
             if items.len() == limit as usize {
                 next_cursor = last_cursor;
                 break;
             }
-            last_cursor = Some(row.get::<_, i64>(0).map_err(sql)?);
+            last_cursor = Some(row.get::<_, i64>(0));
             items.push(json!({
-                "kind":row.get::<_,String>(1).map_err(sql)?,
-                "id":row.get::<_,String>(2).map_err(sql)?,
-                "created_at":row.get::<_,String>(3).map_err(sql)?,
-                "updated_at":row.get::<_,String>(4).map_err(sql)?,
-                "total_bytes":row.get::<_,u64>(5).map_err(sql)?,
-                "preview":row.get::<_,String>(6).map_err(sql)?,
-                "state":row.get::<_,Option<String>>(7).map_err(sql)?
+                "kind":row.get::<_,String>(1),
+                "id":row.get::<_,String>(2),
+                "created_at":row.get::<_,String>(3),
+                "updated_at":row.get::<_,String>(4),
+                "total_bytes":row.get::<_,i64>(5),
+                "preview":row.get::<_,String>(6),
+                "state":row.get::<_,Option<String>>(7)
             }));
         }
         Ok(json!({"items":items,"next_cursor":next_cursor}))
@@ -62,25 +65,27 @@ impl Store {
 
     pub fn items(&self, kind: &str, before: Option<i64>, limit: u32) -> Result<Value> {
         page_bounds(before, limit)?;
-        let mut statement = self
-            .connection
-            .prepare(
-                "SELECT rowid,id,length(CAST(data AS BLOB)),data FROM records
-             WHERE kind=?1 AND (?2 IS NULL OR rowid<?2) ORDER BY rowid DESC LIMIT ?3",
-            )
-            .map_err(sql)?;
-        let mut rows = statement
-            .query(params![kind, before, limit + 1])
-            .map_err(sql)?;
+        let (being, kind_owned) = (self.being.clone(), kind.to_owned());
+        let fetch = i64::from(limit) + 1;
+        let rows = self.db.run(move |client| {
+            client
+                .query(
+                    "SELECT seq,id,octet_length(data)::bigint,data FROM ecosystem_records
+                     WHERE being=$1 AND kind=$2 AND ($3::bigint IS NULL OR seq<$3)
+                     ORDER BY seq DESC LIMIT $4",
+                    &[&being, &kind_owned, &before, &fetch],
+                )
+                .map_err(sql)
+        })?;
         let mut items = Vec::with_capacity(limit as usize);
         let mut last_cursor = None;
         let mut next_cursor = None;
         let mut remaining = MAX_RESPONSE_BYTES / 2;
-        while let Some(row) = rows.next().map_err(sql)? {
-            let length: u64 = row.get(2).map_err(sql)?;
+        for row in rows {
+            let length = row.get::<_, i64>(2) as u64;
             if items.len() == limit as usize || length > remaining {
                 if items.is_empty() {
-                    let id: String = row.get(1).map_err(sql)?;
+                    let id: String = row.get(1);
                     return Err(AppError::State(format!(
                         "record {kind}/{id} exceeds a collection page; read it with ecosystem record {kind} {id}"
                     )));
@@ -89,9 +94,8 @@ impl Store {
                 break;
             }
             remaining -= length;
-            let data: String = row.get(3).map_err(sql)?;
-            items.push(serde_json::from_str::<Value>(&data)?);
-            last_cursor = Some(row.get::<_, i64>(0).map_err(sql)?);
+            items.push(serde_json::from_str::<Value>(row.get::<_, &str>(3))?);
+            last_cursor = Some(row.get::<_, i64>(0));
         }
         Ok(json!({"items":items,"next_cursor":next_cursor}))
     }
@@ -124,27 +128,20 @@ impl Store {
                 "record revision must be a lowercase SHA-256 digest".into(),
             ));
         }
-        let tx = self.connection.unchecked_transaction().map_err(sql)?;
-        let (mut digest, total): (String, u64) = tx.query_row(
-            "SELECT content_sha256,length(CAST(data AS BLOB)) FROM records WHERE kind=?1 AND id=?2",
-            params![kind,id], |row| Ok((row.get(0)?,row.get(1)?)),
-        ).optional().map_err(sql)?.ok_or_else(|| AppError::State(format!("unknown record {kind}/{id}")))?;
-        // Schema-one histories acquire their digest when first read, not by loading the whole history at startup.
-        if digest.is_empty() {
-            let data: String = tx
-                .query_row(
-                    "SELECT data FROM records WHERE kind=?1 AND id=?2",
-                    params![kind, id],
-                    |row| row.get(0),
+        let (being, kind_owned, id_owned) = (self.being.clone(), kind.to_owned(), id.to_owned());
+        let (digest, total, data): (String, u64, Vec<u8>) =
+            self.db.run(move |client| {
+                let row = client
+                .query_opt(
+                    "SELECT content_sha256,octet_length(data)::bigint,data FROM ecosystem_records
+                     WHERE being=$1 AND kind=$2 AND id=$3",
+                    &[&being, &kind_owned, &id_owned],
                 )
-                .map_err(sql)?;
-            digest = format!("{:x}", Sha256::digest(data.as_bytes()));
-            tx.execute(
-                "UPDATE records SET content_sha256=?3 WHERE kind=?1 AND id=?2",
-                params![kind, id, digest],
-            )
-            .map_err(sql)?;
-        }
+                .map_err(sql)?
+                .ok_or_else(|| AppError::State(format!("unknown record {kind_owned}/{id_owned}")))?;
+                let data: String = row.get(2);
+                Ok((row.get(0), row.get::<_, i64>(1) as u64, data.into_bytes()))
+            })?;
         if let Some(expected) = revision {
             if expected != digest {
                 return Err(AppError::State(format!(
@@ -157,19 +154,14 @@ impl Store {
                 "record {kind}/{id} offset {offset} exceeds its {total} bytes"
             )));
         }
-        let data: Vec<u8> = tx
-            .query_row(
-                "SELECT substr(CAST(data AS BLOB),?3,?4) FROM records WHERE kind=?1 AND id=?2",
-                params![kind, id, offset + 1, bytes],
-                |row| row.get(0),
-            )
-            .map_err(sql)?;
-        let text = match String::from_utf8(data) {
+        let start = offset as usize;
+        let end = (start + bytes as usize).min(data.len());
+        let text = match String::from_utf8(data[start..end].to_vec()) {
             Ok(text) => text,
             Err(error) if error.utf8_error().error_len().is_none() => {
-                let end = error.utf8_error().valid_up_to();
+                let valid = error.utf8_error().valid_up_to();
                 let mut data = error.into_bytes();
-                data.truncate(end);
+                data.truncate(valid);
                 String::from_utf8(data).map_err(|error| AppError::State(error.to_string()))?
             }
             Err(_) => {
@@ -184,7 +176,7 @@ impl Store {
                 "record {kind}/{id} returned no complete character at offset {offset}"
             )));
         }
-        tx.commit().map_err(sql)?;
+        debug_assert_eq!(digest, format!("{:x}", Sha256::digest(&data)));
         Ok(
             json!({"kind":kind,"id":id,"offset":offset,"total_bytes":total,
             "content_sha256":digest,"text":text,"next_offset":(end < total).then_some(end)}),

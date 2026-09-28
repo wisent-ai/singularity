@@ -1,7 +1,24 @@
-use super::{AppError, Policy, Result, Store, sql};
-use rusqlite::{Connection, params};
+use super::{AppError, Policy, Result, Store, fleet, meta_text, parsed, set_meta_text, sql};
 use serde_json::{Value, json};
 use std::path::Path;
+
+/// Tables and indexes of the ecosystem store; `data` stays text so a record's
+/// digest and byte offsets are those of the JSON the being wrote.
+const SCHEMA: &str = "
+    CREATE TABLE IF NOT EXISTS ecosystem_metadata (being TEXT NOT NULL, key TEXT NOT NULL,
+        value TEXT NOT NULL, PRIMARY KEY(being,key));
+    CREATE TABLE IF NOT EXISTS ecosystem_records (seq BIGSERIAL UNIQUE, being TEXT NOT NULL,
+        kind TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL, content_sha256 TEXT NOT NULL, PRIMARY KEY(being,kind,id));
+    CREATE TABLE IF NOT EXISTS ecosystem_reservations (being TEXT NOT NULL, id TEXT NOT NULL,
+        amount TEXT NOT NULL, state TEXT NOT NULL, actual TEXT, PRIMARY KEY(being,id));
+    CREATE INDEX IF NOT EXISTS ecosystem_observations_source_time ON ecosystem_records
+        (being,(data::jsonb->>'source'),created_at DESC,id DESC) WHERE kind='observation';
+    CREATE INDEX IF NOT EXISTS ecosystem_records_initiative_time ON ecosystem_records
+        (being,kind,(data::jsonb->>'initiative_id'),created_at,id);
+    CREATE INDEX IF NOT EXISTS ecosystem_records_state_time ON ecosystem_records
+        (being,kind,(data::jsonb->>'state'),created_at,id);
+    CREATE INDEX IF NOT EXISTS ecosystem_records_sequence ON ecosystem_records(being,seq);";
 
 impl Store {
     pub fn open(
@@ -10,118 +27,79 @@ impl Store {
         identity: &crate::AgentIdentity,
         start_paused: bool,
     ) -> Result<Self> {
+        let legacy = directory.join("ecosystem.sqlite3");
+        if legacy.exists() {
+            return Err(AppError::State(format!(
+                "{} is a private ecosystem store from before the fleet database; this being's state now lives in the fleet database singularity, and a private file beside it would split its history",
+                legacy.display()
+            )));
+        }
         let owner = json!({"agent_id":identity.agent_id,"role":identity.role,
             "environment":identity.environment,"workload_id":identity.workload_id});
-        let connection = Connection::open(directory.join("ecosystem.sqlite3")).map_err(sql)?;
-        connection
-            .execute_batch(
-                "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
-            )
-            .map_err(sql)?;
-        let store = Self { connection };
-        let tx = store.connection.unchecked_transaction().map_err(sql)?;
-        tx.execute_batch(
-            "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS records (kind TEXT NOT NULL, id TEXT NOT NULL,
-                data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                content_sha256 TEXT NOT NULL, PRIMARY KEY(kind,id));
-            CREATE TABLE IF NOT EXISTS reservations (id TEXT PRIMARY KEY, amount TEXT NOT NULL,
-                state TEXT NOT NULL, actual TEXT);",
-        )
-        .map_err(sql)?;
-        if let Some(version) = store.meta::<u32>("schema_version")? {
-            if version != 1 && version != 2 {
-                return Err(AppError::State(format!(
-                    "unsupported ecosystem schema {version}"
-                )));
-            }
-            let previous = store
-                .meta::<Policy>("policy")?
-                .ok_or_else(|| AppError::State("ecosystem policy missing".into()))?;
-            if serde_json::to_value(previous)? != serde_json::to_value(policy)? {
-                return Err(AppError::State("ecosystem authority differs from its persisted policy; authority cannot change on resume".into()));
-            }
-            if store.meta::<Value>("owner")?.as_ref() != Some(&owner) {
-                return Err(AppError::State("ecosystem owner differs from its persisted principal; execution credentials cannot change owner on resume".into()));
-            }
-            if store
-                .meta::<u64>("policy_sequence")?
-                .is_none_or(|previous| previous > identity.policy_sequence)
-            {
-                return Err(AppError::State(
-                    "ecosystem policy sequence is missing or would roll back".into(),
-                ));
-            }
-        } else {
-            let occupied: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM metadata) OR EXISTS(SELECT 1 FROM records) OR EXISTS(SELECT 1 FROM reservations)",
-                [], |row| row.get(0),
-            ).map_err(sql)?;
-            if occupied {
-                return Err(AppError::State("ecosystem schema version is missing from nonempty state; refusing to adopt its records or authority".into()));
-            }
-            let legacy_events: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='events')",
-                [], |row| row.get(0),
-            ).map_err(sql)?;
-            if legacy_events {
-                let occupied: bool = tx
-                    .query_row("SELECT EXISTS(SELECT 1 FROM events)", [], |row| row.get(0))
-                    .map_err(sql)?;
-                if occupied {
+        let policy_value = serde_json::to_value(policy)?;
+        let sequence = identity.policy_sequence;
+        let being = identity.agent_id.clone();
+        let db = fleet::Db::start()?;
+        let scope = being.clone();
+        db.run(move |client| {
+            client.batch_execute(SCHEMA).map_err(sql)?;
+            let mut tx = client.transaction().map_err(sql)?;
+            let being = scope.as_str();
+            if let Some(version) = parsed::<u32>(meta_text(&mut tx, being, "schema_version")?)? {
+                if version != 2 {
+                    return Err(AppError::State(format!("unsupported ecosystem schema {version}")));
+                }
+                let previous = parsed::<Value>(meta_text(&mut tx, being, "policy")?)?
+                    .ok_or_else(|| AppError::State("ecosystem policy missing".into()))?;
+                if previous != policy_value {
+                    return Err(AppError::State("ecosystem authority differs from its persisted policy; authority cannot change on resume".into()));
+                }
+                if parsed::<Value>(meta_text(&mut tx, being, "owner")?)?.as_ref() != Some(&owner) {
+                    return Err(AppError::State("ecosystem owner differs from its persisted principal; execution credentials cannot change owner on resume".into()));
+                }
+                if parsed::<u64>(meta_text(&mut tx, being, "policy_sequence")?)?
+                    .is_none_or(|previous| previous > sequence)
+                {
                     return Err(AppError::State(
-                        "ecosystem schema version is missing from an existing event history".into(),
+                        "ecosystem policy sequence is missing or would roll back".into(),
                     ));
                 }
-                tx.execute_batch("DROP TABLE events;").map_err(sql)?;
+            } else {
+                let occupied: bool = tx
+                    .query_one(
+                        "SELECT EXISTS(SELECT 1 FROM ecosystem_metadata WHERE being=$1)
+                            OR EXISTS(SELECT 1 FROM ecosystem_records WHERE being=$1)
+                            OR EXISTS(SELECT 1 FROM ecosystem_reservations WHERE being=$1)",
+                        &[&being],
+                    )
+                    .map_err(sql)?
+                    .get(0);
+                if occupied {
+                    return Err(AppError::State("ecosystem schema version is missing from nonempty state; refusing to adopt its records or authority".into()));
+                }
+                for (key, value) in [
+                    ("schema_version", json!(2)),
+                    ("policy", policy_value),
+                    ("owner", owner),
+                    ("policy_sequence", json!(sequence)),
+                    ("paused", json!(false)),
+                    ("spent_usd", json!("0")),
+                    ("reserved_usd", json!("0")),
+                ] {
+                    tx.execute(
+                        "INSERT INTO ecosystem_metadata(being,key,value) VALUES ($1,$2,$3)",
+                        &[&being, &key, &value.to_string()],
+                    )
+                    .map_err(sql)?;
+                }
             }
-            let has_digest: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('records') WHERE name='content_sha256')",
-                [], |row| row.get(0),
-            ).map_err(sql)?;
-            if !has_digest {
-                tx.execute_batch(
-                    "ALTER TABLE records ADD COLUMN content_sha256 TEXT NOT NULL DEFAULT '';",
-                )
-                .map_err(sql)?;
+            set_meta_text(&mut tx, being, "policy_sequence", &json!(sequence).to_string())?;
+            if start_paused {
+                set_meta_text(&mut tx, being, "paused", "true")?;
             }
-            for (key, value) in [
-                ("schema_version", json!(2)),
-                ("policy", serde_json::to_value(policy)?),
-                ("owner", owner),
-                ("policy_sequence", json!(identity.policy_sequence)),
-                ("paused", json!(false)),
-                ("spent_usd", json!("0")),
-                ("reserved_usd", json!("0")),
-            ] {
-                tx.execute(
-                    "INSERT INTO metadata VALUES (?1,?2)",
-                    params![key, value.to_string()],
-                )
-                .map_err(sql)?;
-            }
-        }
-        if store.meta::<u32>("schema_version")? == Some(1) {
-            tx.execute_batch("ALTER TABLE records ADD COLUMN content_sha256 TEXT NOT NULL DEFAULT '';
-                INSERT INTO records(kind,id,data,created_at,updated_at,content_sha256)
-                    SELECT 'event','event-'||id,json_object('id','event-'||id,'initiative_id',initiative_id,
-                        'kind',kind,'detail',detail,'created_at',created_at),created_at,created_at,''
-                    FROM events ORDER BY id;
-                DROP TABLE events;
-                UPDATE metadata SET value='2' WHERE key='schema_version';").map_err(sql)?;
-        }
-        tx.execute_batch(
-            "CREATE INDEX IF NOT EXISTS observations_source_time ON records(json_extract(data,'$.source'),created_at DESC,id DESC) WHERE kind='observation';
-             CREATE INDEX IF NOT EXISTS records_initiative_time ON records(kind,json_extract(data,'$.initiative_id'),created_at,id);
-             CREATE INDEX IF NOT EXISTS records_kind_sequence ON records(kind);
-             CREATE INDEX IF NOT EXISTS records_initiative_sequence ON records(json_extract(data,'$.initiative_id'));
-             CREATE INDEX IF NOT EXISTS records_state_time ON records(kind,json_extract(data,'$.state'),created_at,id);"
-        ).map_err(sql)?;
-        store.set_meta("policy_sequence", &identity.policy_sequence)?;
-        if start_paused {
-            store.set_meta("paused", &true)?;
-        }
-        tx.commit().map_err(sql)?;
+            tx.commit().map_err(sql)
+        })?;
+        let store = Self { db, being };
         store.put(
             "owner_launch",
             &uuid::Uuid::new_v4().to_string(),

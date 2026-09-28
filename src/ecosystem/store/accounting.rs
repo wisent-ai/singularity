@@ -1,5 +1,5 @@
-use super::{AppError, Result, Store, sql};
-use rusqlite::{OptionalExtension, params};
+use super::{AppError, Result, Store, meta_text, parsed, set_meta_text, sql};
+use postgres::GenericClient;
 use rust_decimal::Decimal;
 use serde_json::json;
 
@@ -20,31 +20,40 @@ impl Settlement {
     }
 }
 
+/// Spent and reserved dollars as the ledger holds them inside `client`'s view.
+fn ledger(client: &mut impl GenericClient, being: &str) -> Result<(Decimal, Decimal)> {
+    Ok((
+        parsed(meta_text(client, being, "spent_usd")?)?
+            .ok_or_else(|| AppError::State("missing spend ledger".into()))?,
+        parsed(meta_text(client, being, "reserved_usd")?)?
+            .ok_or_else(|| AppError::State("missing reservation ledger".into()))?,
+    ))
+}
+
+fn decimal(text: &str, what: &str) -> Result<Decimal> {
+    text.parse()
+        .map_err(|error| AppError::State(format!("{what}: {error}")))
+}
+
 impl Store {
     pub fn balance(&self) -> Result<(Decimal, Decimal)> {
-        Ok((
-            self.meta("spent_usd")?
-                .ok_or_else(|| AppError::State("missing spend ledger".into()))?,
-            self.meta("reserved_usd")?
-                .ok_or_else(|| AppError::State("missing reservation ledger".into()))?,
-        ))
+        let being = self.being.clone();
+        self.db.run(move |client| ledger(client, &being))
     }
     pub fn settled_cost(&self, id: &str) -> Result<Option<Decimal>> {
-        let amount: Option<String> = self
-            .connection
-            .query_row(
-                "SELECT actual FROM reservations WHERE id=?1 AND state='settled'",
-                [id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(sql)?;
+        let (being, id_owned) = (self.being.clone(), id.to_owned());
+        let amount: Option<Option<String>> = self.db.run(move |client| {
+            Ok(client
+                .query_opt(
+                    "SELECT actual FROM ecosystem_reservations WHERE being=$1 AND id=$2 AND state='settled'",
+                    &[&being, &id_owned],
+                )
+                .map_err(sql)?
+                .map(|row| row.get(0)))
+        })?;
         amount
-            .map(|amount| {
-                amount
-                    .parse()
-                    .map_err(|error| AppError::State(format!("recorded cost for {id}: {error}")))
-            })
+            .flatten()
+            .map(|amount| decimal(&amount, &format!("recorded cost for {id}")))
             .transpose()
     }
 
@@ -53,113 +62,116 @@ impl Store {
         if amount <= Decimal::ZERO {
             return Err(AppError::Config("reservation must be positive".into()));
         }
-        let tx = self.connection.unchecked_transaction().map_err(sql)?;
-        let existing: Option<(String, String)> = tx
-            .query_row(
-                "SELECT amount,state FROM reservations WHERE id=?1",
-                [id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+        let (being, id) = (self.being.clone(), id.to_owned());
+        self.db.run(move |client| {
+            let mut tx = client.transaction().map_err(sql)?;
+            // The ledger row is locked first, so two reservations of one being serialize.
+            tx.query_one(
+                "SELECT value FROM ecosystem_metadata WHERE being=$1 AND key='reserved_usd' FOR UPDATE",
+                &[&being],
             )
-            .optional()
             .map_err(sql)?;
-        if let Some((previous, state)) = existing {
-            let previous: Decimal = previous
-                .parse()
-                .map_err(|error| AppError::State(format!("reservation amount: {error}")))?;
-            if previous == amount && state == "reserved" {
-                return Ok(());
+            let existing = tx
+                .query_opt(
+                    "SELECT amount,state FROM ecosystem_reservations WHERE being=$1 AND id=$2",
+                    &[&being, &id],
+                )
+                .map_err(sql)?;
+            if let Some(row) = existing {
+                let previous = decimal(row.get(0), "reservation amount")?;
+                if previous == amount && row.get::<_, &str>(1) == "reserved" {
+                    return Ok(());
+                }
+                return Err(AppError::State(format!(
+                    "reservation {id} conflicts with its original amount or settlement"
+                )));
             }
-            return Err(AppError::State(format!(
-                "reservation {id} conflicts with its original amount or settlement"
-            )));
-        }
-        let (spent, reserved) = self.balance()?;
-        let next_reserved = reserved.checked_add(amount).ok_or_else(|| {
-            AppError::State("reservation exceeds the ledger's decimal range".into())
-        })?;
-        let allocated = spent.checked_add(next_reserved).ok_or_else(|| {
-            AppError::State("total allocation exceeds the ledger's decimal range".into())
-        })?;
-        if allocated > limit {
-            return Err(AppError::State(
-                "budget exhausted: existing reservations are not available for reuse".into(),
-            ));
-        }
-        tx.execute(
-            "INSERT INTO reservations VALUES (?1,?2,'reserved',NULL)",
-            params![id, amount.to_string()],
-        )
-        .map_err(sql)?;
-        tx.execute(
-            "UPDATE metadata SET value=?1 WHERE key='reserved_usd'",
-            [json!(next_reserved.to_string()).to_string()],
-        )
-        .map_err(sql)?;
-        tx.commit().map_err(sql)?;
-        Ok(())
+            let (spent, reserved) = ledger(&mut tx, &being)?;
+            let next_reserved = reserved.checked_add(amount).ok_or_else(|| {
+                AppError::State("reservation exceeds the ledger's decimal range".into())
+            })?;
+            let allocated = spent.checked_add(next_reserved).ok_or_else(|| {
+                AppError::State("total allocation exceeds the ledger's decimal range".into())
+            })?;
+            if allocated > limit {
+                return Err(AppError::State(
+                    "budget exhausted: existing reservations are not available for reuse".into(),
+                ));
+            }
+            tx.execute(
+                "INSERT INTO ecosystem_reservations(being,id,amount,state,actual) VALUES ($1,$2,$3,'reserved',NULL)",
+                &[&being, &id, &amount.to_string()],
+            )
+            .map_err(sql)?;
+            set_meta_text(&mut tx, &being, "reserved_usd", &json!(next_reserved.to_string()).to_string())?;
+            tx.commit().map_err(sql)
+        })
     }
     /// Committing an overrun also closes admission; a crash cannot separate these effects.
     pub fn settle(&self, id: &str, actual: Decimal) -> Result<Settlement> {
         if actual < Decimal::ZERO {
             return Err(AppError::State("negative reported cost".into()));
         }
-        let tx = self.connection.unchecked_transaction().map_err(sql)?;
-        let (amount, state, old): (String, String, Option<String>) = tx
-            .query_row(
-                "SELECT amount,state,actual FROM reservations WHERE id=?1",
-                [id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        let (being, id) = (self.being.clone(), id.to_owned());
+        self.db.run(move |client| {
+            let mut tx = client.transaction().map_err(sql)?;
+            tx.query_one(
+                "SELECT value FROM ecosystem_metadata WHERE being=$1 AND key='reserved_usd' FOR UPDATE",
+                &[&being],
             )
             .map_err(sql)?;
-        let amount: Decimal = amount
-            .parse()
-            .map_err(|error| AppError::State(format!("reservation amount: {error}")))?;
-        if state == "settled" {
-            let previous: Decimal = old
-                .ok_or_else(|| AppError::State("settled reservation has no recorded cost".into()))?
-                .parse()
-                .map_err(|error| AppError::State(format!("recorded settlement: {error}")))?;
-            if previous != actual {
-                return Err(AppError::State(
-                    "conflicting repeated cost settlement".into(),
-                ));
-            }
-        } else if state == "reserved" {
-            let (spent, reserved) = self.balance()?;
-            let spent = spent.checked_add(actual).ok_or_else(|| {
-                AppError::State("observed spend exceeds the ledger's decimal range".into())
-            })?;
-            let reserved = reserved
-                .checked_sub(amount)
-                .filter(|value| *value >= Decimal::ZERO)
-                .ok_or_else(|| {
-                    AppError::State("reservation exceeds the retained allocation ledger".into())
+            let row = tx
+                .query_opt(
+                    "SELECT amount,state,actual FROM ecosystem_reservations WHERE being=$1 AND id=$2",
+                    &[&being, &id],
+                )
+                .map_err(sql)?
+                .ok_or_else(|| AppError::State(format!("reservation {id} is unknown")))?;
+            let amount = decimal(row.get(0), "reservation amount")?;
+            let state: String = row.get(1);
+            let old: Option<String> = row.get(2);
+            if state == "settled" {
+                let previous = decimal(
+                    &old.ok_or_else(|| AppError::State("settled reservation has no recorded cost".into()))?,
+                    "recorded settlement",
+                )?;
+                if previous != actual {
+                    return Err(AppError::State(
+                        "conflicting repeated cost settlement".into(),
+                    ));
+                }
+            } else if state == "reserved" {
+                let (spent, reserved) = ledger(&mut tx, &being)?;
+                let spent = spent.checked_add(actual).ok_or_else(|| {
+                    AppError::State("observed spend exceeds the ledger's decimal range".into())
                 })?;
-            tx.execute(
-                "UPDATE reservations SET state='settled',actual=?1 WHERE id=?2",
-                params![actual.to_string(), id],
-            )
-            .map_err(sql)?;
-            for (key, value) in [("spent_usd", spent), ("reserved_usd", reserved)] {
+                let reserved = reserved
+                    .checked_sub(amount)
+                    .filter(|value| *value >= Decimal::ZERO)
+                    .ok_or_else(|| {
+                        AppError::State("reservation exceeds the retained allocation ledger".into())
+                    })?;
                 tx.execute(
-                    "UPDATE metadata SET value=?1 WHERE key=?2",
-                    params![json!(value.to_string()).to_string(), key],
+                    "UPDATE ecosystem_reservations SET state='settled',actual=$3 WHERE being=$1 AND id=$2",
+                    &[&being, &id, &actual.to_string()],
                 )
                 .map_err(sql)?;
+                for (key, value) in [("spent_usd", spent), ("reserved_usd", reserved)] {
+                    set_meta_text(&mut tx, &being, key, &json!(value.to_string()).to_string())?;
+                }
+            } else {
+                return Err(AppError::State(format!(
+                    "reservation {id} has unsupported state {state}"
+                )));
             }
-        } else {
-            return Err(AppError::State(format!(
-                "reservation {id} has unsupported state {state}"
-            )));
-        }
-        if actual > amount {
-            tx.execute("UPDATE metadata SET value='true' WHERE key='paused'", [])
-                .map_err(sql)?;
-        }
-        tx.commit().map_err(sql)?;
-        Ok(Settlement {
-            reserved: amount,
-            actual,
+            if actual > amount {
+                set_meta_text(&mut tx, &being, "paused", "true")?;
+            }
+            tx.commit().map_err(sql)?;
+            Ok(Settlement {
+                reserved: amount,
+                actual,
+            })
         })
     }
 }

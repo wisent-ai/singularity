@@ -49,7 +49,9 @@ pursuit = { git = "https://github.com/wisent-ai/pursuit", rev = "8955ef3db3a91a2
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rust_decimal = { version = "1", features = ["serde"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+native-tls = "0.2.14"
+postgres = "0.19.10"
+postgres-native-tls = "0.5.1"
 secrecy = "0.10"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }

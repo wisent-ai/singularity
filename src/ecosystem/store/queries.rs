@@ -1,64 +1,82 @@
-use super::{AppError, Result, Store, sql};
+use super::{AppError, Result, Store, datas, sql};
 use crate::ecosystem::model::{Observation, Source};
-use rusqlite::{OptionalExtension, params};
 use serde::de::DeserializeOwned;
 
 impl Store {
     pub fn latest_observations(&self, sources: &[Source]) -> Result<Vec<Observation>> {
-        let mut statement = self.connection.prepare_cached(
-            "SELECT data FROM records WHERE kind='observation' AND json_extract(data,'$.source')=?1 ORDER BY created_at DESC,id DESC LIMIT 1"
-        ).map_err(sql)?;
-        let mut observations: Vec<Observation> = Vec::with_capacity(sources.len());
+        let mut keys: Vec<String> = Vec::with_capacity(sources.len());
         for source in sources {
-            if observations
-                .iter()
-                .any(|observation| observation.source == *source)
-            {
-                continue;
-            }
             let key = serde_json::to_value(source)?;
             let key = key
                 .as_str()
-                .ok_or_else(|| AppError::State("observation source has no wire identity".into()))?;
-            let record = statement
-                .query_row([key], |row| row.get::<_, String>(0))
-                .optional()
-                .map_err(sql)?;
-            if let Some(record) = record {
-                observations.push(serde_json::from_str(&record)?);
+                .ok_or_else(|| AppError::State("observation source has no wire identity".into()))?
+                .to_owned();
+            if !keys.contains(&key) {
+                keys.push(key);
             }
         }
-        Ok(observations)
+        let being = self.being.clone();
+        let records = self.db.run(move |client| {
+            let mut records = Vec::with_capacity(keys.len());
+            for key in &keys {
+                if let Some(row) = client
+                    .query_opt(
+                        "SELECT data FROM ecosystem_records WHERE being=$1 AND kind='observation'
+                         AND data::jsonb->>'source'=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
+                        &[&being, key],
+                    )
+                    .map_err(sql)?
+                {
+                    records.push(row.get::<_, String>(0));
+                }
+            }
+            Ok(records)
+        })?;
+        records
+            .iter()
+            .map(|record| serde_json::from_str(record).map_err(AppError::from))
+            .collect()
     }
 
     pub fn related<T: DeserializeOwned>(&self, kind: &str, initiative: &str) -> Result<Vec<T>> {
-        let mut statement = self.connection.prepare_cached(
-            "SELECT data FROM records WHERE kind=?1 AND json_extract(data,'$.initiative_id')=?2 ORDER BY created_at,id"
-        ).map_err(sql)?;
-        statement
-            .query_map(params![kind, initiative], |row| row.get::<_, String>(0))
-            .map_err(sql)?
-            .map(|row| serde_json::from_str(&row.map_err(sql)?).map_err(AppError::from))
-            .collect()
+        let (being, kind, initiative) =
+            (self.being.clone(), kind.to_owned(), initiative.to_owned());
+        datas(self.db.run(move |client| {
+            client
+                .query(
+                    "SELECT data FROM ecosystem_records WHERE being=$1 AND kind=$2
+                     AND data::jsonb->>'initiative_id'=$3 ORDER BY created_at,id",
+                    &[&being, &kind, &initiative],
+                )
+                .map_err(sql)
+        })?)
     }
 
     pub fn in_states<T: DeserializeOwned>(&self, kind: &str, states: &[&str]) -> Result<Vec<T>> {
-        let mut statement = self.connection.prepare_cached(
-            "SELECT data FROM records WHERE kind=?1 AND json_extract(data,'$.state') IN (SELECT value FROM json_each(?2)) ORDER BY created_at,id"
-        ).map_err(sql)?;
-        statement
-            .query_map(params![kind, serde_json::to_string(states)?], |row| {
-                row.get::<_, String>(0)
-            })
-            .map_err(sql)?
-            .map(|row| serde_json::from_str(&row.map_err(sql)?).map_err(AppError::from))
-            .collect()
+        let (being, kind) = (self.being.clone(), kind.to_owned());
+        let states: Vec<String> = states.iter().map(|state| (*state).to_owned()).collect();
+        datas(self.db.run(move |client| {
+            client
+                .query(
+                    "SELECT data FROM ecosystem_records WHERE being=$1 AND kind=$2
+                     AND data::jsonb->>'state' = ANY($3) ORDER BY created_at,id",
+                    &[&being, &kind, &states],
+                )
+                .map_err(sql)
+        })?)
     }
 
     pub fn active_count(&self) -> Result<i64> {
-        self.connection.query_row(
-            "SELECT count(*) FROM records WHERE kind='initiative' AND json_extract(data,'$.state') NOT IN ('completed','stopped','failed')",
-            [], |row| row.get(0)
-        ).map_err(sql)
+        let being = self.being.clone();
+        self.db.run(move |client| {
+            Ok(client
+                .query_one(
+                    "SELECT count(*) FROM ecosystem_records WHERE being=$1 AND kind='initiative'
+                     AND data::jsonb->>'state' NOT IN ('completed','stopped','failed')",
+                    &[&being],
+                )
+                .map_err(sql)?
+                .get(0))
+        })
     }
 }
