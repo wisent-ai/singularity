@@ -172,6 +172,17 @@ SINGULARITY_FINANCE_CUSTODY_URL
 SINGULARITY_FINANCE_CUSTODY_TOKEN_FILE
 ```
 
+`cargo run --example finance_lifecycle` drives one transaction through
+`singularity-finance-mcp` with seven generated authority keys and
+`/usr/bin/false` as executor: proposals and their refusals, simulation and
+approval. The policy's two-second timelock is real, so the command prints its
+directory and stops; run it again with that directory once `timelock_until`
+has passed to sign, dispatch, reconcile, submit, confirm and exercise the
+enable lease (kill switch, fresh lease, rollback refused).
+`docs/examples/sandbox-being.sh` bootstraps a being with no Brama, no Las
+checkout and no credentials, against the zero-tool Las stand-in
+`docs/examples/stub-las.sh`.
+
 ## Child beings
 
 `singularity_spawn_child` creates a separate owner-only state directory and

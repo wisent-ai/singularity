@@ -7,17 +7,17 @@
 set -u
 
 BIN=${SINGULARITY_BIN:-singularity}
-STUB=$(cd "$(dirname "$0")" && pwd)/stub-las.py
+STUB=$(cd "$(dirname "$0")" && pwd)/stub-las.sh
 SBX=$(mktemp -d /tmp/singularity-walkthrough.XXXXXX)
 mkdir -p "$SBX/workspace" "$SBX/las"
 printf 'walkthrough-not-a-real-secret\n' > "$SBX/brama.hmac"
 chmod 600 "$SBX/brama.hmac"
-cp "$STUB" "$SBX/las/stub-las.py"
+cp "$STUB" "$SBX/las/stub-las.sh"
 for f in release.manifest.json release.manifest.sig release.trust release.watermark; do
   printf 'stub\n' > "$SBX/las/$f"
 done
 
-hex() { python3 -c "print('$1' * 64)"; }
+hex() { printf "$1%.0s" $(seq 64); }
 
 export SINGULARITY_AGENT_ID=walkthrough-being SINGULARITY_ROLE=walkthrough \
   SINGULARITY_ENVIRONMENT=local-walkthrough SINGULARITY_HOST=local \
@@ -27,7 +27,7 @@ export SINGULARITY_AGENT_ID=walkthrough-being SINGULARITY_ROLE=walkthrough \
   SINGULARITY_POLICY_SEQUENCE=1 \
   SINGULARITY_STATE_DIR="$SBX/state" SINGULARITY_WORKSPACE="$SBX/workspace" \
   BRAMA_BASE_URL=http://127.0.0.1:9 BRAMA_HMAC_SECRET_FILE="$SBX/brama.hmac" \
-  LAS_COMMAND=/usr/bin/python3 LAS_MCP_ENTRYPOINT="$SBX/las/stub-las.py" \
+  LAS_COMMAND=/bin/sh LAS_MCP_ENTRYPOINT="$SBX/las/stub-las.sh" \
   LAS_RELEASE_MANIFEST_FILE="$SBX/las/release.manifest.json" \
   LAS_RELEASE_MANIFEST_SIGNATURE_FILE="$SBX/las/release.manifest.sig" \
   LAS_RELEASE_TRUST_STORE_FILE="$SBX/las/release.trust" \
@@ -48,7 +48,7 @@ chmod 644 "$SBX/brama.hmac"; "$BIN" once 2>&1; echo "exit=$?"
 chmod 600 "$SBX/brama.hmac"
 
 step 'boot gate: missing Las entrypoint'
-LAS_MCP_ENTRYPOINT="$SBX/las/missing.py" "$BIN" once 2>&1; echo "exit=$?"
+LAS_MCP_ENTRYPOINT="$SBX/las/missing.sh" "$BIN" once 2>&1; echo "exit=$?"
 
 step 'boot gate: relative Las release pinning path'
 LAS_RELEASE_MANIFEST_FILE=las/release.manifest.json "$BIN" once 2>&1; echo "exit=$?"
@@ -74,7 +74,7 @@ SINGULARITY_ROLE=other-role "$BIN" once --resume 2>&1; echo "exit=$?"
 
 step 'resume accepted: same being, one cycle older'
 "$BIN" once --resume 2>&1; echo "exit=$?"
-python3 -c "import json;print('cycle =', json.load(open('$SBX/state/state.json'))['cycle'])"
+sed -En 's/.*"cycle"[[:space:]]*:[[:space:]]*([0-9]+).*/cycle = \1/p' "$SBX/state/state.json"
 
 step 'resume gate: no state to resume'
 SINGULARITY_STATE_DIR="$SBX/state-none" "$BIN" once --resume 2>&1; echo "exit=$?"
