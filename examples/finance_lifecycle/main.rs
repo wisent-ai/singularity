@@ -19,6 +19,7 @@
 //!
 //! SINGULARITY_FINANCE_MCP names another singularity-finance-mcp binary.
 
+mod signing;
 mod walk;
 
 use std::os::unix::fs::DirBuilderExt;
@@ -27,9 +28,10 @@ use std::path::PathBuf;
 use chrono::{Duration, Utc};
 use serde_json::{json, Value};
 
-use walk::{
-    fresh_key, sha, ts, with, write_owner_only, Outcome, Progress, Walk, POLICY_ID, VERSION,
+use signing::{
+    fresh_key, sha, ts, with, write_owner_only, Key, Outcome, Progress, POLICY_ID, VERSION,
 };
+use walk::Walk;
 
 const TIMELOCK_SECONDS: u64 = 2;
 const AUTHORITIES: usize = 7;
@@ -66,7 +68,7 @@ fn main() -> Outcome<()> {
 
 /// Keys by role: document (policy, leases, owner events), approver,
 /// simulator, signer, executor, reconciler, and the WORM receipt key.
-fn policy(keys: &[walk::Key], worm: &str) -> Value {
+fn policy(keys: &[Key], worm: &str) -> Value {
     let now = Utc::now();
     let limits = json!({"per_transaction_minor": 5000, "rolling_window_seconds": 3600, "rolling_limit_minor": 8000,
         "daily_limit_minor": 8000, "lifetime_limit_minor": 20000});
