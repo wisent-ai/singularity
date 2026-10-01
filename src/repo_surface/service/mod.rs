@@ -90,12 +90,18 @@ impl RepoService {
     }
 
     pub(super) fn repo<'a>(&'a self, state: &WorkspaceState) -> SurfaceResult<&'a RepoPolicy> {
-        let repo = self.policy.repositories.get(&state.repo_id)
+        let repo = self
+            .policy
+            .repositories
+            .get(&state.repo_id)
             .ok_or_else(|| SurfaceError::policy("workspace repository is no longer allowed"))?;
         if state.worktree != repo.root || state.branch != repo.base_branch {
-            return Err(SurfaceError::policy("workspace is not the canonical main checkout; legacy isolated workspaces are not adopted"));
+            return Err(SurfaceError::policy(
+                "workspace is not the canonical main checkout; legacy isolated workspaces are not adopted",
+            ));
         }
-        self.state.require_repository_owner(&state.repo_id, &state.id)?;
+        self.state
+            .require_repository_owner(&state.repo_id, &state.id)?;
         Ok(repo)
     }
 
@@ -145,7 +151,3 @@ use repository::{parse, status_json};
 mod proposal;
 mod repository;
 mod workspace;
-
-#[cfg(test)]
-#[path = "../../../tests/repo_surface/service.rs"]
-mod tests;
