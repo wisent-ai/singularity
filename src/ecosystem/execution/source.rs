@@ -160,7 +160,10 @@ pub fn accepted_receipt(response: &Value) -> Result<(), AppError> {
     let contract: pursuit::TaskContract = evidence(&run, &response["contract"])?;
     let verdict: pursuit::TaskVerdict = evidence(&run, &response["verdict"])?;
     let receipt: pursuit::RunReceipt = evidence(&run, &response["receipt"])?;
-    pursuit::validate_contract(&contract).map_err(AppError::State)?;
+    // The objective is bound when the immutable request file is dispatched,
+    // and Pursuit refuses a contract whose roughObjective differs from it
+    // before the run starts; here the contract's shape is checked again.
+    pursuit::validate_contract(&contract, &contract.rough_objective).map_err(AppError::State)?;
     pursuit::validate_verdict(&verdict, &contract).map_err(AppError::State)?;
     if receipt.state != "succeeded"
         || Some(receipt.run_id.as_str()) != response["run_id"].as_str()
