@@ -25,9 +25,13 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Start the agent and keep running cycles until it is stopped
     Run(CycleArgs),
+    /// Run one autonomous cycle, print its report as JSON, then stop
     Once(CycleArgs),
+    /// Check Brama, the configured model, Most and the LAS tool surfaces, and print the result as JSON
     Doctor(CommonArgs),
+    /// List the tools the LAS surfaces advertise
     Tools(ToolsArgs),
     /// Import existing memory, knowledge, and profile records into a being
     Import(ImportArgs),
