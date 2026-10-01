@@ -1,5 +1,11 @@
+// lib.rs loads this file with #[path = "platform/brama.rs"], and a module
+// loaded that way looks for its children beside it, in platform/, not in
+// platform/brama/; each child therefore names its own file.
+#[path = "brama/auth.rs"]
 mod auth;
+#[path = "brama/catalog.rs"]
 mod catalog;
+#[path = "brama/constants.rs"]
 mod constants;
 pub use catalog::Quote;
 use std::time::Duration;
