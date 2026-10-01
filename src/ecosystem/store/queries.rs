@@ -2,7 +2,7 @@ use super::fleet::record;
 use super::{AppError, Result, Store, datas, field_is, of_kind, sql};
 use crate::ecosystem::model::{Observation, Source};
 use sea_orm::sea_query::Expr;
-use sea_orm::{EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::de::DeserializeOwned;
 
 impl Store {
