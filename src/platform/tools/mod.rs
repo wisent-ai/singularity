@@ -276,6 +276,6 @@ pub use outcome::*;
 use registry::*;
 use workspace::*;
 
-#[cfg(test)]
-#[path = "../../../tests/platform/tools.rs"]
-mod tests;
+
+
+

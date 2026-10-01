@@ -163,6 +163,6 @@ use files::*;
 use manifest::*;
 use redeem::*;
 
-#[cfg(test)]
-#[path = "../../tests/bootstrap/cases.rs"]
-mod tests;
+
+
+

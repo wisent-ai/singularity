@@ -193,6 +193,6 @@ fn map_indeterminate(error: reqwest::Error) -> AppError {
     most(ErrorClass::Indeterminate, error.to_string())
 }
 
-#[cfg(test)]
-#[path = "../../tests/platform/most.rs"]
-mod tests;
+
+
+

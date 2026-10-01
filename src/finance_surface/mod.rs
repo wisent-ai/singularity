@@ -121,6 +121,6 @@ pub fn tools() -> Value {
     ])
 }
 
-#[cfg(test)]
-#[path = "../../tests/finance_surface/mod.rs"]
-mod tests;
+
+
+

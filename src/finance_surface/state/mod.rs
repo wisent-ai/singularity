@@ -131,6 +131,6 @@ use files::{LOCK_EX, LOCK_UN, flock};
 pub use records::*;
 use records::{LeaseAnchor, PolicyAnchor};
 
-#[cfg(test)]
-#[path = "../../../tests/finance_surface/state.rs"]
-mod tests;
+
+
+

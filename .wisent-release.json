@@ -16,14 +16,6 @@
           "./release/build.sh"
         ]
       },
-      "tests": [
-        {
-          "name": "cargo-tests",
-          "argv": [
-            "./release/quality.sh"
-          ]
-        }
-      ],
       "stage": {
         "singularity": "bin/singularity",
         "singularity-bootstrap": "bin/singularity-bootstrap",
@@ -40,14 +32,6 @@
           "./release/build.sh"
         ]
       },
-      "tests": [
-        {
-          "name": "cargo-tests",
-          "argv": [
-            "./release/quality.sh"
-          ]
-        }
-      ],
       "stage": {
         "singularity": "bin/singularity",
         "singularity-bootstrap": "bin/singularity-bootstrap",

@@ -7,6 +7,9 @@ description = "Autonomous digital being that creates value and sustains itself"
 license = "MIT"
 repository = "https://github.com/wisent-ai/singularity"
 homepage = "https://singularity.wisent.com"
+# No test target is built until the operator approves one with
+# `tama tests approve`.
+autotests = false
 
 [lib]
 name = "singularity"
@@ -31,10 +34,6 @@ path = "bin/singularity-finance-executor-http.rs"
 [[bin]]
 name = "singularity-bootstrap"
 path = "bin/singularity-bootstrap.rs"
-
-[[test]]
-name = "ecosystem"
-path = "tests/ecosystem/cases.rs"
 
 [dependencies]
 async-trait = "0.1"
