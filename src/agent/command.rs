@@ -38,7 +38,6 @@ pub(super) fn print_startup_import(report: &crate::import::ImportReport) -> Resu
 
 pub async fn execute(command: Command, cancellation: CancellationToken) -> Result<(), AppError> {
     match command {
-        Command::CapabilityPreflight(args) => crate::capability_preflight::run(args),
         Command::Ecosystem(args) => crate::ecosystem::execute(args, cancellation).await,
         Command::Run(args) => {
             let startup_import = startup_import(&args)?;

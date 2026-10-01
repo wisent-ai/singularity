@@ -39,9 +39,6 @@ pub enum Command {
     Onboarding(OnboardingArgs),
     /// Direct and inspect the durable ecosystem portfolio.
     Ecosystem(crate::ecosystem::EcosystemArgs),
-    /// Check a capability-isolated unit's deployment before it starts and,
-    /// with --exec, start it (a refusal exits 78)
-    CapabilityPreflight(crate::capability_preflight::PreflightArgs),
 }
 
 #[derive(Debug, Clone, Args)]

@@ -1,6 +1,0 @@
-# Copy to the same name without .example only after replacing documentation
-# CIDRs with deployment-pinned Brama, Most and finance-executor destinations.
-[Service]
-IPAddressDeny=any
-IPAddressAllow=192.0.2.40/32
-IPAddressAllow=2001:db8::40/128
