@@ -211,6 +211,11 @@ singularity ecosystem pause             stop new admission without replaying eff
 singularity ecosystem resume            resume within the original delegation
 ```
 
+Every report `once`, `import`, `onboarding --import-file` and `doctor` print is
+JSON; the global `--text`, anywhere on the line, prints the same document as
+indented `key: value` lines for a person. `tools` keeps its own
+`--format json|table`.
+
 ## Configuration
 
 Every environment variable, and how `singularity-bootstrap` hands credentials

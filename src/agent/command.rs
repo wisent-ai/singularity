@@ -5,6 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::*;
 use crate::brama::BramaClient;
+use crate::config::answer::answer;
 use crate::config::{Command, CommonArgs, CycleArgs, OutputFormat, RuntimeConfig, ToolsArgs};
 use crate::error::{AppError, ErrorClass};
 use crate::mcp::LasSupervisor;
@@ -31,12 +32,18 @@ pub(super) fn startup_import(
         .transpose()
 }
 
-pub(super) fn print_startup_import(report: &crate::import::ImportReport) -> Result<(), AppError> {
-    println!("{}", serde_json::to_string_pretty(report)?);
-    Ok(())
+pub(super) fn print_startup_import(
+    report: &crate::import::ImportReport,
+    text: bool,
+) -> Result<(), AppError> {
+    answer(report, text)
 }
 
-pub async fn execute(command: Command, cancellation: CancellationToken) -> Result<(), AppError> {
+pub async fn execute(
+    command: Command,
+    text: bool,
+    cancellation: CancellationToken,
+) -> Result<(), AppError> {
     match command {
         Command::Ecosystem(args) => crate::ecosystem::execute(args, cancellation).await,
         Command::Run(args) => {
@@ -47,7 +54,7 @@ pub async fn execute(command: Command, cancellation: CancellationToken) -> Resul
             )
             .await?;
             if let Some(report) = startup_report.as_ref() {
-                print_startup_import(report)?;
+                print_startup_import(report, text)?;
             }
             let result = agent.run(cancellation).await;
             let shutdown = agent.shutdown().await;
@@ -61,13 +68,13 @@ pub async fn execute(command: Command, cancellation: CancellationToken) -> Resul
             )
             .await?;
             if let Some(report) = startup_report.as_ref() {
-                print_startup_import(report)?;
+                print_startup_import(report, text)?;
             }
             let result = agent.run_once().await;
             let shutdown = agent.shutdown().await;
             let report = result?;
             shutdown?;
-            println!("{}", serde_json::to_string_pretty(&report)?);
+            answer(&report, text)?;
             match crate::onboarding::record_completed_cycle(&report).await {
                 Ok(true) => println!(
                     "First-use complete: Singularity recorded autonomous_cycle_completed from the cycle above."
@@ -81,7 +88,7 @@ pub async fn execute(command: Command, cancellation: CancellationToken) -> Resul
         }
         Command::Import(args) => {
             let report = crate::import::import_file(&args.state_dir, &args.file).await?;
-            println!("{}", serde_json::to_string_pretty(&report)?);
+            answer(&report, text)?;
             if report.accepted {
                 Ok(())
             } else {
@@ -94,7 +101,7 @@ pub async fn execute(command: Command, cancellation: CancellationToken) -> Resul
         Command::Onboarding(args) => {
             if let Some(path) = args.import_file.as_deref() {
                 let report = crate::import::import_file(&args.state_dir, path).await?;
-                println!("{}", serde_json::to_string_pretty(&report)?);
+                answer(&report, text)?;
                 if !report.accepted {
                     return Err(AppError::State(format!(
                         "onboarding import refused: {} conflicting and {} rejected item(s); no state was changed",
@@ -107,12 +114,12 @@ pub async fn execute(command: Command, cancellation: CancellationToken) -> Resul
                 .map(|_| ())
                 .map_err(|error| AppError::Runtime(format!("onboarding: {error}")))
         }
-        Command::Doctor(args) => doctor(&args).await,
+        Command::Doctor(args) => doctor(&args, text).await,
         Command::Tools(args) => list_tools(&args).await,
     }
 }
 
-pub(super) async fn doctor(args: &CommonArgs) -> Result<(), AppError> {
+pub(super) async fn doctor(args: &CommonArgs, text: bool) -> Result<(), AppError> {
     let config = RuntimeConfig::from_args(args)?;
     let brama = BramaClient::new(
         config.brama_url.clone(),
@@ -167,12 +174,10 @@ pub(super) async fn doctor(args: &CommonArgs) -> Result<(), AppError> {
     .await?;
     let tools = las.tools().len();
     las.shutdown(config.shutdown_grace).await?;
-    println!(
-        "{}",
-        serde_json::to_string_pretty(
-            &json!({"ok":true,"brama_model":config.brama_model,"most":health,"las_tools":tools})
-        )?
-    );
+    answer(
+        &json!({"ok":true,"brama_model":config.brama_model,"most":health,"las_tools":tools}),
+        text,
+    )?;
     Ok(())
 }
 

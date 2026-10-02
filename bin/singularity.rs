@@ -49,6 +49,6 @@ fn run() -> Result<(), singularity::AppError> {
                 signal.cancel();
             }
         });
-        singularity::agent::execute(cli.command, cancellation).await
+        singularity::agent::execute(cli.command, cli.text, cancellation).await
     })
 }

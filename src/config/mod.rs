@@ -1,3 +1,4 @@
+pub mod answer;
 pub(crate) mod environment;
 use std::path::PathBuf;
 
@@ -19,6 +20,10 @@ const GROUP_OR_OTHER_WRITE_ACCESS: u32 = 0o022;
     about = "Autonomous Wisent agent runtime in Rust"
 )]
 pub struct Cli {
+    /// Print every report as indented `key: value` lines for a person instead
+    /// of JSON; both come from the same data.
+    #[arg(long, global = true)]
+    pub text: bool,
     #[command(subcommand)]
     pub command: Command,
 }
