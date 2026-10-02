@@ -20,14 +20,15 @@ done
 hex() { printf "$1%.0s" $(seq 64); }
 
 export SINGULARITY_AGENT_ID=walkthrough-being SINGULARITY_ROLE=walkthrough \
+  SINGULARITY_AGENT_NAME=walkthrough SINGULARITY_AGENT_TICKER=WALK \
   SINGULARITY_ENVIRONMENT=local-walkthrough SINGULARITY_HOST=local \
   SINGULARITY_WORKLOAD_ID=walkthrough-workload \
   SINGULARITY_WORKLOAD_PUBLIC_KEY="$(hex a)" SINGULARITY_EXECUTABLE_SHA256="$(hex b)" \
   SINGULARITY_CODE_SHA256="$(hex c)" SINGULARITY_POLICY_SHA256="$(hex d)" \
   SINGULARITY_POLICY_SEQUENCE=1 \
   SINGULARITY_STATE_DIR="$SBX/state" SINGULARITY_WORKSPACE="$SBX/workspace" \
-  BRAMA_BASE_URL=http://127.0.0.1:9 BRAMA_HMAC_SECRET_FILE="$SBX/brama.hmac" \
-  LAS_COMMAND=/bin/sh LAS_MCP_ENTRYPOINT="$SBX/las/stub-las.sh" \
+  BRAMA_BASE_URL=http://127.0.0.1:9 BRAMA_MODEL=any BRAMA_HMAC_SECRET_FILE="$SBX/brama.hmac" \
+  LAS_COMMAND=/bin/sh LAS_MCP_ENTRYPOINT="$SBX/las/stub-las.sh" LAS_ONLY= \
   LAS_RELEASE_MANIFEST_FILE="$SBX/las/release.manifest.json" \
   LAS_RELEASE_MANIFEST_SIGNATURE_FILE="$SBX/las/release.manifest.sig" \
   LAS_RELEASE_TRUST_STORE_FILE="$SBX/las/release.trust" \

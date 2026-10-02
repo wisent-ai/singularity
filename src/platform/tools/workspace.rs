@@ -91,13 +91,18 @@ pub(super) fn file_write(workspace: &Path, arguments: Map<String, Value>) -> Too
     success(json!({"path":relative,"bytes":content.len()}), None, None)
 }
 
+/// A child is a full being started by its parent, so it is handed everything
+/// the parent was declared with — the Brama address and model, the Las
+/// program, entrypoint and surfaces, and Most — explicitly, never by
+/// inheriting whatever environment this process happened to start in.
 pub(super) async fn spawn_child(
     state: &mut AgentState,
-    state_dir: &Path,
-    brama_url: &url::Url,
+    config: &crate::config::RuntimeConfig,
     most: Option<&crate::most::MostClient>,
     arguments: Map<String, Value>,
 ) -> ToolOutcome {
+    let state_dir = config.state_dir.as_path();
+    let brama_url = &config.brama_url;
     let name = match required_text(&arguments, "name", 128) {
         Ok(value) => value,
         Err(error) => return error,
@@ -127,7 +132,18 @@ pub(super) async fn spawn_child(
         .env("SINGULARITY_SPECIALTY", &specialty)
         .env("SINGULARITY_STATE_DIR", &child_state)
         .env("SINGULARITY_RESUME", "false")
-        .env("BRAMA_BASE_URL", brama_url.as_str());
+        .env("BRAMA_BASE_URL", brama_url.as_str())
+        .env("BRAMA_MODEL", &config.brama_model)
+        .env("LAS_COMMAND", &config.las_command)
+        .env("LAS_MCP_ENTRYPOINT", &config.las_entrypoint)
+        .env("LAS_ONLY", &config.las_only)
+        .env("LAS_RELEASE_MANIFEST_FILE", &config.las_release_manifest)
+        .env("LAS_RELEASE_MANIFEST_SIGNATURE_FILE", &config.las_release_manifest_signature)
+        .env("LAS_RELEASE_TRUST_STORE_FILE", &config.las_release_trust_store)
+        .env("LAS_RELEASE_WATERMARK_FILE", &config.las_release_watermark);
+    if let Some(skip) = config.las_skip.as_deref() {
+        command.env("LAS_SKIP", skip);
+    }
     if let Some(most) = most {
         command.env("MOST_BASE_URL", most.base_url().as_str());
     }

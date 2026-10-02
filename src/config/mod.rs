@@ -68,15 +68,15 @@ pub struct ImportArgs {
 pub struct ToolsArgs {
     #[arg(long, env = "SINGULARITY_AGENT_ID")]
     pub agent_id: Option<String>,
-    #[arg(long, env = "LAS_COMMAND", default_value = "node")]
+    /// The program that runs Las (its MCP entrypoint's interpreter). No
+    /// program or checkout location is assumed.
+    #[arg(long, env = "LAS_COMMAND")]
     pub las_command: String,
-    #[arg(long, env = "LAS_MCP_ENTRYPOINT", default_value = "../las/src/mcp.mjs")]
+    #[arg(long, env = "LAS_MCP_ENTRYPOINT")]
     pub las_entrypoint: PathBuf,
-    #[arg(
-        long,
-        env = "LAS_ONLY",
-        default_value = "weles,skarbiec,tama,stado,lem,echo,most,probierz,byk,brama,warsztat,finance"
-    )]
+    /// The Las surfaces this being is served, comma-separated; no surface set
+    /// is assumed.
+    #[arg(long, env = "LAS_ONLY")]
     pub las_only: String,
     #[arg(long, env = "LAS_SKIP")]
     pub las_skip: Option<String>,
@@ -113,9 +113,9 @@ pub struct CommonArgs {
     pub stimulus: Option<String>,
     #[arg(long, env = "SINGULARITY_AGENT_ID")]
     pub agent_id: String,
-    #[arg(long, env = "SINGULARITY_AGENT_NAME", default_value = "MyAgent")]
+    #[arg(long, env = "SINGULARITY_AGENT_NAME")]
     pub agent_name: String,
-    #[arg(long, env = "SINGULARITY_AGENT_TICKER", default_value = "AGENT")]
+    #[arg(long, env = "SINGULARITY_AGENT_TICKER")]
     pub agent_ticker: String,
     #[arg(long, env = "SINGULARITY_AGENT_TYPE", default_value = "general")]
     pub agent_type: String,
@@ -161,7 +161,9 @@ pub struct CommonArgs {
     /// or the launching declaration names it.
     #[arg(long, env = "BRAMA_BASE_URL")]
     pub brama_url: String,
-    #[arg(long, env = "BRAMA_MODEL", default_value = "any")]
+    /// The Brama model or selector (`any`, `any-vision-capable`, `task:<name>`)
+    /// cognition runs on; none is assumed.
+    #[arg(long, env = "BRAMA_MODEL")]
     pub brama_model: String,
     #[arg(long, env = "BRAMA_HMAC_SECRET_FILE")]
     pub brama_secret_file: Option<PathBuf>,
@@ -171,15 +173,15 @@ pub struct CommonArgs {
     pub max_tokens: u32,
     #[arg(long, env = "BRAMA_TEMPERATURE", default_value = "0.2")]
     pub temperature: f64,
-    #[arg(long, env = "LAS_COMMAND", default_value = "node")]
+    /// The program that runs Las (its MCP entrypoint's interpreter). No
+    /// program or checkout location is assumed.
+    #[arg(long, env = "LAS_COMMAND")]
     pub las_command: String,
-    #[arg(long, env = "LAS_MCP_ENTRYPOINT", default_value = "../las/src/mcp.mjs")]
+    #[arg(long, env = "LAS_MCP_ENTRYPOINT")]
     pub las_entrypoint: PathBuf,
-    #[arg(
-        long,
-        env = "LAS_ONLY",
-        default_value = "weles,skarbiec,tama,stado,lem,echo,most,probierz,byk,brama,warsztat,finance"
-    )]
+    /// The Las surfaces this being is served, comma-separated; no surface set
+    /// is assumed.
+    #[arg(long, env = "LAS_ONLY")]
     pub las_only: String,
     #[arg(long, env = "LAS_SKIP")]
     pub las_skip: Option<String>,

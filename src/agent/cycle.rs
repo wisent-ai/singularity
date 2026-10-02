@@ -84,8 +84,7 @@ impl Agent {
                         self.most.as_ref(),
                         &mut self.state,
                         &mut self.brama,
-                        &self.config.workspace,
-                        &self.config.state_dir,
+                        &self.config,
                     )
                     .await;
                 let status = match outcome.status {

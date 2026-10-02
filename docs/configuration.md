@@ -44,13 +44,19 @@ MOST_BASE_URL
 MOST_SERVICE_TOKEN_FILE
 ```
 
-`BRAMA_BASE_URL` (`--brama-url`) is required: no Brama address is assumed,
-and a missing one is refused by the parser before anything starts.
-`MOST_BASE_URL` (`--most-url`) is required whenever a Most credential is
-configured, through `MOST_SERVICE_TOKEN_FILE` or the bootstrap handoff;
-without it the runtime refuses with `a Most credential is configured but
-MOST_BASE_URL (--most-url) is not`. A child being is handed the parent's Brama
-and Most addresses explicitly, so it reaches the same services as its parent.
+`BRAMA_BASE_URL` (`--brama-url`) and `BRAMA_MODEL` (`--brama-model`) are
+required: no Brama address or model is assumed, and a missing one is refused
+by the parser before anything starts. `SINGULARITY_AGENT_NAME` and
+`SINGULARITY_AGENT_TICKER` name the being; no persona is assumed.
+`LAS_COMMAND`, `LAS_MCP_ENTRYPOINT` and `LAS_ONLY` declare the program that
+runs Las, its MCP entrypoint and the surfaces this being is served; no
+checkout location or surface set is assumed (`LAS_ONLY=` serves every surface
+Las offers). `MOST_BASE_URL` (`--most-url`) is required whenever a Most
+credential is configured, through `MOST_SERVICE_TOKEN_FILE` or the bootstrap
+handoff; without it the runtime refuses with `a Most credential is configured
+but MOST_BASE_URL (--most-url) is not`. A child being is handed the parent's
+Brama address and model, Las declaration and Most address explicitly, so it
+reaches the same services as its parent.
 
 First-use journey and logging:
 

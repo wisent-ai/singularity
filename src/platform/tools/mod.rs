@@ -155,9 +155,9 @@ impl ToolCatalog {
         most: Option<&MostClient>,
         state: &mut AgentState,
         brama: &mut BramaClient,
-        workspace: &Path,
-        state_dir: &Path,
+        config: &crate::config::RuntimeConfig,
     ) -> ToolOutcome {
+        let workspace = config.workspace.as_path();
         let parsed = serde_json::from_str::<Value>(&call.function.arguments);
         let arguments = match parsed {
             Ok(Value::Object(map)) => map,
@@ -259,9 +259,7 @@ impl ToolCatalog {
             ToolOrigin::SelfAddRule => add_rule(state, arguments),
             ToolOrigin::SelfAddLearning => add_learning(state, arguments),
             ToolOrigin::SelfSwitchModel => switch_model(state, brama, arguments).await,
-            ToolOrigin::SpawnChild => {
-                spawn_child(state, state_dir, brama.base_url(), most, arguments).await
-            }
+            ToolOrigin::SpawnChild => spawn_child(state, config, most, arguments).await,
             ToolOrigin::FileRead => file_read(workspace, arguments),
             ToolOrigin::FileWrite => file_write(workspace, arguments),
         }
