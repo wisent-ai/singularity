@@ -31,16 +31,21 @@ pub struct EcosystemArgs {
 pub enum EcosystemCommand {
     /// Run the durable autonomous portfolio within a fixed delegated policy.
     Run(RunArgs),
+    /// Read the running portfolio's state: policy digest, admission state and counts.
     Status(ClientArgs),
+    /// List recorded opportunities, newest first, one page at a time.
     Opportunities(PageArgs),
+    /// List initiatives and their state, newest first, one page at a time.
     Initiatives(PageArgs),
     /// List bounded record summaries, newest inserts first.
     Records(RecordsArgs),
     /// Read a UTF-8 fragment; use next_offset and content_sha256 to continue.
     Record(RecordArgs),
+    /// Explain one initiative: the opportunity it came from, its policy checks and its operations.
     Explain(ExplainArgs),
     /// Stop admitting new work; retain and observe already dispatched operations.
     Pause(ClientArgs),
+    /// Admit new work again after a pause.
     Resume(ClientArgs),
 }
 #[derive(Debug, Args)]
@@ -67,6 +72,7 @@ pub struct ClientArgs {
 }
 #[derive(Debug, Args)]
 pub struct ExplainArgs {
+    /// The initiative id, as `ecosystem initiatives` prints it.
     pub id: String,
     #[command(flatten)]
     pub client: ClientArgs,
@@ -78,12 +84,15 @@ pub struct PageArgs {
     /// Continuation returned in next_cursor; omit to start a fresh listing.
     #[arg(long)]
     pub before: Option<i64>,
+    /// Records per page.
     #[arg(long, default_value_t = protocol::DEFAULT_PAGE_SIZE)]
     pub limit: u32,
 }
 #[derive(Debug, Args)]
 pub struct RecordsArgs {
+    /// Only records of this kind; every kind when omitted.
     pub kind: Option<String>,
+    /// Only records of this initiative.
     #[arg(long)]
     pub initiative_id: Option<String>,
     #[command(flatten)]
@@ -91,10 +100,14 @@ pub struct RecordsArgs {
 }
 #[derive(Debug, Args)]
 pub struct RecordArgs {
+    /// The record kind, as `ecosystem records` prints it.
     pub kind: String,
+    /// The record id.
     pub id: String,
+    /// Byte offset the fragment starts at; next_offset of the previous fragment.
     #[arg(long, default_value_t = 0)]
     pub offset: u64,
+    /// Bytes per fragment.
     #[arg(long, default_value_t = protocol::DEFAULT_RECORD_BYTES)]
     pub bytes: u32,
     /// The first fragment's content_sha256; required after offset zero.
