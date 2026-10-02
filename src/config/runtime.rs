@@ -75,7 +75,7 @@ impl RuntimeConfig {
                 "prices and balance cannot be negative".into(),
             ));
         }
-        let max_temperature: f64 = "2".parse().expect("static temperature is valid");
+        let max_temperature: f64 = 2.0;
         if args.temperature.is_sign_negative()
             || args.temperature > max_temperature
             || !args.temperature.is_finite()
