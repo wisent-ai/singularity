@@ -59,7 +59,8 @@ pub struct RunArgs {
 }
 #[derive(Debug, Args)]
 pub struct ClientArgs {
-    #[arg(long, env = "SINGULARITY_STATE_DIR", default_value = ".singularity")]
+    /// The being's state directory; no directory is assumed.
+    #[arg(long, env = "SINGULARITY_STATE_DIR")]
     pub state_dir: PathBuf,
     #[arg(long)]
     pub json: bool,

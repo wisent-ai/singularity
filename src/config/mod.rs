@@ -49,8 +49,9 @@ pub struct OnboardingArgs {
     /// Import this file through the canonical state owner before showing the walkthrough
     #[arg(long, value_name = "JSON")]
     pub import_file: Option<PathBuf>,
-    /// State directory of the being receiving imported records
-    #[arg(long, env = "SINGULARITY_STATE_DIR", default_value = ".singularity")]
+    /// State directory of the being receiving imported records; no
+    /// directory is assumed.
+    #[arg(long, env = "SINGULARITY_STATE_DIR")]
     pub state_dir: PathBuf,
 }
 
@@ -59,8 +60,9 @@ pub struct ImportArgs {
     /// JSON document using schema singularity-mind-import-v1
     #[arg(long, value_name = "JSON")]
     pub file: PathBuf,
-    /// State directory of the being receiving imported records
-    #[arg(long, env = "SINGULARITY_STATE_DIR", default_value = ".singularity")]
+    /// State directory of the being receiving imported records; no
+    /// directory is assumed.
+    #[arg(long, env = "SINGULARITY_STATE_DIR")]
     pub state_dir: PathBuf,
 }
 
@@ -151,9 +153,11 @@ pub struct CommonArgs {
     pub cycle_interval_secs: u64,
     #[arg(long, env = "SINGULARITY_MAX_TOOL_ROUNDS", default_value = "8")]
     pub max_tool_rounds: usize,
-    #[arg(long, env = "SINGULARITY_STATE_DIR", default_value = ".singularity")]
+    /// The being's owner-only state directory; no directory is assumed.
+    #[arg(long, env = "SINGULARITY_STATE_DIR")]
     pub state_dir: PathBuf,
-    #[arg(long, env = "SINGULARITY_WORKSPACE", default_value = ".")]
+    /// The directory the being's file tools work in; no directory is assumed.
+    #[arg(long, env = "SINGULARITY_WORKSPACE")]
     pub workspace: PathBuf,
     #[arg(long, env = "SINGULARITY_RESUME", default_value = "false")]
     pub resume: bool,

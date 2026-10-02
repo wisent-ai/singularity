@@ -131,6 +131,7 @@ pub(super) async fn spawn_child(
         .env("SINGULARITY_AGENT_TICKER", &ticker)
         .env("SINGULARITY_SPECIALTY", &specialty)
         .env("SINGULARITY_STATE_DIR", &child_state)
+        .env("SINGULARITY_WORKSPACE", &config.workspace)
         .env("SINGULARITY_RESUME", "false")
         .env("BRAMA_BASE_URL", brama_url.as_str())
         .env("BRAMA_MODEL", &config.brama_model)
