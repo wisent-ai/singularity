@@ -120,7 +120,7 @@ impl Agent {
             &config.required_surfaces,
         )
         .await?;
-        let catalog = match ToolCatalog::build(las.tools(), config.most_token.is_some()) {
+        let catalog = match ToolCatalog::build(las.tools(), config.most.is_some()) {
             Ok(value) => value,
             Err(error) => {
                 let _ = las.shutdown(config.shutdown_grace).await;
@@ -128,9 +128,15 @@ impl Agent {
             }
         };
         let most = config
-            .most_token
-            .clone()
-            .map(|token| MostClient::new(config.most_url.clone(), token, config.http_timeout))
+            .most
+            .as_ref()
+            .map(|endpoint| {
+                MostClient::new(
+                    endpoint.url.clone(),
+                    endpoint.token.clone(),
+                    config.http_timeout,
+                )
+            })
             .transpose()?;
         let mut agent = Self {
             config,

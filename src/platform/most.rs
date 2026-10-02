@@ -45,6 +45,11 @@ impl MostClient {
         })
     }
 
+    /// The Most endpoint this client calls; a spawned child is handed the same one.
+    pub fn base_url(&self) -> &Url {
+        &self.base_url
+    }
+
     pub async fn health(&self) -> Result<MostHealth, AppError> {
         let response = self
             .http

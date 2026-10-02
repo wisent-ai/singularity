@@ -94,6 +94,8 @@ pub(super) fn file_write(workspace: &Path, arguments: Map<String, Value>) -> Too
 pub(super) async fn spawn_child(
     state: &mut AgentState,
     state_dir: &Path,
+    brama_url: &url::Url,
+    most: Option<&crate::most::MostClient>,
     arguments: Map<String, Value>,
 ) -> ToolOutcome {
     let name = match required_text(&arguments, "name", 128) {
@@ -124,7 +126,11 @@ pub(super) async fn spawn_child(
         .env("SINGULARITY_AGENT_TICKER", &ticker)
         .env("SINGULARITY_SPECIALTY", &specialty)
         .env("SINGULARITY_STATE_DIR", &child_state)
-        .env("SINGULARITY_RESUME", "false");
+        .env("SINGULARITY_RESUME", "false")
+        .env("BRAMA_BASE_URL", brama_url.as_str());
+    if let Some(most) = most {
+        command.env("MOST_BASE_URL", most.base_url().as_str());
+    }
     if let Err(error) = crate::bootstrap::inherit_for_child(command.as_std_mut()) {
         return failed("child_credentials", &error.to_string());
     }

@@ -259,7 +259,9 @@ impl ToolCatalog {
             ToolOrigin::SelfAddRule => add_rule(state, arguments),
             ToolOrigin::SelfAddLearning => add_learning(state, arguments),
             ToolOrigin::SelfSwitchModel => switch_model(state, brama, arguments).await,
-            ToolOrigin::SpawnChild => spawn_child(state, state_dir, arguments).await,
+            ToolOrigin::SpawnChild => {
+                spawn_child(state, state_dir, brama.base_url(), most, arguments).await
+            }
             ToolOrigin::FileRead => file_read(workspace, arguments),
             ToolOrigin::FileWrite => file_write(workspace, arguments),
         }

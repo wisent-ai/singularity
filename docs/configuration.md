@@ -44,6 +44,14 @@ MOST_BASE_URL
 MOST_SERVICE_TOKEN_FILE
 ```
 
+`BRAMA_BASE_URL` (`--brama-url`) is required: no Brama address is assumed,
+and a missing one is refused by the parser before anything starts.
+`MOST_BASE_URL` (`--most-url`) is required whenever a Most credential is
+configured, through `MOST_SERVICE_TOKEN_FILE` or the bootstrap handoff;
+without it the runtime refuses with `a Most credential is configured but
+MOST_BASE_URL (--most-url) is not`. A child being is handed the parent's Brama
+and Most addresses explicitly, so it reaches the same services as its parent.
+
 First-use journey and logging:
 
 ```text

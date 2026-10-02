@@ -34,11 +34,17 @@ pub struct RuntimeConfig {
     pub las_release_manifest_signature: PathBuf,
     pub las_release_trust_store: PathBuf,
     pub las_release_watermark: PathBuf,
-    pub most_token: Option<SecretString>,
+    /// Most, when a Most credential is configured; its URL is then required.
+    pub most: Option<MostEndpoint>,
     pub required_surfaces: Vec<String>,
-    pub most_url: Url,
     pub http_timeout: Duration,
     pub shutdown_grace: Duration,
+}
+
+/// Where Most is reached and the service credential that reaches it.
+pub struct MostEndpoint {
+    pub url: Url,
+    pub token: SecretString,
 }
 
 impl RuntimeConfig {
@@ -181,11 +187,26 @@ impl RuntimeConfig {
             las_release_trust_store: args.las_release_trust_store.clone(),
             las_release_watermark: args.las_release_watermark.clone(),
             required_surfaces,
-            most_url: parse_http_url(&args.most_url, "MOST_BASE_URL")?,
-            most_token: match (args.most_token_file.as_ref(), inherited) {
-                (Some(path), _) => Some(read_secret(path)?),
-                (None, Some(credentials)) => Some(credentials.most.clone()),
-                (None, None) => None,
+            most: match (
+                args.most_url.as_deref(),
+                match (args.most_token_file.as_ref(), inherited) {
+                    (Some(path), _) => Some(read_secret(path)?),
+                    (None, Some(credentials)) => Some(credentials.most.clone()),
+                    (None, None) => None,
+                },
+            ) {
+                (Some(url), Some(token)) => Some(MostEndpoint {
+                    url: parse_http_url(url, "MOST_BASE_URL")?,
+                    token,
+                }),
+                (None, Some(_)) => {
+                    return Err(AppError::Config(
+                        "a Most credential is configured but MOST_BASE_URL (--most-url) is not: \
+                         no Most address is assumed"
+                            .into(),
+                    ));
+                }
+                (_, None) => None,
             },
             http_timeout: Duration::from_secs(args.http_timeout_secs),
             shutdown_grace: Duration::from_secs(args.shutdown_grace_secs),

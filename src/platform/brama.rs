@@ -162,6 +162,11 @@ impl BramaClient {
         }
     }
 
+    /// The Brama endpoint this client calls; a spawned child is handed the same one.
+    pub fn base_url(&self) -> &Url {
+        &self.base_url
+    }
+
     pub fn set_model(&mut self, model: String) {
         self.model = model;
     }

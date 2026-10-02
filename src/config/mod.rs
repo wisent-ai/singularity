@@ -157,7 +157,9 @@ pub struct CommonArgs {
     pub workspace: PathBuf,
     #[arg(long, env = "SINGULARITY_RESUME", default_value = "false")]
     pub resume: bool,
-    #[arg(long, env = "BRAMA_BASE_URL", default_value = "http://127.0.0.1:8081")]
+    /// Brama's base URL. No address is assumed: the host's service directory
+    /// or the launching declaration names it.
+    #[arg(long, env = "BRAMA_BASE_URL")]
     pub brama_url: String,
     #[arg(long, env = "BRAMA_MODEL", default_value = "any")]
     pub brama_model: String,
@@ -195,8 +197,9 @@ pub struct CommonArgs {
         default_value = "skarbiec,finance"
     )]
     pub required_surfaces: String,
-    #[arg(long, env = "MOST_BASE_URL", default_value = "http://127.0.0.1:8080")]
-    pub most_url: String,
+    /// Most's base URL, required when a Most credential is configured.
+    #[arg(long, env = "MOST_BASE_URL")]
+    pub most_url: Option<String>,
     #[arg(long, env = "MOST_SERVICE_TOKEN_FILE")]
     pub most_token_file: Option<PathBuf>,
     #[arg(long, env = "SINGULARITY_HTTP_TIMEOUT_SECS", default_value = "120")]
