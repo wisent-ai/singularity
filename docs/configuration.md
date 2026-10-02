@@ -74,6 +74,8 @@ Ecosystem store:
 
 ```text
 SINGULARITY_STADO_HOME
+SINGULARITY_DATABASE_URL
+SINGULARITY_DATABASE_CA_FILE
 ```
 
 The ecosystem store is the fleet database `singularity`, reached through
@@ -84,6 +86,11 @@ The ecosystem store is the fleet database `singularity`, reached through
 isolated still reaches the fleet as its host. A failure names the step that
 failed (locate Stado, resolve database, resolve Skarbiec route, read credential
 field, read pooler_url, connect).
+
+Without Stado or Skarbiec, `SINGULARITY_DATABASE_URL` (`postgres://` or
+`mysql://`) and `SINGULARITY_DATABASE_CA_FILE` (the PEM bundle the server is
+verified against) name the store directly and none of those steps runs; a URL
+without its certificate file is refused with both variables named.
 
 The bootstrap also binds the runtime to its workload identity, host, role,
 environment, executable digest, code digest and policy sequence.
