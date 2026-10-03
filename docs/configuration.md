@@ -85,13 +85,17 @@ SINGULARITY_DATABASE_CA_FILE
 ```
 
 The ecosystem store is the fleet database `singularity`, reached through
-`stado-database`: Stado resolves it, Skarbiec answers its address to
-`singularity-database-client`, whose bearer lies in
-`<home>/.stado/singularity-database-client-skarbiec-token`. The home is
-`SINGULARITY_STADO_HOME` when set, else `HOME`, so a being whose `HOME` is
-isolated still reaches the fleet as its host. A failure names the step that
-failed (locate Stado, resolve database, resolve Skarbiec route, read credential
-field, read pooler_url, connect).
+`stado-database`: `stado database resolve singularity --consumer singularity
+--json` names its credential item, and `stado service directory connect
+skarbiec --consumer singularity --json` names the route. The connector reads
+`pooler_url` and `ca_certificate` with `stado credentials get <resolved-item>
+--field <field> --route <resolved-url> --consumer
+singularity-database-client --grant-file
+<home>/.stado/singularity-database-client-skarbiec-token`, not the store
+administrator. The home is `SINGULARITY_STADO_HOME` when set, else `HOME`,
+so an isolated being still reaches the fleet as its host. A failure names
+the failed resolve, route, delegated field read or connection and Stado's
+status and error.
 
 Without Stado or Skarbiec, `SINGULARITY_DATABASE_URL` (`postgres://` or
 `mysql://`) and `SINGULARITY_DATABASE_CA_FILE` (the PEM bundle the server is

@@ -2549,7 +2549,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stado-database"
 version = "0.1.0"
-source = "git+https://github.com/wisent-ai/stado#d8d24f848aa180e16adac7509d4a00b33a035029"
+source = "git+https://github.com/wisent-ai/stado#8c7b4e2eed241669bb2ec97b38887b6bcdedf049"
 dependencies = [
  "sea-orm",
  "serde",
