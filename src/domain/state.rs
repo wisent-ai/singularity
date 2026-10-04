@@ -121,6 +121,8 @@ impl AgentState {
         }
     }
 
+    /// Every action is kept: the state is the agent's record of what it did, and none
+    /// of it is dropped by a count chosen here.
     pub fn record_action(&mut self, tool: impl Into<String>, status: impl Into<String>) {
         self.recent_actions.push(ActionRecord {
             cycle: self.cycle,
@@ -128,11 +130,6 @@ impl AgentState {
             status: status.into(),
             at: Utc::now(),
         });
-        let limit = RECENT_ACTIONS_KEPT;
-        if self.recent_actions.len() > limit {
-            self.recent_actions
-                .drain(..self.recent_actions.len() - limit);
-        }
         self.updated_at = Utc::now();
     }
 }

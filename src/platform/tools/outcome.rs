@@ -6,7 +6,6 @@ use uuid::Uuid;
 
 use crate::domain::{ChatMessage, ToolCall};
 
-pub(super) const MAX_MEMORIES: usize = 1_000;
 pub(super) const MAX_WORKSPACE_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
 pub(super) const MOST_HEALTH: &str = "most_health";

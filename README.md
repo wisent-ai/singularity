@@ -102,8 +102,9 @@ The accepted document is strict `singularity-mind-import-v1` JSON:
 All three arrays are required and may be empty, but at least one real record is
 required across them. Source and item IDs must be stable, nonempty, and unique
 within the document. Unknown
-fields, malformed JSON, symbolic links, files over 16 MiB, more than 1,000
-records, empty text, NULs, and oversized fields are refused.
+fields, malformed JSON, symbolic links, files over 16 MiB, empty text, NULs, and
+oversized fields are refused; the number of records is not limited, and every
+memory the import adds is kept.
 
 Singularity validates the entire document before mutation and saves `state.json`
 once. Repeating the same source item with the same text is unchanged; repeating

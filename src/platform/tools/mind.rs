@@ -41,9 +41,6 @@ pub(super) fn remember(state: &mut AgentState, arguments: Map<String, Value>) ->
     };
     let id = entry.id;
     state.mind.memories.push(entry);
-    if state.mind.memories.len() > MAX_MEMORIES {
-        state.mind.memories.remove(0);
-    }
     success(json!({"memory_id":id}), None, None)
 }
 

@@ -9,7 +9,7 @@ use crate::error::AppError;
 use crate::mcp::{LasSupervisor, McpTool};
 use crate::most::MostClient;
 
-/// The mind keeps at most a thousand memories; a workspace file read or written
+/// The mind keeps every memory it is given; a workspace file read or written
 /// through a tool is at most 2 MiB.
 pub struct ToolCatalog {
     definitions: Vec<ToolDefinition>,
@@ -275,7 +275,3 @@ use mind::*;
 pub use outcome::*;
 use registry::*;
 use workspace::*;
-
-
-
-

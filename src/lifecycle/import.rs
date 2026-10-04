@@ -13,7 +13,6 @@ use crate::error::AppError;
 
 pub const IMPORT_SCHEMA_VERSION: &str = "singularity-mind-import-v1";
 const MAX_IMPORT_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_ITEMS: usize = 1_000;
 const MAX_SOURCE_BYTES: usize = 256;
 const MAX_TEXT_BYTES: usize = 65_536;
 
@@ -207,15 +206,6 @@ pub fn apply_import(
         report.imported += 1;
     }
 
-    if state.mind.memories.len() > MAX_ITEMS {
-        report.rejected += state.mind.memories.len() - MAX_ITEMS;
-        report.issues.push(ImportIssue {
-            category: "memory".into(),
-            item_id: "*".into(),
-            reason: format!("import would exceed the {MAX_ITEMS}-memory state limit"),
-        });
-    }
-
     if report.conflicting > 0 || report.rejected > 0 {
         report.accepted = false;
         report.imported = 0;
@@ -240,11 +230,6 @@ fn validate(input: &MindImport) -> Result<Vec<Candidate>, AppError> {
         return Err(AppError::State(
             "import must contain at least one memory, knowledge, or profile item".into(),
         ));
-    }
-    if total > MAX_ITEMS {
-        return Err(AppError::State(format!(
-            "import contains {total} items; maximum is {MAX_ITEMS}"
-        )));
     }
 
     let mut seen = BTreeSet::new();
