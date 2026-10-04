@@ -84,10 +84,7 @@ impl FinanceService {
             .map_err(|error| SurfaceError::internal(format!("executor wait failed: {error}")))?;
         if !output.status.success() {
             let detail = String::from_utf8_lossy(&output.stderr);
-            return Err(SurfaceError::internal(format!(
-                "executor refused: {}",
-                detail.chars().take(512).collect::<String>()
-            )));
+            return Err(SurfaceError::internal(format!("executor refused: {detail}")));
         }
         if output.stdout.len() > MAX_EXECUTOR_RESPONSE_BYTES {
             return Err(SurfaceError::internal(
