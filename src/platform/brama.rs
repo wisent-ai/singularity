@@ -19,9 +19,6 @@ use url::Url;
 use crate::domain::{ChatMessage, TokenUsage, ToolCall, ToolDefinition};
 use crate::error::{AppError, ErrorClass};
 
-/// A non-JSON error body is quoted up to 800 characters.
-const MAX_ERROR_EXCERPT_CHARS: usize = 800;
-
 #[derive(Debug, Serialize)]
 struct CompletionRequest<'a> {
     model: &'a str,
@@ -197,10 +194,7 @@ impl BramaClient {
             let message = match serde_json::from_slice::<ErrorEnvelope>(&bytes) {
                 Ok(value) => value.error.message,
                 Err(error) => {
-                    let excerpt: String = String::from_utf8_lossy(&bytes)
-                        .chars()
-                        .take(MAX_ERROR_EXCERPT_CHARS)
-                        .collect();
+                    let excerpt = String::from_utf8_lossy(&bytes);
                     format!("error body is not a Brama error envelope ({error}): {excerpt}")
                 }
             };
