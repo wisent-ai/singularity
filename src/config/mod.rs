@@ -143,11 +143,14 @@ pub struct CommonArgs {
     pub policy_digest: String,
     #[arg(long, env = "SINGULARITY_POLICY_SEQUENCE")]
     pub policy_sequence: u64,
-    #[arg(long, env = "SINGULARITY_STARTING_BALANCE_USD", default_value = "10")]
+    /// The declared initial budget of a new being, in USD; no balance is assumed.
+    #[arg(long, env = "SINGULARITY_STARTING_BALANCE_USD")]
     pub starting_balance: Decimal,
-    #[arg(long, env = "SINGULARITY_INSTANCE_USD_PER_HOUR", default_value = "0")]
+    /// The host's declared hourly price, in USD; a free host must state zero.
+    #[arg(long, env = "SINGULARITY_INSTANCE_USD_PER_HOUR")]
     pub instance_price: Decimal,
-    #[arg(long, env = "SINGULARITY_CYCLE_INTERVAL_SECS", default_value = "5")]
+    /// The declared pause between cycles, in seconds; no cadence is assumed.
+    #[arg(long, env = "SINGULARITY_CYCLE_INTERVAL_SECS")]
     pub cycle_interval_secs: u64,
     /// The being's owner-only state directory; no directory is assumed.
     #[arg(long, env = "SINGULARITY_STATE_DIR")]

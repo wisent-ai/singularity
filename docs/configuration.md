@@ -12,9 +12,39 @@ SINGULARITY_WORKSPACE
 SINGULARITY_STIMULUS
 SINGULARITY_STARTING_BALANCE_USD
 SINGULARITY_INSTANCE_USD_PER_HOUR
+SINGULARITY_CYCLE_INTERVAL_SECS
 SINGULARITY_STATE_DIR
 SINGULARITY_RESUME
 ```
+
+`run`, `once`, and `doctor` require an explicitly declared
+`SINGULARITY_STARTING_BALANCE_USD` (`--starting-balance`),
+`SINGULARITY_INSTANCE_USD_PER_HOUR` (`--instance-price`), and
+`SINGULARITY_CYCLE_INTERVAL_SECS` (`--cycle-interval-secs`), alongside the
+identity and service inputs below. There is no assumed initial balance, free
+host, or pause between cycles. For example, add these declared values to the
+runtime invocation:
+
+```text
+--starting-balance <declared-usd> --instance-price <declared-usd-per-hour> --cycle-interval-secs <declared-seconds>
+```
+
+Omitting any of them is a parser refusal naming the missing option, with exit
+status 2, before state creation or service access. A stated zero price means
+the host is declared free; a missing price does not. Balances and prices must
+not be negative. The initial balance is used for a new being only; resuming
+one retains its saved budget. These values are accounting declarations, not
+a deposit or transfer of funds.
+
+A child receives the parent's resolved initial-budget, host-price and cycle
+pause declarations explicitly, including values supplied as command-line
+flags rather than environment variables. Its new budget uses that declared
+initial allowance; it does not copy the parent's remaining balance.
+
+The CLI refusal regression is `cargo test --test launch-declarations`. It
+starts the real binary without inherited environment values and checks each
+missing declaration before runtime startup. It does not replace a live
+`once` or child-spawn run against the configured Brama and Las services.
 
 Brama:
 

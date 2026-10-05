@@ -35,6 +35,10 @@ path = "bin/singularity-finance-executor-http.rs"
 name = "singularity-bootstrap"
 path = "bin/singularity-bootstrap.rs"
 
+[[test]]
+name = "launch-declarations"
+path = "tests/configuration/launch.rs"
+
 [dependencies]
 async-trait = "0.1"
 base64 = "0.22"
