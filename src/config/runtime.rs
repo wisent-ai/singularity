@@ -67,9 +67,7 @@ impl RuntimeConfig {
         if !workspace.is_dir() {
             return Err(AppError::Config("workspace must be a directory".into()));
         }
-        if args.starting_balance.is_sign_negative()
-            || args.instance_price.is_sign_negative()
-        {
+        if args.starting_balance.is_sign_negative() || args.instance_price.is_sign_negative() {
             return Err(AppError::Config(
                 "prices and balance cannot be negative".into(),
             ));

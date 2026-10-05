@@ -55,12 +55,10 @@ impl Agent {
                 .quote(&completion.model)
                 .await?
                 .cost(&completion)?;
-            let amount = self.state.budget.debit(
-                api,
-                completion.usage,
-                elapsed,
-                self.config.instance_price,
-            );
+            let amount =
+                self.state
+                    .budget
+                    .debit(api, completion.usage, elapsed, self.config.instance_price);
             self.store.append(&ActivityEvent::ModelCompleted {
                 at: Utc::now(),
                 cycle: self.state.cycle,
