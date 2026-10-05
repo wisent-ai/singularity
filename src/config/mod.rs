@@ -175,10 +175,15 @@ pub struct CommonArgs {
     pub brama_secret_file: Option<PathBuf>,
     #[arg(long, env = "BRAMA_BEARER_TOKEN_FILE")]
     pub brama_bearer_file: Option<PathBuf>,
-    #[arg(long, env = "BRAMA_MAX_TOKENS", default_value = "2048")]
-    pub max_tokens: u32,
-    #[arg(long, env = "BRAMA_TEMPERATURE", default_value = "0.2")]
-    pub temperature: f64,
+    /// The completion's output-token limit. Omitted, no limit is sent: the
+    /// model's own `max_output_tokens` from Brama's catalog applies, and cost
+    /// admission is quoted against that.
+    #[arg(long, env = "BRAMA_MAX_TOKENS")]
+    pub max_tokens: Option<u32>,
+    /// Sampling temperature. Omitted, none is sent and the provider's own
+    /// default applies; the provider refuses a value outside its range.
+    #[arg(long, env = "BRAMA_TEMPERATURE")]
+    pub temperature: Option<f64>,
     /// The program that runs Las (its MCP entrypoint's interpreter). No
     /// program or checkout location is assumed.
     #[arg(long, env = "LAS_COMMAND")]

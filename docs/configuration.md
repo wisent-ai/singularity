@@ -58,6 +58,15 @@ but MOST_BASE_URL (--most-url) is not`. A child being is handed the parent's
 Brama address and model, Las declaration and Most address explicitly, so it
 reaches the same services as its parent.
 
+`BRAMA_MAX_TOKENS` (`--max-tokens`) and `BRAMA_TEMPERATURE` (`--temperature`)
+are optional and have no default. Without `BRAMA_MAX_TOKENS` no output limit is
+sent: the model's own `max_output_tokens` from Brama's catalog applies, and cost
+admission quotes the call against that limit. Without `BRAMA_TEMPERATURE` no
+temperature is sent and the provider's default applies. A stated temperature
+must be finite and not negative (`configuration: temperature must be finite and
+not negative`); its upper end is the provider's, which refuses a value outside
+its range with its own message.
+
 First-use journey and logging:
 
 ```text

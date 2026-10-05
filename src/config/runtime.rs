@@ -24,8 +24,8 @@ pub struct RuntimeConfig {
     pub brama_model: String,
     pub brama_secret: SecretString,
     pub brama_bearer: SecretString,
-    pub max_tokens: u32,
-    pub temperature: f64,
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f64>,
     pub las_command: String,
     pub las_entrypoint: PathBuf,
     pub las_only: String,
@@ -79,13 +79,12 @@ impl RuntimeConfig {
                 "prices and balance cannot be negative".into(),
             ));
         }
-        let max_temperature: f64 = 2.0;
-        if args.temperature.is_sign_negative()
-            || args.temperature > max_temperature
-            || !args.temperature.is_finite()
+        if args
+            .temperature
+            .is_some_and(|temperature| temperature.is_sign_negative() || !temperature.is_finite())
         {
             return Err(AppError::Config(
-                "temperature must be finite and between zero and two".into(),
+                "temperature must be finite and not negative".into(),
             ));
         }
         if !args.las_entrypoint.is_file() {

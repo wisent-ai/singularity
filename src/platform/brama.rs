@@ -23,8 +23,10 @@ use crate::error::{AppError, ErrorClass};
 struct CompletionRequest<'a> {
     model: &'a str,
     messages: &'a [ChatMessage],
-    max_tokens: u32,
-    temperature: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
     tools: &'a [ToolDefinition],
 }
 
@@ -105,8 +107,10 @@ pub struct BramaClient {
     agent_id: String,
     secret: SecretString,
     bearer: SecretString,
-    max_tokens: u32,
-    temperature: f64,
+    /// Sent only when the operator stated one; otherwise the model's own limit applies.
+    max_tokens: Option<u32>,
+    /// Sent only when the operator stated one; otherwise the provider's default applies.
+    temperature: Option<f64>,
 }
 
 impl BramaClient {
@@ -116,8 +120,8 @@ impl BramaClient {
         agent_id: String,
         secret: SecretString,
         bearer: SecretString,
-        max_tokens: u32,
-        temperature: f64,
+        max_tokens: Option<u32>,
+        temperature: Option<f64>,
         timeout: Duration,
     ) -> Result<Self, AppError> {
         let http = Client::builder()
@@ -144,8 +148,8 @@ impl BramaClient {
         agent_id: String,
         secret: SecretString,
         bearer: SecretString,
-        max_tokens: u32,
-        temperature: f64,
+        max_tokens: Option<u32>,
+        temperature: Option<f64>,
     ) -> Self {
         Self {
             http,

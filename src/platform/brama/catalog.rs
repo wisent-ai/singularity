@@ -143,7 +143,9 @@ impl BramaClient {
             || !entry.id.contains('/')
             || entry.context_window == 0
             || entry.max_output_tokens == 0
-            || u64::from(self.max_tokens) > entry.max_output_tokens
+            || self
+                .max_tokens
+                .is_some_and(|limit| u64::from(limit) > entry.max_output_tokens)
             || entry.price.input <= Decimal::ZERO
             || entry.price.output <= Decimal::ZERO
             || entry.price.cache_read < Decimal::ZERO
@@ -154,9 +156,11 @@ impl BramaClient {
                 "cost admission requires an available concrete route with positive prices and sufficient token ceilings",
             ));
         }
+        // Without a stated limit the completion may use the model's whole output limit.
+        let output_ceiling = self.max_tokens.map_or(entry.max_output_tokens, u64::from);
         let input = entry.price.input + entry.price.cache_read + entry.price.cache_write;
         let upper_usd = (Decimal::from(entry.context_window) * input
-            + Decimal::from(self.max_tokens) * entry.price.output)
+            + Decimal::from(output_ceiling) * entry.price.output)
             / Decimal::from(TOKENS_PER_MILLION);
         Ok(Quote {
             model: entry.id,

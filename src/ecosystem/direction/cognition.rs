@@ -9,8 +9,8 @@ struct Input {
     id: String,
     purpose: String,
     model: String,
-    max_tokens: u32,
-    temperature: f64,
+    max_tokens: Option<u32>,
+    temperature: Option<f64>,
     instruction: String,
     evidence: Value,
 }
