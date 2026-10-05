@@ -147,14 +147,8 @@ pub struct CommonArgs {
     pub starting_balance: Decimal,
     #[arg(long, env = "SINGULARITY_INSTANCE_USD_PER_HOUR", default_value = "0")]
     pub instance_price: Decimal,
-    #[arg(long, env = "BRAMA_INPUT_PRICE_USD_PER_MILLION", default_value = "0")]
-    pub input_price: Decimal,
-    #[arg(long, env = "BRAMA_OUTPUT_PRICE_USD_PER_MILLION", default_value = "0")]
-    pub output_price: Decimal,
     #[arg(long, env = "SINGULARITY_CYCLE_INTERVAL_SECS", default_value = "5")]
     pub cycle_interval_secs: u64,
-    #[arg(long, env = "SINGULARITY_MAX_TOOL_ROUNDS", default_value = "8")]
-    pub max_tool_rounds: usize,
     /// The being's owner-only state directory; no directory is assumed.
     #[arg(long, env = "SINGULARITY_STATE_DIR")]
     pub state_dir: PathBuf,

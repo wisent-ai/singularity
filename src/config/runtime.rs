@@ -7,16 +7,16 @@ use secrecy::SecretString;
 use url::Url;
 
 use super::*;
-use crate::domain::{AgentIdentity, Pricing};
+use crate::domain::AgentIdentity;
 use crate::error::AppError;
 
 pub struct RuntimeConfig {
     pub identity: AgentIdentity,
     pub stimulus: Option<String>,
     pub starting_balance: Decimal,
-    pub pricing: Pricing,
+    /// The host's stated hourly price; model calls are priced by Brama's catalog.
+    pub instance_price: Decimal,
     pub cycle_interval: Duration,
-    pub max_tool_rounds: usize,
     pub workspace: PathBuf,
     pub state_dir: PathBuf,
     pub resume: bool,
@@ -67,12 +67,7 @@ impl RuntimeConfig {
         if !workspace.is_dir() {
             return Err(AppError::Config("workspace must be a directory".into()));
         }
-        if args.max_tool_rounds == usize::default() {
-            return Err(AppError::Config("max tool rounds must be positive".into()));
-        }
         if args.starting_balance.is_sign_negative()
-            || args.input_price.is_sign_negative()
-            || args.output_price.is_sign_negative()
             || args.instance_price.is_sign_negative()
         {
             return Err(AppError::Config(
@@ -142,13 +137,8 @@ impl RuntimeConfig {
             },
             stimulus,
             starting_balance: args.starting_balance,
-            pricing: Pricing {
-                input_per_million: args.input_price,
-                output_per_million: args.output_price,
-                instance_per_hour: args.instance_price,
-            },
+            instance_price: args.instance_price,
             cycle_interval: Duration::from_secs(args.cycle_interval_secs),
-            max_tool_rounds: args.max_tool_rounds,
             workspace,
             state_dir: args.state_dir.clone(),
             resume: args.resume,

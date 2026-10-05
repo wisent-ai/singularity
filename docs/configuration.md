@@ -24,8 +24,18 @@ BRAMA_MODEL
 BRAMA_HMAC_SECRET_FILE
 BRAMA_MAX_TOKENS
 BRAMA_TEMPERATURE
-BRAMA_INPUT_PRICE_USD_PER_MILLION
-BRAMA_OUTPUT_PRICE_USD_PER_MILLION
+```
+
+Every model round is charged at the price Brama's caller-scoped catalog
+(`GET /v1/models`) states for the model that served it, cache reads and writes
+included; there is no configured token price. A served model the catalog does
+not list, or lists without positive prices, ends the cycle with `model <id> is
+absent from the caller-scoped catalog; its price is unknown` or the cost
+admission refusal, instead of being charged as free. A cycle runs until the
+model answers without calling a tool; no round count is configured, and the
+solvency gate ends a cycle the budget can no longer pay for.
+
+```text
 ```
 
 Las and Most:

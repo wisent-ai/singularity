@@ -37,19 +37,20 @@ impl Budget {
         self.remaining > Decimal::ZERO
     }
 
+    /// Charge one model round: `api` is what Brama's catalog prices the call at
+    /// for the model that served it, and `instance_per_hour` the host's stated
+    /// hourly price for the time the round took.
     pub fn debit(
         &mut self,
+        api: Decimal,
         usage: TokenUsage,
         elapsed: std::time::Duration,
-        pricing: &Pricing,
+        instance_per_hour: Decimal,
     ) -> Decimal {
-        let million = Decimal::from_str("1000000").expect("static decimal is valid");
         let nanos_per_hour = Decimal::from_str("3600000000000").expect("static decimal is valid");
-        let api = Decimal::from(usage.prompt_tokens) * pricing.input_per_million / million
-            + Decimal::from(usage.completion_tokens) * pricing.output_per_million / million;
         let instance = Decimal::from_str(&elapsed.as_nanos().to_string())
             .expect("duration is decimal")
-            * pricing.instance_per_hour
+            * instance_per_hour
             / nanos_per_hour;
         let total = api + instance;
         self.api_spent += api;

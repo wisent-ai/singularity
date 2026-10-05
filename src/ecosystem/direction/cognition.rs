@@ -206,7 +206,7 @@ pub async fn ask<T: DeserializeOwned>(
         }
         call
     } else {
-        let quote = client.quote().await?;
+        let quote = client.quote(&input.model).await?;
         let mut call = Call {
             id: input.id,
             purpose: input.purpose,

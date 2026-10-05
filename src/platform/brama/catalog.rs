@@ -95,8 +95,10 @@ impl BramaClient {
             .map_err(map_network)?;
         Ok(response.data.into_iter().map(|entry| entry.id).collect())
     }
-    /// Fetch fresh caller-scoped capacity and prices. Unknown capacity is not an affordable call.
-    pub async fn quote(&self) -> Result<Quote, AppError> {
+    /// Fetch fresh caller-scoped capacity and prices for `model`, a concrete
+    /// route: the configured one before a reserved call, or the one that served
+    /// a call when its cost is settled. Unknown capacity is not an affordable call.
+    pub async fn quote(&self, model: &str) -> Result<Quote, AppError> {
         let response = self
             .authenticate(self.http.get(self.endpoint("v1/models")?), &[])?
             .header("x-jeden-schema-min", "1")
@@ -129,14 +131,11 @@ impl BramaClient {
         let entry = catalog
             .models
             .into_iter()
-            .find(|entry| entry.id == self.model)
+            .find(|entry| entry.id == model)
             .ok_or_else(|| {
                 brama(
                     ErrorClass::Permanent,
-                    format!(
-                        "configured model {} is absent from the caller-scoped catalog",
-                        self.model
-                    ),
+                    format!("model {model} is absent from the caller-scoped catalog; its price is unknown"),
                 )
             })?;
         if !entry.available

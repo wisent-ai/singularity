@@ -1,6 +1,5 @@
 //! What a chat message, a tool definition and a tool call look like.
 
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -98,11 +97,4 @@ pub struct TokenUsage {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Pricing {
-    pub input_per_million: Decimal,
-    pub output_per_million: Decimal,
-    pub instance_per_hour: Decimal,
 }

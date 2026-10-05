@@ -32,15 +32,17 @@ impl Agent {
             }
         }
         self.store.save(&self.state)?;
-        let mut round = usize::default();
+        // A cycle runs until the model answers without calling a tool. No round
+        // count is chosen: every round is charged at Brama's catalog price for
+        // the model that served it, and the solvency gate below ends a cycle
+        // whose rounds the budget can no longer pay for.
         let mut actions = Vec::new();
-        while round < self.config.max_tool_rounds {
+        loop {
             if !self.state.budget.can_call() {
                 self.state.status = AgentStatus::Exhausted;
                 self.store.save(&self.state)?;
                 return Ok(self.report("budget_exhausted", None, actions));
             }
-            round = round.saturating_add(usize::from(true));
             let started = Instant::now();
             let messages = cognition_messages(&self.state);
             let completion = self
@@ -48,10 +50,17 @@ impl Agent {
                 .complete(&messages, self.catalog.definitions())
                 .await?;
             let elapsed = started.elapsed();
-            let amount = self
-                .state
-                .budget
-                .debit(completion.usage, elapsed, &self.config.pricing);
+            let api = self
+                .brama
+                .quote(&completion.model)
+                .await?
+                .cost(&completion)?;
+            let amount = self.state.budget.debit(
+                api,
+                completion.usage,
+                elapsed,
+                self.config.instance_price,
+            );
             self.store.append(&ActivityEvent::ModelCompleted {
                 at: Utc::now(),
                 cycle: self.state.cycle,
@@ -124,12 +133,5 @@ impl Agent {
                 self.store.save(&self.state)?;
             }
         }
-        self.store.append(&ActivityEvent::Warning {
-            at: Utc::now(),
-            cycle: self.state.cycle,
-            message: "maximum tool rounds reached".into(),
-        })?;
-        self.store.save(&self.state)?;
-        Ok(self.report("tool_round_limit", None, actions))
     }
 }
