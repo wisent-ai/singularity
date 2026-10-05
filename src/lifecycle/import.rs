@@ -12,9 +12,6 @@ use crate::domain::{
 use crate::error::AppError;
 
 pub const IMPORT_SCHEMA_VERSION: &str = "singularity-mind-import-v1";
-const MAX_IMPORT_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_SOURCE_BYTES: usize = 256;
-const MAX_TEXT_BYTES: usize = 65_536;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -80,20 +77,10 @@ pub(crate) fn read_import_document(path: &Path) -> Result<Vec<u8>, AppError> {
             path.display()
         )));
     }
-    if metadata.len() > MAX_IMPORT_BYTES {
-        return Err(AppError::State(format!(
-            "import file exceeds {MAX_IMPORT_BYTES} bytes"
-        )));
-    }
     Ok(fs::read(path)?)
 }
 
 pub fn parse_import_bytes(bytes: &[u8]) -> Result<MindImport, AppError> {
-    if bytes.len() as u64 > MAX_IMPORT_BYTES {
-        return Err(AppError::State(format!(
-            "import file exceeds {MAX_IMPORT_BYTES} bytes"
-        )));
-    }
     serde_json::from_slice(bytes)
         .map_err(|error| AppError::State(format!("invalid Singularity import: {error}")))
 }
@@ -242,9 +229,9 @@ fn validate(input: &MindImport) -> Result<Vec<Candidate>, AppError> {
         for item in items {
             validate_atom(&item.id, &format!("{category}.id"))?;
             let text = item.text.trim();
-            if text.is_empty() || text.len() > MAX_TEXT_BYTES || text.contains('\0') {
+            if text.is_empty() || text.contains('\0') {
                 return Err(AppError::State(format!(
-                    "{category} item {} text must be 1..={MAX_TEXT_BYTES} bytes and contain no NUL",
+                    "{category} item {} text must be non-empty and contain no NUL",
                     item.id
                 )));
             }
@@ -271,12 +258,9 @@ fn validate(input: &MindImport) -> Result<Vec<Candidate>, AppError> {
 
 fn validate_atom(value: &str, label: &str) -> Result<(), AppError> {
     let trimmed = value.trim();
-    if trimmed.is_empty()
-        || trimmed.len() > MAX_SOURCE_BYTES
-        || trimmed.chars().any(char::is_control)
-    {
+    if trimmed.is_empty() || trimmed.chars().any(char::is_control) {
         return Err(AppError::State(format!(
-            "{label} must be 1..={MAX_SOURCE_BYTES} bytes and contain no control characters"
+            "{label} must be non-empty and contain no control characters"
         )));
     }
     Ok(())

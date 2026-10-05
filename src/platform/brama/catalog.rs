@@ -1,4 +1,4 @@
-use super::constants::{CATALOG_RESPONSE_BYTES, TOKENS_PER_MILLION};
+use super::constants::TOKENS_PER_MILLION;
 use super::{BramaClient, BramaCompletion, ModelsResponse, brama, map_network};
 use crate::{AppError, ErrorClass};
 use rust_decimal::Decimal;
@@ -97,7 +97,7 @@ impl BramaClient {
     }
     /// Fetch fresh caller-scoped capacity and prices. Unknown capacity is not an affordable call.
     pub async fn quote(&self) -> Result<Quote, AppError> {
-        let mut response = self
+        let response = self
             .authenticate(self.http.get(self.endpoint("v1/models")?), &[])?
             .header("x-jeden-schema-min", "1")
             .header("x-jeden-schema-max", "1")
@@ -105,16 +105,7 @@ impl BramaClient {
             .await
             .map_err(map_network)?;
         let status = response.status();
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(map_network)? {
-            if chunk.len() > CATALOG_RESPONSE_BYTES.saturating_sub(bytes.len()) {
-                return Err(brama(
-                    ErrorClass::Permanent,
-                    "model catalog exceeds its response bound",
-                ));
-            }
-            bytes.extend_from_slice(&chunk);
-        }
+        let bytes = response.bytes().await.map_err(map_network)?;
         if !status.is_success() {
             return Err(brama(
                 if status.is_server_error() {

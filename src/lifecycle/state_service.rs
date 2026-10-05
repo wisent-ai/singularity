@@ -14,8 +14,6 @@ use crate::import::{ImportReport, MindImport, parse_import_bytes};
 
 const SOCKET_FILE: &str = "state-import.sock";
 const WIRE_VERSION: u32 = 1;
-const MAX_WIRE_BYTES: u64 = 24 * 1024 * 1024;
-const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
 
 pub struct StateImportRequest {
     pub input: MindImport,
@@ -100,21 +98,10 @@ pub async fn import_through_service(
         document_base64: STANDARD.encode(document),
     };
     let bytes = serde_json::to_vec(&request)?;
-    if bytes.len() as u64 > MAX_WIRE_BYTES {
-        return Err(AppError::State("state import request is too large".into()));
-    }
     stream.write_all(&bytes).await?;
     stream.shutdown().await?;
     let mut response = Vec::new();
-    stream
-        .take(MAX_RESPONSE_BYTES + 1)
-        .read_to_end(&mut response)
-        .await?;
-    if response.len() as u64 > MAX_RESPONSE_BYTES {
-        return Err(AppError::State(
-            "local state import service response is too large".into(),
-        ));
-    }
+    stream.read_to_end(&mut response).await?;
     match serde_json::from_slice::<WireResponse>(&response)
         .map_err(|error| AppError::State(format!("invalid local state import response: {error}")))?
     {
@@ -131,18 +118,8 @@ async fn serve(
     sender: mpsc::Sender<StateImportRequest>,
 ) -> Result<(), AppError> {
     let mut bytes = Vec::new();
-    (&mut stream)
-        .take(MAX_WIRE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .await?;
-    let response = if bytes.len() as u64 > MAX_WIRE_BYTES {
-        WireResponse::Failure {
-            ok: false,
-            error: "state import request is too large".into(),
-        }
-    } else {
-        handle_request(&bytes, sender).await
-    };
+    (&mut stream).read_to_end(&mut bytes).await?;
+    let response = handle_request(&bytes, sender).await;
     stream.write_all(&serde_json::to_vec(&response)?).await?;
     stream.shutdown().await?;
     Ok(())
