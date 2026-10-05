@@ -17,7 +17,7 @@ SINGULARITY_STATE_DIR
 SINGULARITY_RESUME
 ```
 
-`run`, `once`, and `doctor` require an explicitly declared
+`run`, `once`, `doctor`, and `ecosystem run` require an explicitly declared
 `SINGULARITY_STARTING_BALANCE_USD` (`--starting-balance`),
 `SINGULARITY_INSTANCE_USD_PER_HOUR` (`--instance-price`), and
 `SINGULARITY_CYCLE_INTERVAL_SECS` (`--cycle-interval-secs`), alongside the
@@ -45,6 +45,12 @@ The CLI refusal regression is `cargo test --test launch-declarations`. It
 starts the real binary without inherited environment values and checks each
 missing declaration before runtime startup. It does not replace a live
 `once` or child-spawn run against the configured Brama and Las services.
+
+`ecosystem run` uses the same runtime declarations. Its control, reconciliation
+and dispatch timers use `SINGULARITY_CYCLE_INTERVAL_SECS`, which must be
+positive for that command. The portfolio's model allocations and observation
+and review intervals remain the separate values in its signed policy.
+Read-only ecosystem commands do not take these runtime accounting inputs.
 
 Brama:
 
