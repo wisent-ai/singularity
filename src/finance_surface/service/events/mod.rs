@@ -3,7 +3,7 @@
 //! The custody events that move a transaction forward are in `custody`; the ones that
 //! end or suspend it are in `outcome`. The match below is the only place that decides
 //! which of them an event is, and it stays exhaustive over `OwnerAction`.
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use serde_json::{Value, json};
 use std::path::Path;
 
@@ -48,29 +48,17 @@ impl FinanceService {
                 "owner event does not approve exact intent hash",
             ));
         }
-        let approval = &self.policy.approval;
-        let window = |seconds: u64, field: &str| {
-            i64::try_from(seconds)
-                .ok()
-                .and_then(Duration::try_seconds)
-                .ok_or_else(|| {
-                    SurfaceError::policy(format!(
-                        "approval.{field} {seconds} is not a representable duration"
-                    ))
-                })
-        };
-        let max_age = window(
-            approval.owner_event_max_age_seconds,
-            "owner_event_max_age_seconds",
-        )?;
-        let max_skew = window(
-            approval.owner_event_max_skew_seconds,
-            "owner_event_max_skew_seconds",
-        )?;
-        if event.occurred_at < Utc::now() - max_age || event.occurred_at > Utc::now() + max_skew {
-            return Err(SurfaceError::policy(
-                "owner event timestamp outside acceptance window",
-            ));
+        // The acceptance window is derived, not chosen: an event about a transaction
+        // cannot have happened before the transaction existed, nor after this host's
+        // clock says now. Replays are answered by the ledger id above.
+        let now = Utc::now();
+        if event.occurred_at < tx.created_at || event.occurred_at > now {
+            return Err(SurfaceError::policy(format!(
+                "owner event occurred_at {} is outside the transaction's lifetime: created {}, now {}",
+                event.occurred_at.to_rfc3339(),
+                tx.created_at.to_rfc3339(),
+                now.to_rfc3339()
+            )));
         }
         if tx.status.terminal() {
             return Err(SurfaceError::conflict(

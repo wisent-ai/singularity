@@ -70,10 +70,6 @@ pub struct ApprovalPolicy {
     pub approver_keys: BTreeMap<String, String>,
     pub timelock_seconds: u64,
     pub proposal_ttl_max_seconds: u64,
-    /// How old an owner event may be when ingested, and how far ahead of this host's clock it
-    /// may claim to be: the signed policy's acceptance window, not a built-in one.
-    pub owner_event_max_age_seconds: u64,
-    pub owner_event_max_skew_seconds: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -178,7 +174,6 @@ impl PolicyFile {
             || self.approval.required_approvals as usize > self.approval.approver_keys.len()
             || self.approval.timelock_seconds == 0
             || self.approval.proposal_ttl_max_seconds == 0
-            || self.approval.owner_event_max_age_seconds == 0
         {
             return Err(SurfaceError::policy("invalid approval policy"));
         }

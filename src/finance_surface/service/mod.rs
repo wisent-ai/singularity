@@ -9,8 +9,8 @@ use crate::finance_surface::state::StateStore;
 use crate::finance_surface::{SurfaceError, SurfaceResult};
 
 /// An evidence hash is 64 hex characters. How long a purpose, an executor answer or a
-/// parameter object may be is not bounded here; the owner-event acceptance window is the
-/// signed policy's `approval.owner_event_max_age_seconds` and `owner_event_max_skew_seconds`.
+/// parameter object may be is not bounded here; an owner event is accepted when it occurred
+/// between its transaction's creation and this host's now.
 const HASH_HEX_CHARS: usize = 64;
 
 #[derive(Clone)]
