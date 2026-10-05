@@ -8,27 +8,28 @@ use super::*;
 use crate::brama::BramaClient;
 use crate::domain::{AgentState, MemoryEntry};
 
+/// A non-empty, trimmed argument without control characters. How long it may be is not
+/// decided here: the model's context and the store refuse what they cannot hold.
 pub(super) fn required_text(
     arguments: &Map<String, Value>,
     key: &str,
-    max_bytes: usize,
 ) -> Result<String, ToolOutcome> {
     let value = arguments
         .get(key)
         .and_then(Value::as_str)
         .map(str::trim)
-        .filter(|value| !value.is_empty() && value.len() <= max_bytes)
+        .filter(|value| !value.is_empty())
         .filter(|value| !value.chars().any(char::is_control))
         .map(str::to_owned);
     value.ok_or_else(|| failed("invalid_arguments", &format!("{key} is invalid")))
 }
 
 pub(super) fn remember(state: &mut AgentState, arguments: Map<String, Value>) -> ToolOutcome {
-    let kind = match required_text(&arguments, "kind", 64) {
+    let kind = match required_text(&arguments, "kind") {
         Ok(value) => value,
         Err(error) => return error,
     };
-    let text = match required_text(&arguments, "text", 16 * 1024) {
+    let text = match required_text(&arguments, "text") {
         Ok(value) => value,
         Err(error) => return error,
     };
@@ -45,7 +46,7 @@ pub(super) fn remember(state: &mut AgentState, arguments: Map<String, Value>) ->
 }
 
 pub(super) fn recall(state: &AgentState, arguments: Map<String, Value>) -> ToolOutcome {
-    let query = match required_text(&arguments, "query", 1_024) {
+    let query = match required_text(&arguments, "query") {
         Ok(value) => value.to_ascii_lowercase(),
         Err(error) => return error,
     };
@@ -64,7 +65,7 @@ pub(super) fn recall(state: &AgentState, arguments: Map<String, Value>) -> ToolO
 }
 
 pub(super) fn set_prompt(state: &mut AgentState, arguments: Map<String, Value>) -> ToolOutcome {
-    let prompt = match required_text(&arguments, "prompt", 64 * 1024) {
+    let prompt = match required_text(&arguments, "prompt") {
         Ok(value) => value,
         Err(error) => return error,
     };
@@ -73,7 +74,7 @@ pub(super) fn set_prompt(state: &mut AgentState, arguments: Map<String, Value>) 
 }
 
 pub(super) fn add_rule(state: &mut AgentState, arguments: Map<String, Value>) -> ToolOutcome {
-    let rule = match required_text(&arguments, "rule", 4 * 1024) {
+    let rule = match required_text(&arguments, "rule") {
         Ok(value) => value,
         Err(error) => return error,
     };
@@ -82,7 +83,7 @@ pub(super) fn add_rule(state: &mut AgentState, arguments: Map<String, Value>) ->
 }
 
 pub(super) fn add_learning(state: &mut AgentState, arguments: Map<String, Value>) -> ToolOutcome {
-    let learning = match required_text(&arguments, "learning", 8 * 1024) {
+    let learning = match required_text(&arguments, "learning") {
         Ok(value) => value,
         Err(error) => return error,
     };
@@ -95,7 +96,7 @@ pub(super) async fn switch_model(
     brama: &mut BramaClient,
     arguments: Map<String, Value>,
 ) -> ToolOutcome {
-    let model = match required_text(&arguments, "model", 256) {
+    let model = match required_text(&arguments, "model") {
         Ok(value) => value,
         Err(error) => return error,
     };

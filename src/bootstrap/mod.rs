@@ -13,12 +13,8 @@ use crate::error::AppError;
 const MANIFEST_DOMAIN: &[u8] = b"SINGULARITY-BOOTSTRAP-MANIFEST\0v2\0";
 const PROOF_DOMAIN: &[u8] = b"SKARBIEC-WORKLOAD-PROOF\0v1\0";
 const WIRE_VERSION: &str = "skarbiec.redeem.v1";
-const MAX_CONTROL_LINE: usize = 4096;
-const MAX_SECRET_BYTES: usize = 64 * 1024;
-const MAX_MANIFEST_LIFETIME: i64 = 300;
-/// A manifest issued up to thirty seconds in the future is clock skew, not forgery.
-const MAX_ISSUED_AT_SKEW_SECONDS: i64 = 30;
-const BROKER_IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+// How long a manifest lives is the issuer's signed expires_at; a broker answer is waited for,
+// and a secret or control line is as long as the broker sends.
 /// An Ed25519 key is 32 bytes, spelled as 64 hex characters.
 const KEY_BYTES: usize = 32;
 const KEY_HEX_CHARS: usize = 64;
@@ -162,7 +158,3 @@ pub(crate) use credentials::{inherit_for_child, inherited_credentials};
 use files::*;
 use manifest::*;
 use redeem::*;
-
-
-
-

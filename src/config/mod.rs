@@ -5,10 +5,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use rust_decimal::Decimal;
 
-/// A stimulus is at most 64 KiB; an identity component at most 128 bytes; a digest is
-/// 64 hex characters; a secret file may grant the group and others no mode bits.
-const MAX_STIMULUS_BYTES: usize = 64 * 1024;
-const MAX_IDENTITY_COMPONENT_BYTES: usize = 128;
+/// A digest is 64 hex characters; a secret file may grant the group and others no mode bits.
 const DIGEST_HEX_CHARS: usize = 64;
 pub const GROUP_OR_OTHER_ACCESS: u32 = 0o077;
 const GROUP_OR_OTHER_WRITE_ACCESS: u32 = 0o022;

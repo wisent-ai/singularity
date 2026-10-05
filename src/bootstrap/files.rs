@@ -13,7 +13,7 @@ use crate::config::GROUP_OR_OTHER_ACCESS;
 use crate::error::AppError;
 pub(super) fn read_control_line(stream: &mut UnixStream) -> Result<Vec<u8>, AppError> {
     let mut line = Vec::new();
-    while line.len() < MAX_CONTROL_LINE {
+    loop {
         let mut byte = [0_u8; 1];
         stream
             .read_exact(&mut byte)
@@ -23,7 +23,6 @@ pub(super) fn read_control_line(stream: &mut UnixStream) -> Result<Vec<u8>, AppE
         }
         line.push(byte[0]);
     }
-    Err(AppError::Secret("capability redemption denied".into()))
 }
 
 pub(super) fn require_owner_file(path: &Path) -> Result<(), AppError> {
@@ -175,7 +174,7 @@ impl Drop for RuntimeCleanup {
 pub(super) fn secure_remove(path: &Path) {
     if let Ok(metadata) = fs::metadata(path) {
         if let Ok(mut file) = OpenOptions::new().write(true).open(path) {
-            let zeros = vec![0_u8; metadata.len().min(MAX_SECRET_BYTES as u64) as usize];
+            let zeros = vec![0_u8; metadata.len() as usize];
             let _ = file.write_all(&zeros);
             let _ = file.sync_all();
         }

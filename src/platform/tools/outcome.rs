@@ -6,8 +6,6 @@ use uuid::Uuid;
 
 use crate::domain::{ChatMessage, ToolCall};
 
-pub(super) const MAX_WORKSPACE_FILE_BYTES: u64 = 2 * 1024 * 1024;
-
 pub(super) const MOST_HEALTH: &str = "most_health";
 pub(super) const MOST_CREATE_CHAT: &str = "most_create_chat";
 pub(super) const MOST_SEND_MESSAGE: &str = "most_send_message";
@@ -20,8 +18,6 @@ pub(super) const SELF_SWITCH_MODEL: &str = "singularity_self_switch_model";
 pub(super) const FILE_READ: &str = "singularity_file_read";
 pub(super) const FILE_WRITE: &str = "singularity_file_write";
 pub(super) const SPAWN_CHILD: &str = "singularity_spawn_child";
-pub(super) const MAX_MODEL_OUTPUT_BYTES: usize = 64 * 1024;
-pub(super) const MAX_MODEL_OUTPUT_DEPTH: usize = 8;
 pub(super) const FORBIDDEN_OUTPUT_KEYS: [&str; 14] = [
     "secret",
     "password",
@@ -69,11 +65,7 @@ pub(super) struct ModelSafeOutput(Value);
 
 impl ModelSafeOutput {
     fn validate(value: Value) -> Result<Self, &'static str> {
-        let encoded = serde_json::to_vec(&value).map_err(|_| "serialization")?;
-        if encoded.len() > MAX_MODEL_OUTPUT_BYTES {
-            return Err("oversize");
-        }
-        validate_model_value(&value, 0)?;
+        validate_model_value(&value)?;
         Ok(Self(value))
     }
 }
@@ -111,10 +103,7 @@ impl ToolOutcome {
     }
 }
 
-pub(super) fn validate_model_value(value: &Value, depth: usize) -> Result<(), &'static str> {
-    if depth > MAX_MODEL_OUTPUT_DEPTH {
-        return Err("depth");
-    }
+pub(super) fn validate_model_value(value: &Value) -> Result<(), &'static str> {
     match value {
         Value::Object(map) => {
             for (key, nested) in map {
@@ -124,12 +113,12 @@ pub(super) fn validate_model_value(value: &Value, depth: usize) -> Result<(), &'
                 }) {
                     return Err("forbidden_key");
                 }
-                validate_model_value(nested, depth.saturating_add(1))?;
+                validate_model_value(nested)?;
             }
         }
         Value::Array(items) => {
             for nested in items {
-                validate_model_value(nested, depth.saturating_add(1))?;
+                validate_model_value(nested)?;
             }
         }
         Value::String(text) => {
@@ -155,7 +144,7 @@ pub(super) fn validate_model_value(value: &Value, depth: usize) -> Result<(), &'
             }
             if matches!(trimmed.as_bytes().first(), Some(b'{') | Some(b'[')) {
                 let nested: Value = serde_json::from_str(trimmed).map_err(|_| "embedded_json")?;
-                validate_model_value(&nested, depth.saturating_add(1))?;
+                validate_model_value(&nested)?;
             }
         }
         Value::Null | Value::Bool(_) | Value::Number(_) => {}

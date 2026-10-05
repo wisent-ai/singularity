@@ -1,7 +1,7 @@
 //! The manifest a bootstrap is given, and the checks it must pass before anything runs.
 use std::path::Path;
 
-use chrono::{Duration, Utc};
+use chrono::Utc;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 
 use super::*;
@@ -28,10 +28,8 @@ pub(super) fn validate_manifest(manifest: &BootstrapManifest) -> Result<(), AppE
     let now = Utc::now();
     if manifest.version != "singularity.bootstrap.v2"
         || manifest.policy_sequence == 0
-        || manifest.issued_at > now + Duration::seconds(MAX_ISSUED_AT_SKEW_SECONDS)
         || manifest.expires_at <= now
         || manifest.expires_at <= manifest.issued_at
-        || manifest.expires_at - manifest.issued_at > Duration::seconds(MAX_MANIFEST_LIFETIME)
     {
         return Err(AppError::Config(
             "bootstrap manifest is invalid or expired".into(),

@@ -10,7 +10,7 @@ use super::*;
 use crate::domain::{AgentState, ChildRecord};
 
 pub(super) fn relative_path(arguments: &Map<String, Value>) -> Result<PathBuf, ToolOutcome> {
-    let value = required_text(arguments, "path", 4 * 1024)?;
+    let value = required_text(arguments, "path")?;
     let path = PathBuf::from(value);
     if path.is_absolute()
         || path
@@ -36,12 +36,11 @@ pub(super) fn file_read(workspace: &Path, arguments: Map<String, Value>) -> Tool
         Ok(_) => return failed("workspace_boundary", "path leaves the workspace"),
         Err(error) => return failed("file_read", &error.to_string()),
     };
-    let metadata = match std::fs::symlink_metadata(&resolved) {
-        Ok(value) if value.is_file() && value.len() <= MAX_WORKSPACE_FILE_BYTES => value,
-        Ok(_) => return failed("file_read", "path is not a bounded regular file"),
+    match std::fs::symlink_metadata(&resolved) {
+        Ok(value) if value.is_file() => {}
+        Ok(_) => return failed("file_read", "path is not a regular file"),
         Err(error) => return failed("file_read", &error.to_string()),
-    };
-    let _ = metadata;
+    }
     match std::fs::read_to_string(resolved) {
         Ok(content) => success(json!({"path":relative,"content":content}), None, None),
         Err(error) => failed("file_read", &error.to_string()),
@@ -54,10 +53,8 @@ pub(super) fn file_write(workspace: &Path, arguments: Map<String, Value>) -> Too
         Err(error) => return error,
     };
     let content = match arguments.get("content").and_then(Value::as_str) {
-        Some(value) if value.len() as u64 <= MAX_WORKSPACE_FILE_BYTES && !value.contains('\0') => {
-            value
-        }
-        _ => return failed("invalid_arguments", "content is invalid or too large"),
+        Some(value) if !value.contains('\0') => value,
+        _ => return failed("invalid_arguments", "content must be text without NUL"),
     };
     let path = workspace.join(&relative);
     let Some(parent) = path.parent() else {
@@ -103,15 +100,15 @@ pub(super) async fn spawn_child(
 ) -> ToolOutcome {
     let state_dir = config.state_dir.as_path();
     let brama_url = &config.brama_url;
-    let name = match required_text(&arguments, "name", 128) {
+    let name = match required_text(&arguments, "name") {
         Ok(value) => value,
         Err(error) => return error,
     };
-    let ticker = match required_text(&arguments, "ticker", 32) {
+    let ticker = match required_text(&arguments, "ticker") {
         Ok(value) => value,
         Err(error) => return error,
     };
-    let specialty = match required_text(&arguments, "specialty", 256) {
+    let specialty = match required_text(&arguments, "specialty") {
         Ok(value) => value,
         Err(error) => return error,
     };
@@ -139,8 +136,14 @@ pub(super) async fn spawn_child(
         .env("LAS_MCP_ENTRYPOINT", &config.las_entrypoint)
         .env("LAS_ONLY", &config.las_only)
         .env("LAS_RELEASE_MANIFEST_FILE", &config.las_release_manifest)
-        .env("LAS_RELEASE_MANIFEST_SIGNATURE_FILE", &config.las_release_manifest_signature)
-        .env("LAS_RELEASE_TRUST_STORE_FILE", &config.las_release_trust_store)
+        .env(
+            "LAS_RELEASE_MANIFEST_SIGNATURE_FILE",
+            &config.las_release_manifest_signature,
+        )
+        .env(
+            "LAS_RELEASE_TRUST_STORE_FILE",
+            &config.las_release_trust_store,
+        )
         .env("LAS_RELEASE_WATERMARK_FILE", &config.las_release_watermark);
     if let Some(skip) = config.las_skip.as_deref() {
         command.env("LAS_SKIP", skip);

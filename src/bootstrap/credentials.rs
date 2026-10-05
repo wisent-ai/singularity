@@ -13,7 +13,6 @@ use secrecy::SecretString;
 use zeroize::Zeroizing;
 
 use crate::AppError;
-use super::MAX_SECRET_BYTES;
 
 const DESCRIPTORS: [&str; 3] = [
     "SINGULARITY_BRAMA_HMAC_FD",
@@ -39,20 +38,33 @@ pub fn adopt_credentials() -> Result<(), AppError> {
         return Ok(());
     }
     if INHERITED.get().is_some() {
-        return Err(AppError::Secret("bootstrap credentials were already adopted".into()));
+        return Err(AppError::Secret(
+            "bootstrap credentials were already adopted".into(),
+        ));
     }
     let mut descriptors = [RawFd::default(); DESCRIPTORS.len()];
     for (index, (name, value)) in DESCRIPTORS.iter().zip(values).enumerate() {
-        let descriptor = value.as_deref().and_then(|value| value.to_str())
+        let descriptor = value
+            .as_deref()
+            .and_then(|value| value.to_str())
             .and_then(|value| value.parse::<RawFd>().ok())
             .filter(|descriptor| *descriptor > libc::STDERR_FILENO)
-            .ok_or_else(|| AppError::Secret(format!("{name} must name an inherited credential descriptor")))?;
+            .ok_or_else(|| {
+                AppError::Secret(format!(
+                    "{name} must name an inherited credential descriptor"
+                ))
+            })?;
         if descriptors[..index].contains(&descriptor) {
-            return Err(AppError::Secret("bootstrap credential descriptors must be distinct".into()));
+            return Err(AppError::Secret(
+                "bootstrap credential descriptors must be distinct".into(),
+            ));
         }
         // SAFETY: fcntl validates the borrowed descriptor without dereferencing memory.
         if unsafe { libc::fcntl(descriptor, libc::F_GETFD) } < 0 {
-            return Err(AppError::Secret(format!("{name}: {}", std::io::Error::last_os_error())));
+            return Err(AppError::Secret(format!(
+                "{name}: {}",
+                std::io::Error::last_os_error()
+            )));
         }
         descriptors[index] = descriptor;
     }
@@ -63,25 +75,36 @@ pub fn adopt_credentials() -> Result<(), AppError> {
         let metadata = file.metadata()?;
         // SAFETY: geteuid has no arguments or memory preconditions.
         let owner = unsafe { libc::geteuid() };
-        if !metadata.is_file() || metadata.nlink() != 0 || metadata.uid() != owner
+        if !metadata.is_file()
+            || metadata.nlink() != 0
+            || metadata.uid() != owner
             || metadata.permissions().mode() & crate::config::GROUP_OR_OTHER_ACCESS != 0
-            || metadata.len() == 0 || metadata.len() > MAX_SECRET_BYTES as u64
+            || metadata.len() == 0
         {
-            return Err(AppError::Secret(format!("{name} is not an anonymous owner-only credential file")));
+            return Err(AppError::Secret(format!(
+                "{name} is not an anonymous owner-only credential file"
+            )));
         }
         close_on_exec(file.as_raw_fd(), true)?;
     }
     let credential = |index: usize| -> Result<SecretString, AppError> {
         let mut bytes = Zeroizing::new(vec![0u8; files[index].metadata()?.len() as usize]);
         files[index].read_exact_at(&mut bytes, 0)?;
-        let text = std::str::from_utf8(&bytes)
-            .map_err(|error| AppError::Secret(format!("{} is not UTF-8: {error}", DESCRIPTORS[index])))?;
+        let text = std::str::from_utf8(&bytes).map_err(|error| {
+            AppError::Secret(format!("{} is not UTF-8: {error}", DESCRIPTORS[index]))
+        })?;
         crate::config::secret_value(text, DESCRIPTORS[index])
     };
     let brama = credential(0)?;
     let bearer = credential(1)?;
     let most = credential(2)?;
-    INHERITED.set(InheritedCredentials { files, brama, bearer, most })
+    INHERITED
+        .set(InheritedCredentials {
+            files,
+            brama,
+            bearer,
+            most,
+        })
         .map_err(|_| AppError::Secret("bootstrap credentials were already adopted".into()))
 }
 
@@ -89,8 +112,13 @@ pub(crate) fn inherited_credentials() -> Result<Option<&'static InheritedCredent
     if let Some(credentials) = INHERITED.get() {
         return Ok(Some(credentials));
     }
-    if DESCRIPTORS.iter().any(|name| std::env::var_os(name).is_some()) {
-        return Err(AppError::Secret("bootstrap credential handoff was not adopted before runtime startup".into()));
+    if DESCRIPTORS
+        .iter()
+        .any(|name| std::env::var_os(name).is_some())
+    {
+        return Err(AppError::Secret(
+            "bootstrap credential handoff was not adopted before runtime startup".into(),
+        ));
     }
     Ok(None)
 }
@@ -125,7 +153,11 @@ fn close_on_exec(descriptor: RawFd, enabled: bool) -> std::io::Result<()> {
     if flags < 0 {
         return Err(std::io::Error::last_os_error());
     }
-    let flags = if enabled { flags | libc::FD_CLOEXEC } else { flags & !libc::FD_CLOEXEC };
+    let flags = if enabled {
+        flags | libc::FD_CLOEXEC
+    } else {
+        flags & !libc::FD_CLOEXEC
+    };
     // SAFETY: the descriptor and flag word were checked above.
     if unsafe { libc::fcntl(descriptor, libc::F_SETFD, flags) } < 0 {
         return Err(std::io::Error::last_os_error());

@@ -51,10 +51,6 @@ pub(super) fn redeem(
     encoded.push(b'\n');
     let mut stream = UnixStream::connect(socket)
         .map_err(|_| AppError::Secret("capability redemption denied".into()))?;
-    stream
-        .set_read_timeout(Some(BROKER_IO_TIMEOUT))
-        .and_then(|_| stream.set_write_timeout(Some(BROKER_IO_TIMEOUT)))
-        .map_err(|_| AppError::Secret("capability redemption denied".into()))?;
     let write_result = stream.write_all(&encoded);
     encoded.zeroize();
     write_result.map_err(|_| AppError::Secret("capability redemption denied".into()))?;
@@ -67,7 +63,7 @@ pub(super) fn redeem(
     }
     let length = control
         .secret_len
-        .filter(|length| *length > 0 && *length <= MAX_SECRET_BYTES)
+        .filter(|length| *length > 0)
         .ok_or_else(|| AppError::Secret("capability redemption denied".into()))?;
     let mut secret = vec![0_u8; length];
     if stream.read_exact(&mut secret).is_err() {

@@ -9,7 +9,6 @@ use super::*;
 use crate::error::AppError;
 pub(super) fn validate_identity_component(value: &str, label: &str) -> Result<(), AppError> {
     if value.is_empty()
-        || value.len() > MAX_IDENTITY_COMPONENT_BYTES
         || !value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))

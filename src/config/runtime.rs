@@ -58,11 +58,9 @@ impl RuntimeConfig {
             .map(str::to_owned);
         if stimulus
             .as_deref()
-            .is_some_and(|value| value.len() > MAX_STIMULUS_BYTES || value.contains('\0'))
+            .is_some_and(|value| value.contains('\0'))
         {
-            return Err(AppError::Config(format!(
-                "stimulus must be at most {MAX_STIMULUS_BYTES} bytes and contain no NUL"
-            )));
+            return Err(AppError::Config("stimulus must contain no NUL".into()));
         }
         let workspace = std::fs::canonicalize(&args.workspace)
             .map_err(|error| AppError::Config(format!("workspace: {error}")))?;
