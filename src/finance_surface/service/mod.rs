@@ -8,15 +8,9 @@ use crate::finance_surface::policy::{EnableLease, PolicyFile};
 use crate::finance_surface::state::StateStore;
 use crate::finance_surface::{SurfaceError, SurfaceResult};
 
-/// A purpose is at most 512 printable characters; an executor answer at most 64 KiB;
-/// an owner event counts from a day back to five minutes ahead; parameters are at most
-/// 16 KiB and eight levels deep; an evidence hash is 64 hex characters.
-const MAX_PURPOSE_CHARS: usize = 512;
-const MAX_EXECUTOR_RESPONSE_BYTES: usize = 64 * 1024;
-const OWNER_EVENT_MAX_AGE_HOURS: i64 = 24;
-const OWNER_EVENT_MAX_SKEW_MINUTES: i64 = 5;
-const MAX_PARAMETER_BYTES: usize = 16 * 1024;
-const MAX_PARAMETER_DEPTH: usize = 8;
+/// An evidence hash is 64 hex characters. How long a purpose, an executor answer or a
+/// parameter object may be is not bounded here; the owner-event acceptance window is the
+/// signed policy's `approval.owner_event_max_age_seconds` and `owner_event_max_skew_seconds`.
 const HASH_HEX_CHARS: usize = 64;
 
 #[derive(Clone)]
@@ -182,7 +176,3 @@ mod proposals;
 mod verify;
 
 pub(crate) use verify::*;
-
-
-
-

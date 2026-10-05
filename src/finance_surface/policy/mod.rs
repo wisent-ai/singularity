@@ -8,13 +8,8 @@ use std::path::{Path, PathBuf};
 
 use super::{SurfaceError, SurfaceResult};
 
-/// A beneficiary destination is at most 1 KiB; a proposal may live at most thirty days;
-/// an identifier is at most 128 bytes and an asset code at most 16; a protected file
-/// may grant the group and others no mode bits.
-const MAX_DESTINATION_BYTES: usize = 1024;
-const MAX_PROPOSAL_TTL_SECONDS: u64 = 30 * 24 * 60 * 60;
-const MAX_ID_BYTES: usize = 128;
-const MAX_ASSET_BYTES: usize = 16;
+/// A protected file may grant the group and others no mode bits. Every other bound on a
+/// policy is the signed policy's own field.
 pub(super) const GROUP_OR_OTHER_ACCESS: u32 = 0o077;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -75,6 +70,10 @@ pub struct ApprovalPolicy {
     pub approver_keys: BTreeMap<String, String>,
     pub timelock_seconds: u64,
     pub proposal_ttl_max_seconds: u64,
+    /// How old an owner event may be when ingested, and how far ahead of this host's clock it
+    /// may claim to be: the signed policy's acceptance window, not a built-in one.
+    pub owner_event_max_age_seconds: u64,
+    pub owner_event_max_skew_seconds: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -122,9 +121,7 @@ impl PolicyFile {
         }
         for (id, beneficiary) in &self.beneficiaries {
             validate_id("beneficiary id", id)?;
-            if beneficiary.destination.is_empty()
-                || beneficiary.destination.len() > MAX_DESTINATION_BYTES
-            {
+            if beneficiary.destination.is_empty() {
                 return Err(SurfaceError::policy("invalid beneficiary destination"));
             }
             if beneficiary.allowed_assets.is_empty()
@@ -181,7 +178,7 @@ impl PolicyFile {
             || self.approval.required_approvals as usize > self.approval.approver_keys.len()
             || self.approval.timelock_seconds == 0
             || self.approval.proposal_ttl_max_seconds == 0
-            || self.approval.proposal_ttl_max_seconds > MAX_PROPOSAL_TTL_SECONDS
+            || self.approval.owner_event_max_age_seconds == 0
         {
             return Err(SurfaceError::policy("invalid approval policy"));
         }

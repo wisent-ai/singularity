@@ -12,7 +12,6 @@ use crate::finance_surface::state::RequestRecord;
 use crate::finance_surface::{SurfaceError, SurfaceResult};
 
 use super::{FinanceService, OwnerAction, OwnerEvent, hash_value, public_status};
-use super::{OWNER_EVENT_MAX_AGE_HOURS, OWNER_EVENT_MAX_SKEW_MINUTES};
 
 /// The ledger identifier of an owner event is the first forty characters of the hash of
 /// its own identifier, so a replayed event answers with the transaction it already wrote.
@@ -49,9 +48,26 @@ impl FinanceService {
                 "owner event does not approve exact intent hash",
             ));
         }
-        if event.occurred_at < Utc::now() - Duration::hours(OWNER_EVENT_MAX_AGE_HOURS)
-            || event.occurred_at > Utc::now() + Duration::minutes(OWNER_EVENT_MAX_SKEW_MINUTES)
-        {
+        let approval = &self.policy.approval;
+        let window = |seconds: u64, field: &str| {
+            i64::try_from(seconds)
+                .ok()
+                .and_then(Duration::try_seconds)
+                .ok_or_else(|| {
+                    SurfaceError::policy(format!(
+                        "approval.{field} {seconds} is not a representable duration"
+                    ))
+                })
+        };
+        let max_age = window(
+            approval.owner_event_max_age_seconds,
+            "owner_event_max_age_seconds",
+        )?;
+        let max_skew = window(
+            approval.owner_event_max_skew_seconds,
+            "owner_event_max_skew_seconds",
+        )?;
+        if event.occurred_at < Utc::now() - max_age || event.occurred_at > Utc::now() + max_skew {
             return Err(SurfaceError::policy(
                 "owner event timestamp outside acceptance window",
             ));

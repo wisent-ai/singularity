@@ -6,8 +6,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 use super::{
-    FinanceService, MAX_EXECUTOR_RESPONSE_BYTES, checked_add, execution_time, public_status,
-    require_hash, transition, verify_role, verify_worm_receipt,
+    FinanceService, checked_add, execution_time, public_status, require_hash, transition,
+    verify_role, verify_worm_receipt,
 };
 use crate::finance_surface::policy::validate_id;
 use crate::finance_surface::state::{CanonicalIntent, Transaction, TransactionStatus};
@@ -84,12 +84,9 @@ impl FinanceService {
             .map_err(|error| SurfaceError::internal(format!("executor wait failed: {error}")))?;
         if !output.status.success() {
             let detail = String::from_utf8_lossy(&output.stderr);
-            return Err(SurfaceError::internal(format!("executor refused: {detail}")));
-        }
-        if output.stdout.len() > MAX_EXECUTOR_RESPONSE_BYTES {
-            return Err(SurfaceError::internal(
-                "executor response exceeds size limit",
-            ));
+            return Err(SurfaceError::internal(format!(
+                "executor refused: {detail}"
+            )));
         }
         let response: ExecutionResponse =
             serde_json::from_slice(&output.stdout).map_err(|error| {

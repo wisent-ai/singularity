@@ -12,7 +12,7 @@ use crate::finance_surface::policy::{
 use crate::finance_surface::state::{StateTransition, Transaction, TransactionStatus};
 use crate::finance_surface::{SurfaceError, SurfaceResult};
 
-use super::{HASH_HEX_CHARS, MAX_PARAMETER_BYTES, MAX_PARAMETER_DEPTH, WormReceipt};
+use super::{HASH_HEX_CHARS, WormReceipt};
 
 /// A proposal that gave no parameters is a proposal with nothing to validate; a `null` in place
 /// of an object is the same absence written out, and anything else is refused.
@@ -23,17 +23,7 @@ pub(crate) fn validate_execution_parameters(value: Option<&Value>) -> SurfaceRes
     if !value.is_null() && !value.is_object() {
         return Err(SurfaceError::invalid("parameters must be a JSON object"));
     }
-    if serde_json::to_vec(value)
-        .map_err(|error| SurfaceError::invalid(format!("invalid parameters: {error}")))?
-        .len()
-        > MAX_PARAMETER_BYTES
-    {
-        return Err(SurfaceError::invalid("parameters exceed size limit"));
-    }
-    fn walk(value: &Value, depth: usize) -> SurfaceResult<()> {
-        if depth > MAX_PARAMETER_DEPTH {
-            return Err(SurfaceError::invalid("parameters exceed depth limit"));
-        }
+    fn walk(value: &Value) -> SurfaceResult<()> {
         match value {
             Value::Object(map) => {
                 for (key, nested) in map {
@@ -56,19 +46,19 @@ pub(crate) fn validate_execution_parameters(value: Option<&Value>) -> SurfaceRes
                             "parameters cannot override protected intent fields",
                         ));
                     }
-                    walk(nested, depth + 1)?;
+                    walk(nested)?;
                 }
             }
             Value::Array(values) => {
                 for nested in values {
-                    walk(nested, depth + 1)?;
+                    walk(nested)?;
                 }
             }
             Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
         }
         Ok(())
     }
-    walk(value, 0)
+    walk(value)
 }
 
 pub(crate) fn parse<T: for<'de> Deserialize<'de>>(v: Value) -> SurfaceResult<T> {

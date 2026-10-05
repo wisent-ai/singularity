@@ -2,10 +2,7 @@
 use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 
-use super::{
-    FinanceService, MAX_PURPOSE_CHARS, hash_value, public_status, transition,
-    validate_execution_parameters,
-};
+use super::{FinanceService, hash_value, public_status, transition, validate_execution_parameters};
 use crate::finance_surface::policy::{validate_asset, validate_id};
 use crate::finance_surface::state::{
     CanonicalIntent, RequestRecord, StateTransition, Transaction, TransactionStatus,
@@ -23,10 +20,7 @@ impl FinanceService {
                 "amount_minor must be a positive integer",
             ));
         }
-        if input.purpose.is_empty()
-            || input.purpose.len() > MAX_PURPOSE_CHARS
-            || input.purpose.chars().any(char::is_control)
-        {
+        if input.purpose.is_empty() || input.purpose.chars().any(char::is_control) {
             return Err(SurfaceError::invalid(
                 "purpose must be 1..=512 printable characters",
             ));

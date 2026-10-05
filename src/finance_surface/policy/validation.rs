@@ -6,7 +6,6 @@ use super::*;
 use super::{SurfaceError, SurfaceResult};
 pub fn validate_id(kind: &str, value: &str) -> SurfaceResult<()> {
     if value.is_empty()
-        || value.len() > MAX_ID_BYTES
         || !value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
@@ -18,13 +17,12 @@ pub fn validate_id(kind: &str, value: &str) -> SurfaceResult<()> {
 
 pub fn validate_asset(value: &str) -> SurfaceResult<()> {
     if value.is_empty()
-        || value.len() > MAX_ASSET_BYTES
         || !value
             .bytes()
             .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
     {
         return Err(SurfaceError::invalid(
-            "asset must be 1..=16 uppercase ASCII letters/digits",
+            "asset must be uppercase ASCII letters and digits",
         ));
     }
     Ok(())
