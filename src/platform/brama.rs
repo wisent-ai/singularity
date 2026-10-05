@@ -8,7 +8,6 @@ mod catalog;
 #[path = "brama/constants.rs"]
 mod constants;
 pub use catalog::Quote;
-use std::time::Duration;
 
 use reqwest::{Client, StatusCode};
 use secrecy::SecretString;
@@ -122,12 +121,10 @@ impl BramaClient {
         bearer: SecretString,
         max_tokens: Option<u32>,
         temperature: Option<f64>,
-        timeout: Duration,
     ) -> Result<Self, AppError> {
-        let http = Client::builder()
-            .timeout(timeout)
-            .build()
-            .map_err(map_network)?;
+        // A call waits for Brama's own answer or the caller's cancellation;
+        // Brama decides how long an upstream may take.
+        let http = Client::builder().build().map_err(map_network)?;
         Ok(Self::from_client(
             http,
             base_url,

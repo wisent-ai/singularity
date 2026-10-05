@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use reqwest::{Client, Response, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
@@ -30,11 +28,9 @@ pub struct MostClient {
 }
 
 impl MostClient {
-    pub fn new(base_url: Url, token: SecretString, deadline: Duration) -> Result<Self, AppError> {
-        let http = Client::builder()
-            .timeout(deadline)
-            .build()
-            .map_err(map_network)?;
+    /// A call waits for Most's own answer or the caller's cancellation.
+    pub fn new(base_url: Url, token: SecretString) -> Result<Self, AppError> {
+        let http = Client::builder().build().map_err(map_network)?;
         Ok(Self {
             http,
             base_url,
@@ -191,7 +187,3 @@ fn map_network(error: reqwest::Error) -> AppError {
 fn map_indeterminate(error: reqwest::Error) -> AppError {
     most(ErrorClass::Indeterminate, error.to_string())
 }
-
-
-
-

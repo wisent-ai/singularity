@@ -37,7 +37,6 @@ pub struct RuntimeConfig {
     /// Most, when a Most credential is configured; its URL is then required.
     pub most: Option<MostEndpoint>,
     pub required_surfaces: Vec<String>,
-    pub http_timeout: Duration,
     pub shutdown_grace: Duration,
 }
 
@@ -193,7 +192,6 @@ impl RuntimeConfig {
                 }
                 (_, None) => None,
             },
-            http_timeout: Duration::from_secs(args.http_timeout_secs),
             shutdown_grace: Duration::from_secs(args.shutdown_grace_secs),
         })
     }

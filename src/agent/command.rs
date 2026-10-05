@@ -129,7 +129,6 @@ pub(super) async fn doctor(args: &CommonArgs, text: bool) -> Result<(), AppError
         config.brama_bearer.clone(),
         config.max_tokens,
         config.temperature,
-        config.http_timeout,
     )?;
     brama.health().await?;
     let models = brama.models().await?;
@@ -143,11 +142,7 @@ pub(super) async fn doctor(args: &CommonArgs, text: bool) -> Result<(), AppError
         )));
     }
     let health = if let Some(endpoint) = config.most.as_ref() {
-        let most = MostClient::new(
-            endpoint.url.clone(),
-            endpoint.token.clone(),
-            config.http_timeout,
-        )?;
+        let most = MostClient::new(endpoint.url.clone(), endpoint.token.clone())?;
         let health = most.health().await?;
         if health.backends.trim().is_empty() || health.backends == "none" {
             return Err(AppError::Most {

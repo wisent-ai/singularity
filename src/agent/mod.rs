@@ -105,7 +105,6 @@ impl Agent {
             config.brama_bearer.clone(),
             config.max_tokens,
             config.temperature,
-            config.http_timeout,
         )?;
         let mut las = LasSupervisor::spawn(
             &config.las_command,
@@ -130,13 +129,7 @@ impl Agent {
         let most = config
             .most
             .as_ref()
-            .map(|endpoint| {
-                MostClient::new(
-                    endpoint.url.clone(),
-                    endpoint.token.clone(),
-                    config.http_timeout,
-                )
-            })
+            .map(|endpoint| MostClient::new(endpoint.url.clone(), endpoint.token.clone()))
             .transpose()?;
         let mut agent = Self {
             config,

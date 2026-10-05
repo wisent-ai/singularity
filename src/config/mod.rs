@@ -209,8 +209,6 @@ pub struct CommonArgs {
     pub most_url: Option<String>,
     #[arg(long, env = "MOST_SERVICE_TOKEN_FILE")]
     pub most_token_file: Option<PathBuf>,
-    #[arg(long, env = "SINGULARITY_HTTP_TIMEOUT_SECS", default_value = "120")]
-    pub http_timeout_secs: u64,
     #[arg(long, env = "SINGULARITY_SHUTDOWN_GRACE_SECS", default_value = "10")]
     pub shutdown_grace_secs: u64,
 }
