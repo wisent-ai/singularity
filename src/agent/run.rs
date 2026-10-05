@@ -57,7 +57,7 @@ impl Agent {
     pub async fn shutdown(&mut self) -> Result<(), AppError> {
         self.state.status = AgentStatus::Stopping;
         self.store.save(&self.state)?;
-        let las_result = self.las.shutdown(self.config.shutdown_grace).await;
+        let las_result = self.las.shutdown().await;
         self.state.status = if self.state.budget.can_call() {
             AgentStatus::Stopped
         } else {

@@ -37,7 +37,7 @@ pub(in crate::ecosystem) async fn monitor(shared: Shared, config: Arc<RuntimeCon
                 shared.lock()?.store.set_meta("las_catalog_ready", &false)?;
                 shared.failure("las.catalog", &error)?;
                 if let Some(mut client) = supervisor.take() {
-                    if let Err(error) = client.shutdown(config.shutdown_grace).await {
+                    if let Err(error) = client.shutdown().await {
                         shared.failure("las.shutdown", &error)?;
                     }
                 }

@@ -1,12 +1,10 @@
 use std::path::Path;
 use std::process::Stdio;
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
-use tokio::time::sleep;
 
 use crate::error::{AppError, ErrorClass};
 
@@ -254,15 +252,36 @@ impl LasSupervisor {
         wait.await
     }
 
-    pub async fn shutdown(&mut self, grace: Duration) -> Result<(), AppError> {
+    /// Stop Las the way MCP's stdio transport describes: close its input, then
+    /// ask it to exit with SIGTERM, and wait for it to do so. No grace period
+    /// is guessed before a SIGKILL: SIGTERM is the request to stop, and a
+    /// server that ignores it is a defect of that server, which this wait
+    /// then makes visible instead of cutting short.
+    pub async fn shutdown(&mut self) -> Result<(), AppError> {
         self.stdin.take();
-        tokio::select! {
-            result = self.child.wait() => { result.map_err(|error| mcp(ErrorClass::Transient, error.to_string()))?; }
-            _ = sleep(grace) => {
-                self.child.kill().await.map_err(|error| mcp(ErrorClass::Transient, error.to_string()))?;
-                self.child.wait().await.map_err(|error| mcp(ErrorClass::Transient, error.to_string()))?;
+        if let Some(pid) = self.child.id() {
+            let pid = libc::pid_t::try_from(pid).map_err(|_| {
+                mcp(
+                    ErrorClass::Permanent,
+                    format!("Las pid {pid} is not a valid process id"),
+                )
+            })?;
+            // SAFETY: kill sends a signal to our own child by its pid.
+            if unsafe { libc::kill(pid, libc::SIGTERM) } != 0 {
+                let error = std::io::Error::last_os_error();
+                // The child has already exited and been reaped; wait() reports its status.
+                if error.raw_os_error() != Some(libc::ESRCH) {
+                    return Err(mcp(
+                        ErrorClass::Transient,
+                        format!("cannot ask Las (pid {pid}) to stop: {error}"),
+                    ));
+                }
             }
         }
+        self.child
+            .wait()
+            .await
+            .map_err(|error| mcp(ErrorClass::Transient, error.to_string()))?;
         Ok(())
     }
 }

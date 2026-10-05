@@ -168,7 +168,7 @@ pub(super) async fn doctor(args: &CommonArgs, text: bool) -> Result<(), AppError
     )
     .await?;
     let tools = las.tools().len();
-    las.shutdown(config.shutdown_grace).await?;
+    las.shutdown().await?;
     answer(
         &json!({"ok":true,"brama_model":config.brama_model,"most":health,"las_tools":tools}),
         text,
@@ -183,7 +183,6 @@ pub(super) async fn list_tools(args: &ToolsArgs) -> Result<(), AppError> {
             args.las_entrypoint.display()
         )));
     }
-    let deadline = LAS_LISTING_DEADLINE;
     let required = Vec::new();
     let mut las = LasSupervisor::spawn(
         &args.las_command,
@@ -207,5 +206,5 @@ pub(super) async fn list_tools(args: &ToolsArgs) -> Result<(), AppError> {
             }
         }
     }
-    las.shutdown(deadline).await
+    las.shutdown().await
 }

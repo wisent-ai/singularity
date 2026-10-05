@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use chrono::Utc;
 use rust_decimal::Decimal;
 use serde::Serialize;
@@ -11,9 +9,6 @@ use crate::error::AppError;
 use crate::mcp::LasSupervisor;
 use crate::most::MostClient;
 use crate::tools::ToolCatalog;
-
-/// Tool listing's child shutdown grace; MCP requests themselves wait for completion.
-const LAS_LISTING_DEADLINE: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Serialize)]
 pub struct CycleReport {
@@ -122,7 +117,7 @@ impl Agent {
         let catalog = match ToolCatalog::build(las.tools(), config.most.is_some()) {
             Ok(value) => value,
             Err(error) => {
-                let _ = las.shutdown(config.shutdown_grace).await;
+                let _ = las.shutdown().await;
                 return Err(error);
             }
         };
