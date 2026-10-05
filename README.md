@@ -102,9 +102,9 @@ The accepted document is strict `singularity-mind-import-v1` JSON:
 All three arrays are required and may be empty, but at least one real record is
 required across them. Source and item IDs must be stable, nonempty, and unique
 within the document. Unknown
-fields, malformed JSON, symbolic links, files over 16 MiB, empty text, NULs, and
-oversized fields are refused; the number of records is not limited, and every
-memory the import adds is kept.
+fields, malformed JSON, symbolic links, empty text and NULs are refused; neither
+the file, a field nor the number of records is size-limited, and every memory
+the import adds is kept.
 
 Singularity validates the entire document before mutation and saves `state.json`
 once. Repeating the same source item with the same text is unchanged; repeating
@@ -203,10 +203,10 @@ singularity doctor      verify Brama, Las, Most and required surfaces
 singularity tools       print the dynamic and built-in tool catalogue
 singularity ecosystem run --policy FILE [--start-paused] [--ready-json]  run the delegated portfolio
 singularity ecosystem status --json     read the live portfolio owner
-singularity ecosystem opportunities     read a page of hypotheses and decisions
-singularity ecosystem initiatives       read a page of execution and delivery state
-singularity ecosystem records [KIND]    browse retained evidence and event summaries
-singularity ecosystem record KIND ID    read revision-bound evidence fragments
+singularity ecosystem opportunities     list hypotheses and decisions (every one; --limit N --before CURSOR pages)
+singularity ecosystem initiatives       list execution and delivery state (every one; --limit N --before CURSOR pages)
+singularity ecosystem records [KIND]    list retained evidence and event summaries (every one; --limit N pages)
+singularity ecosystem record KIND ID    read a record whole, or --bytes N fragments bound to --revision
 singularity ecosystem explain ID        read decision and delivery evidence
 singularity ecosystem pause             stop new admission without replaying effects
 singularity ecosystem resume            resume within the original delegation
