@@ -1,15 +1,15 @@
-use super::super::control::protocol::{MAX_PAGE_SIZE, MAX_RECORD_BYTES, MAX_RESPONSE_BYTES};
 use super::fleet::record;
 use super::{AppError, Digest, Result, Sha256, Store, field_is, sql};
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::{Value, json};
 
-fn page_bounds(before: Option<i64>, limit: u32) -> Result<()> {
-    if !(1..=MAX_PAGE_SIZE).contains(&limit) || before.is_some_and(|value| value <= 0) {
-        return Err(AppError::Config(format!(
-            "records requires limit 1..{MAX_PAGE_SIZE} and a positive before cursor"
-        )));
+/// A page holds `limit` records when the caller names one, and every record otherwise.
+fn page_bounds(before: Option<i64>, limit: Option<u32>) -> Result<()> {
+    if limit == Some(0) || before.is_some_and(|value| value <= 0) {
+        return Err(AppError::Config(
+            "records takes a limit of at least 1 when given and a positive before cursor".into(),
+        ));
     }
     Ok(())
 }
@@ -21,13 +21,12 @@ impl Store {
         kind: Option<&str>,
         initiative: Option<&str>,
         before: Option<i64>,
-        limit: u32,
+        limit: Option<u32>,
     ) -> Result<Value> {
         page_bounds(before, limit)?;
         let being = self.being.clone();
         let kind = kind.map(str::to_owned);
         let initiative = initiative.map(str::to_owned);
-        let fetch = u64::from(limit) + 1;
         type Row = (
             i64,
             String,
@@ -49,13 +48,13 @@ impl Store {
                 .column_as(Expr::cust("octet_length(data)::bigint"), "total_bytes")
                 .column_as(
                     Expr::cust(
-                        "left(coalesce(data::jsonb->>'title',data::jsonb->>'source',data::jsonb->>'purpose',
-                            data::jsonb->>'operation',data::jsonb->>'detail',id),160)",
+                        "coalesce(data::jsonb->>'title',data::jsonb->>'source',data::jsonb->>'purpose',
+                            data::jsonb->>'operation',data::jsonb->>'detail',id)",
                     ),
                     "preview",
                 )
                 .column_as(
-                    Expr::cust("left(coalesce(data::jsonb->>'state',data::jsonb->>'status'),64)"),
+                    Expr::cust("coalesce(data::jsonb->>'state',data::jsonb->>'status')"),
                     "state",
                 )
                 .filter(record::Column::Being.eq(being));
@@ -68,19 +67,21 @@ impl Store {
             if let Some(before) = before {
                 query = query.filter(record::Column::Seq.lt(before));
             }
+            if let Some(limit) = limit {
+                query = query.limit(u64::from(limit) + 1);
+            }
             query
                 .order_by_desc(record::Column::Seq)
-                .limit(fetch)
                 .into_tuple::<Row>()
                 .all(&db)
                 .await
                 .map_err(sql)
         })?;
-        let mut items = Vec::with_capacity(limit as usize);
+        let mut items = Vec::new();
         let mut last_cursor = None;
         let mut next_cursor = None;
         for (seq, kind, id, created_at, updated_at, total_bytes, preview, state) in rows {
-            if items.len() == limit as usize {
+            if limit.is_some_and(|limit| items.len() == limit as usize) {
                 next_cursor = last_cursor;
                 break;
             }
@@ -98,10 +99,9 @@ impl Store {
         Ok(json!({"items":items,"next_cursor":next_cursor}))
     }
 
-    pub fn items(&self, kind: &str, before: Option<i64>, limit: u32) -> Result<Value> {
+    pub fn items(&self, kind: &str, before: Option<i64>, limit: Option<u32>) -> Result<Value> {
         page_bounds(before, limit)?;
         let (being, kind_owned) = (self.being.clone(), kind.to_owned());
-        let fetch = u64::from(limit) + 1;
         let rows = self.db.run(move |db| async move {
             let mut query = record::Entity::find()
                 .filter(record::Column::Being.eq(being))
@@ -109,30 +109,23 @@ impl Store {
             if let Some(before) = before {
                 query = query.filter(record::Column::Seq.lt(before));
             }
+            if let Some(limit) = limit {
+                query = query.limit(u64::from(limit) + 1);
+            }
             query
                 .order_by_desc(record::Column::Seq)
-                .limit(fetch)
                 .all(&db)
                 .await
                 .map_err(sql)
         })?;
-        let mut items = Vec::with_capacity(limit as usize);
+        let mut items = Vec::new();
         let mut last_cursor = None;
         let mut next_cursor = None;
-        let mut remaining = MAX_RESPONSE_BYTES / 2;
         for row in rows {
-            let length = row.data.len() as u64;
-            if items.len() == limit as usize || length > remaining {
-                if items.is_empty() {
-                    let id = row.id;
-                    return Err(AppError::State(format!(
-                        "record {kind}/{id} exceeds a collection page; read it with ecosystem record {kind} {id}"
-                    )));
-                }
+            if limit.is_some_and(|limit| items.len() == limit as usize) {
                 next_cursor = last_cursor;
                 break;
             }
-            remaining -= length;
             items.push(serde_json::from_str::<Value>(&row.data)?);
             last_cursor = Some(row.seq);
         }
@@ -144,13 +137,14 @@ impl Store {
         kind: &str,
         id: &str,
         offset: u64,
-        bytes: u32,
+        bytes: Option<u32>,
         revision: Option<&str>,
     ) -> Result<Value> {
-        if !(4..=MAX_RECORD_BYTES).contains(&bytes) {
-            return Err(AppError::Config(format!(
-                "record requires bytes 4..{MAX_RECORD_BYTES}"
-            )));
+        if bytes == Some(0) {
+            return Err(AppError::Config(
+                "record bytes must be at least 1 when given; omit it to read the whole record"
+                    .into(),
+            ));
         }
         if offset > 0 && revision.is_none() {
             return Err(AppError::Config(
@@ -193,7 +187,7 @@ impl Store {
             )));
         }
         let start = offset as usize;
-        let end = (start + bytes as usize).min(data.len());
+        let end = bytes.map_or(data.len(), |bytes| (start + bytes as usize).min(data.len()));
         let text = match String::from_utf8(data[start..end].to_vec()) {
             Ok(text) => text,
             Err(error) if error.utf8_error().error_len().is_none() => {

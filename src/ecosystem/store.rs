@@ -242,7 +242,7 @@ impl Store {
         Ok(
             json!({"opportunity":self.get::<Value>("opportunity",&initiative.opportunity_id)?,
                 "review":self.get::<Value>("review",&initiative.opportunity_id)?,"initiative":initiative,
-                "related":related,"history":{"method":"records","params":{"initiative_id":id,"limit":super::protocol::DEFAULT_PAGE_SIZE}}}),
+                "related":related,"history":{"method":"records","params":{"initiative_id":id}}}),
         )
     }
 }

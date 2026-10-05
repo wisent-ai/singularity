@@ -84,9 +84,9 @@ pub struct PageArgs {
     /// Continuation returned in next_cursor; omit to start a fresh listing.
     #[arg(long)]
     pub before: Option<i64>,
-    /// Records per page.
-    #[arg(long, default_value_t = protocol::DEFAULT_PAGE_SIZE)]
-    pub limit: u32,
+    /// Records per page; omit to list every record.
+    #[arg(long)]
+    pub limit: Option<u32>,
 }
 #[derive(Debug, Args)]
 pub struct RecordsArgs {
@@ -107,9 +107,9 @@ pub struct RecordArgs {
     /// Byte offset the fragment starts at; next_offset of the previous fragment.
     #[arg(long, default_value_t = 0)]
     pub offset: u64,
-    /// Bytes per fragment.
-    #[arg(long, default_value_t = protocol::DEFAULT_RECORD_BYTES)]
-    pub bytes: u32,
+    /// Bytes per fragment; omit to read the record whole from the offset.
+    #[arg(long)]
+    pub bytes: Option<u32>,
     /// The first fragment's content_sha256; required after offset zero.
     #[arg(long)]
     pub revision: Option<String>,

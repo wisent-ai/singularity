@@ -2,7 +2,7 @@ mod dependencies;
 pub(super) mod protocol;
 use super::{
     Shared,
-    protocol::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, SCHEMA_VERSION, SOCKET_FILE},
+    protocol::{SCHEMA_VERSION, SOCKET_FILE},
 };
 use crate::AppError;
 pub(super) use dependencies::monitor as monitor_tools;
@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{UnixListener, UnixStream},
     task::JoinHandle,
 };
@@ -51,21 +51,15 @@ fn dispatch(shared: &Shared, request: Request) -> Result<Value, AppError> {
     let params = &request.params;
     match request.method.as_str() {
         "status" => state.store.status(&state.policy),
-        "opportunities" => state.store.items(
-            "opportunity",
-            params.before,
-            params.limit.unwrap_or(protocol::DEFAULT_PAGE_SIZE),
-        ),
-        "initiatives" => state.store.items(
-            "initiative",
-            params.before,
-            params.limit.unwrap_or(protocol::DEFAULT_PAGE_SIZE),
-        ),
+        "opportunities" => state
+            .store
+            .items("opportunity", params.before, params.limit),
+        "initiatives" => state.store.items("initiative", params.before, params.limit),
         "records" => state.store.records(
             params.kind.as_deref(),
             params.initiative_id.as_deref(),
             params.before,
-            params.limit.unwrap_or(protocol::DEFAULT_PAGE_SIZE),
+            params.limit,
         ),
         "record" => state.store.record(
             params
@@ -77,7 +71,7 @@ fn dispatch(shared: &Shared, request: Request) -> Result<Value, AppError> {
                 .as_deref()
                 .ok_or_else(|| AppError::Config("record requires id".into()))?,
             params.offset.unwrap_or(0),
-            params.bytes.unwrap_or(protocol::DEFAULT_RECORD_BYTES),
+            params.bytes,
             params.revision.as_deref(),
         ),
         "explain" => state.store.explain(
@@ -114,13 +108,13 @@ async fn serve(mut stream: UnixStream, shared: Shared) -> Result<(), AppError> {
         ));
     }
     let mut bytes = Vec::new();
-    BufReader::new((&mut stream).take(MAX_REQUEST_BYTES + 1))
+    BufReader::new(&mut stream)
         .read_until(b'\n', &mut bytes)
         .await?;
     let mut operation = "ecosystem.control".to_string();
-    let result = if bytes.len() as u64 > MAX_REQUEST_BYTES || !bytes.ends_with(b"\n") {
+    let result = if !bytes.ends_with(b"\n") {
         Err(AppError::Config(
-            "ecosystem request must be one bounded newline-terminated JSON document".into(),
+            "ecosystem request must be one newline-terminated JSON document".into(),
         ))
     } else {
         match serde_json::from_slice::<Request>(&bytes) {
@@ -138,14 +132,6 @@ async fn serve(mut stream: UnixStream, shared: Shared) -> Result<(), AppError> {
         }
     };
     let mut body = serde_json::to_vec(&response)?;
-    if body.len() as u64 > MAX_RESPONSE_BYTES {
-        body = serde_json::to_vec(&json!({
-            "schema_version":SCHEMA_VERSION,"ok":false,
-            "error":{"code":"response_too_large","operation":operation,
-                "message":format!("ecosystem response is {} bytes; protocol limit is {MAX_RESPONSE_BYTES} bytes",body.len()),
-                "retryable":false}
-        }))?;
-    }
     body.push(b'\n');
     stream.write_all(&body).await?;
     stream.shutdown().await?;
@@ -223,18 +209,13 @@ pub async fn request(directory: &Path, method: &str, params: &Value) -> Result<V
         &json!({"schema_version":SCHEMA_VERSION,"method":method,"params":params}),
     )?;
     bytes.push(b'\n');
-    if bytes.len() as u64 > MAX_REQUEST_BYTES {
-        return Err(AppError::Config(format!(
-            "ecosystem request exceeds {MAX_REQUEST_BYTES} bytes"
-        )));
-    }
     stream.write_all(&bytes).await?;
     let mut reply = Vec::new();
-    BufReader::new(stream.take(MAX_RESPONSE_BYTES + 1))
-        .read_until(b'\n', &mut reply)
-        .await?;
-    if reply.len() as u64 > MAX_RESPONSE_BYTES || !reply.ends_with(b"\n") {
-        return Err(AppError::State("invalid ecosystem response framing".into()));
+    BufReader::new(stream).read_until(b'\n', &mut reply).await?;
+    if !reply.ends_with(b"\n") {
+        return Err(AppError::State(
+            "ecosystem response ended before its newline terminator".into(),
+        ));
     }
     let result: Value = serde_json::from_slice(&reply)?;
     if result["schema_version"] != SCHEMA_VERSION || !result["ok"].is_boolean() {
