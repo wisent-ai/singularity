@@ -28,23 +28,26 @@ pub(super) fn redeem(
         return Err(AppError::Secret("capability redemption denied".into()));
     }
     let nonce = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
-    let mut proof_input = Vec::with_capacity(
-        PROOF_DOMAIN.len() + capability_id.len() + nonce.len() + workload_id.len() + 2,
-    );
-    proof_input.extend_from_slice(PROOF_DOMAIN);
-    proof_input.extend_from_slice(capability_id.as_bytes());
-    proof_input.push(0);
-    proof_input.extend_from_slice(nonce.as_bytes());
-    proof_input.push(0);
-    proof_input.extend_from_slice(workload_id.as_bytes());
+    // The proof Skarbiec verifies (`skarbiec.redeem.v1`): the domain, then the
+    // capability, nonce, workload and operation each ended by a NUL byte, then
+    // the authorization id, which a bootstrap capability does not carry.
+    let mut proof_input = Vec::from(PROOF_DOMAIN);
+    for part in [capability_id, nonce.as_str(), workload_id, REDEEM_OPERATION] {
+        let part = std::ffi::CString::new(part)
+            .map_err(|_| AppError::Secret("capability redemption denied".into()))?;
+        proof_input.extend_from_slice(part.as_bytes_with_nul());
+    }
+    proof_input.extend_from_slice(NO_AUTHORIZATION.as_bytes());
     let proof = URL_SAFE_NO_PAD.encode(signing_key.sign(&proof_input).to_bytes());
     proof_input.zeroize();
 
     let request = RedeemRequest {
         version: WIRE_VERSION,
+        operation: REDEEM_OPERATION,
         capability_id,
         nonce: &nonce,
         workload_id,
+        authorization_id: NO_AUTHORIZATION,
         proof,
     };
     let mut encoded = serde_json::to_vec(&request)?;

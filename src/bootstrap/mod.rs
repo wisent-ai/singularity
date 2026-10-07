@@ -13,6 +13,11 @@ use crate::error::AppError;
 const MANIFEST_DOMAIN: &[u8] = b"SINGULARITY-BOOTSTRAP-MANIFEST\0v2\0";
 const PROOF_DOMAIN: &[u8] = b"SKARBIEC-WORKLOAD-PROOF\0v1\0";
 const WIRE_VERSION: &str = "skarbiec.redeem.v1";
+/// The one operation a bootstrap performs on a capability.
+const REDEEM_OPERATION: &str = "redeem";
+/// A bootstrap capability is issued without an authorization id; the wire
+/// carries it, and the proof covers it, as the empty string.
+const NO_AUTHORIZATION: &str = "";
 // How long a manifest lives is the issuer's signed expires_at; a broker answer is waited for,
 // and a secret or control line is as long as the broker sends.
 /// An Ed25519 key is 32 bytes, spelled as 64 hex characters.
@@ -63,9 +68,11 @@ pub struct BootstrapCapability {
 #[serde(deny_unknown_fields)]
 struct RedeemRequest<'a> {
     version: &'static str,
+    operation: &'static str,
     capability_id: &'a str,
     nonce: &'a str,
     workload_id: &'a str,
+    authorization_id: &'static str,
     proof: String,
 }
 
