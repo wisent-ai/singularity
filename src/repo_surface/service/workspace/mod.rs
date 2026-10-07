@@ -37,11 +37,19 @@ impl RepoService {
             .ok_or_else(|| SurfaceError::policy("repository is not allowlisted"))?;
         if let Some(existing) = self.state.existing_workspace(&input.workspace_id)? {
             if existing.repo_id != input.repo_id {
-                return Err(SurfaceError::conflict("workspace_id is bound to a different repository"));
+                return Err(SurfaceError::conflict(
+                    "workspace_id is bound to a different repository",
+                ));
             }
             self.repo(&existing)?;
             let response = status_json(&existing);
-            self.record(&input.request_id, "workspace_create", &existing.id, fp, &response)?;
+            self.record(
+                &input.request_id,
+                "workspace_create",
+                &existing.id,
+                fp,
+                &response,
+            )?;
             return Ok(response);
         }
         let filters = git(
@@ -81,21 +89,53 @@ impl RepoService {
             return Err(SurfaceError::conflict("source repository is not clean"));
         }
         let worktree = repo.root.clone();
-        let branch = successful(git(&repo.root, &["branch", "--show-current"], None, 30).await?,
-            "read canonical branch")?.stdout.trim().to_owned();
+        let branch = successful(
+            git(&repo.root, &["branch", "--show-current"], None, 30).await?,
+            "read canonical branch",
+        )?
+        .stdout
+        .trim()
+        .to_owned();
         if branch != repo.base_branch {
-            return Err(SurfaceError::policy("canonical checkout is not on main; no branch was changed"));
+            return Err(SurfaceError::policy(
+                "canonical checkout is not on main; no branch was changed",
+            ));
         }
-        let worktrees = successful(git(&repo.root, &["worktree", "list", "--porcelain"], None, 30).await?,
-            "inspect canonical checkout ownership")?;
-        if worktrees.stdout.lines().filter(|line| line.starts_with("worktree ")).count() != 1 {
-            return Err(SurfaceError::policy("repository has multiple checkouts; none was removed"));
+        let worktrees = successful(
+            git(&repo.root, &["worktree", "list", "--porcelain"], None, 30).await?,
+            "inspect canonical checkout ownership",
+        )?;
+        if worktrees
+            .stdout
+            .lines()
+            .filter(|line| line.starts_with("worktree "))
+            .count()
+            != 1
+        {
+            return Err(SurfaceError::policy(
+                "repository has multiple checkouts; none was removed",
+            ));
         }
-        let origin = successful(git(&repo.root, &["config", "--get", &format!("remote.{}.url",repo.remote)], None, 30).await?,
-            "read canonical origin")?.stdout.trim().trim_end_matches(".git").to_owned();
-        if origin != format!("https://github.com/{}",repo.github_repository)
-            && origin != format!("git@github.com:{}",repo.github_repository) {
-            return Err(SurfaceError::policy("canonical origin differs from the policy repository"));
+        let origin = successful(
+            git(
+                &repo.root,
+                &["config", "--get", &format!("remote.{}.url", repo.remote)],
+                None,
+                30,
+            )
+            .await?,
+            "read canonical origin",
+        )?
+        .stdout
+        .trim()
+        .trim_end_matches(".git")
+        .to_owned();
+        if origin != format!("https://github.com/{}", repo.github_repository)
+            && origin != format!("git@github.com:{}", repo.github_repository)
+        {
+            return Err(SurfaceError::policy(
+                "canonical origin differs from the policy repository",
+            ));
         }
         let base_ref = "HEAD";
         let base = successful(
@@ -111,7 +151,8 @@ impl RepoService {
         .stdout
         .trim()
         .to_owned();
-        self.state.claim_repository(&input.repo_id, &input.workspace_id)?;
+        self.state
+            .claim_repository(&input.repo_id, &input.workspace_id)?;
         let state = WorkspaceState {
             id: input.workspace_id.clone(),
             repo_id: input.repo_id,
@@ -145,10 +186,11 @@ impl RepoService {
         let path = jailed_path(&state.worktree, &input.path, true)?;
         let metadata = fs::symlink_metadata(&path)
             .map_err(|e| SurfaceError::invalid(format!("cannot stat requested file: {e}")))?;
-        if !metadata.is_file() || metadata.len() > READ_CAP as u64 {
-            return Err(SurfaceError::invalid(
-                "requested path is not a bounded regular file",
-            ));
+        if !metadata.is_file() {
+            return Err(SurfaceError::invalid(format!(
+                "{} is not a regular file",
+                input.path.display()
+            )));
         }
         let bytes = fs::read(path)
             .map_err(|e| SurfaceError::state(format!("cannot read workspace file: {e}")))?;
@@ -164,8 +206,8 @@ impl RepoService {
         validate_id("request_id", &input.request_id)?;
         let _request_lock = self.state.lock_request(&input.request_id)?;
         let _workspace_lock = self.state.lock_workspace(&input.workspace_id)?;
-        if input.patch.is_empty() || input.patch.len() > PATCH_CAP {
-            return Err(SurfaceError::invalid("patch must be 1..=1048576 bytes"));
+        if input.patch.is_empty() {
+            return Err(SurfaceError::invalid("patch is empty"));
         }
         let fp = request_fingerprint(
             "workspace_apply_patch",

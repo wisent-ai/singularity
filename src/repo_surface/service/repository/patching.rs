@@ -149,9 +149,6 @@ pub(crate) async fn bounded_diff(worktree: &Path) -> SurfaceResult<String> {
                 out.push_str(&diff.stdout);
             }
         }
-        if out.len() > DIFF_CAP {
-            return Err(SurfaceError::conflict("diff exceeds 1048576-byte limit"));
-        }
     }
     Ok(out)
 }

@@ -216,7 +216,6 @@ pub async fn git_network(
     .await
 }
 
-
 #[cfg(unix)]
 const SIGKILL: i32 = 9;
 

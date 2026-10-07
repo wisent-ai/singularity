@@ -6,17 +6,12 @@ use crate::repo_surface::policy::{PolicyFile, RepoPolicy};
 use crate::repo_surface::state::{RequestRecord, StateStore, WorkspaceState};
 use crate::repo_surface::{SurfaceError, SurfaceResult};
 
-const PATCH_CAP: usize = 1024 * 1024;
-const DIFF_CAP: usize = 1024 * 1024;
-const READ_CAP: usize = 256 * 1024;
 /// A porcelain status entry is `XY path`: two status bytes, a space, at least one byte.
 const MIN_STATUS_ENTRY_BYTES: usize = 4;
 const STATUS_PATH_OFFSET: usize = 3;
 /// A git object id is 40 hex characters (SHA-1) or 64 (SHA-256).
 const SHA1_HEX_CHARS: usize = 40;
 const SHA256_HEX_CHARS: usize = 64;
-/// A commit message is one line of at most 200 characters.
-const MAX_COMMIT_MESSAGE_BYTES: usize = 200;
 
 #[derive(Clone)]
 pub struct RepoService {

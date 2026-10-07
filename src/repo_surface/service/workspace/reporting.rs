@@ -54,7 +54,7 @@ impl RepoService {
                 "--no-textconv",
             ],
             None,
-            check.timeout_secs,
+            check.timeout_secs.get(),
         )
         .await?;
         let after = fresh_seal(&state).await?;

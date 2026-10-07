@@ -90,18 +90,32 @@ impl RepoService {
         let remote_commit = existing.stdout.split_whitespace().next();
         if remote_commit != Some(commit.as_str()) {
             if remote_commit != Some(state.base_commit.as_str()) {
-                return Err(SurfaceError::conflict("remote main differs from the workspace base; no force push was attempted"));
+                return Err(SurfaceError::conflict(
+                    "remote main differs from the workspace base; no force push was attempted",
+                ));
             }
             let refspec = format!("{commit}:{remote_ref}");
             successful(
-                git_network(&state.worktree, &["push", "--porcelain", &repo.remote, &refspec], 180).await?,
+                git_network(
+                    &state.worktree,
+                    &["push", "--porcelain", &repo.remote, &refspec],
+                    180,
+                )
+                .await?,
                 "publish canonical main",
             )?;
         }
-        let readback = git_network(&state.worktree, &["ls-remote", "--heads", &repo.remote, &remote_ref], 60).await?;
+        let readback = git_network(
+            &state.worktree,
+            &["ls-remote", "--heads", &repo.remote, &remote_ref],
+            60,
+        )
+        .await?;
         successful_ref(&readback, "verify published canonical main")?;
         if readback.stdout.split_whitespace().next() != Some(commit.as_str()) {
-            return Err(SurfaceError::conflict("remote main does not contain the exact published commit"));
+            return Err(SurfaceError::conflict(
+                "remote main does not contain the exact published commit",
+            ));
         }
         state.published = true;
         self.state.save_workspace(&state)?;
@@ -116,7 +130,6 @@ impl RepoService {
         )?;
         Ok(response)
     }
-
 
     pub(super) async fn proposal_status(&self, input: WorkspaceOnly) -> SurfaceResult<Value> {
         let _workspace_lock = self.state.lock_workspace(&input.workspace_id)?;

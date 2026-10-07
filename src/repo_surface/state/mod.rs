@@ -92,7 +92,6 @@ impl StateStore {
         Ok(Self { root })
     }
 
-
     pub fn lock_workspace(&self, id: &str) -> SurfaceResult<WorkspaceLock> {
         validate_id("workspace id", id)?;
         locking::acquire(&self.root.join("locks").join(format!("{id}.lock")))
@@ -100,7 +99,12 @@ impl StateStore {
 
     pub fn lock_request(&self, request_id: &str) -> SurfaceResult<WorkspaceLock> {
         validate_id("request_id", request_id)?;
-        locking::acquire(&self.root.join("request-locks").join(format!("{request_id}.lock")))
+        locking::acquire(
+            &self
+                .root
+                .join("request-locks")
+                .join(format!("{request_id}.lock")),
+        )
     }
 
     fn record_path(&self, id: &str) -> SurfaceResult<PathBuf> {
@@ -141,7 +145,7 @@ impl StateStore {
     }
 }
 
-mod locking;
 mod claims;
+mod locking;
 
 use locking::*;

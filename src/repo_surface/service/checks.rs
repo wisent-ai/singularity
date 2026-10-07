@@ -104,7 +104,9 @@ pub(super) fn commit_ready(state: &WorkspaceState, repo: &RepoPolicy) -> Surface
         .clone()
         .ok_or_else(|| SurfaceError::conflict("workspace must be committed first"))?;
     if state.branch != repo.base_branch || state.worktree != repo.root {
-        return Err(SurfaceError::policy("workspace is not the canonical main checkout"));
+        return Err(SurfaceError::policy(
+            "workspace is not the canonical main checkout",
+        ));
     }
     Ok(commit)
 }
@@ -113,10 +115,14 @@ pub(super) async fn committed_head(
     repo: &RepoPolicy,
 ) -> SurfaceResult<String> {
     let commit = commit_ready(state, repo)?;
-    let branch = successful(git(&state.worktree, &["branch", "--show-current"], None, 30).await?,
-        "verify canonical publication branch")?;
+    let branch = successful(
+        git(&state.worktree, &["branch", "--show-current"], None, 30).await?,
+        "verify canonical publication branch",
+    )?;
     if branch.stdout.trim() != repo.base_branch {
-        return Err(SurfaceError::conflict("canonical branch changed before publication"));
+        return Err(SurfaceError::conflict(
+            "canonical branch changed before publication",
+        ));
     }
     let status = successful(
         git(
@@ -148,18 +154,23 @@ pub(super) async fn committed_head(
     Ok(commit)
 }
 
+/// A commit message is one non-empty line; git keeps a message of any length.
 pub(super) fn validate_commit_message(v: &str) -> SurfaceResult<()> {
-    if v.trim() != v
-        || v.is_empty()
-        || v.len() > MAX_COMMIT_MESSAGE_BYTES
-        || v.contains('\0')
-        || v.contains('\n')
-        || v.starts_with('-')
-    {
-        Err(SurfaceError::invalid(&format!(
-            "commit message must be a single 1..={MAX_COMMIT_MESSAGE_BYTES} character line"
-        )))
+    let cause = if v.is_empty() {
+        Some("is empty")
+    } else if v.trim() != v {
+        Some("starts or ends with whitespace")
+    } else if v.contains('\n') {
+        Some("spans more than one line")
+    } else if v.contains('\0') {
+        Some("contains a NUL byte")
+    } else if v.starts_with('-') {
+        Some("starts with '-', which git would read as an option")
     } else {
-        Ok(())
+        None
+    };
+    match cause {
+        Some(cause) => Err(SurfaceError::invalid(&format!("commit message {cause}"))),
+        None => Ok(()),
     }
 }

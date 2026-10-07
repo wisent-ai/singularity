@@ -5,13 +5,10 @@ use std::path::{Component, Path, PathBuf};
 
 use super::{SurfaceError, SurfaceResult};
 
-/// A check may run at most an hour; a GitHub owner or repository name is at most 100
-/// bytes; an identifier at most 128; a token at most 256; a protected file may grant
-/// the group and others no mode bits.
-const MAX_CHECK_TIMEOUT_SECS: u64 = 3600;
-const MAX_GITHUB_COMPONENT_BYTES: usize = 100;
-const MAX_ID_BYTES: usize = 128;
-const MAX_TOKEN_BYTES: usize = 256;
+/// A protected file may grant the group and others no mode bits. How long a
+/// check may run is the policy's own `timeout_secs`, which cannot be zero; how
+/// long a name, id or token may be is what GitHub and git accept, and they
+/// refuse with their own answer.
 pub(super) const GROUP_OR_OTHER_ACCESS: u32 = 0o077;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -36,7 +33,8 @@ pub struct RepoPolicy {
 #[serde(deny_unknown_fields)]
 pub struct CheckPolicy {
     pub kind: CheckKind,
-    pub timeout_secs: u64,
+    /// A zero is refused when the policy is read, with serde's sentence.
+    pub timeout_secs: std::num::NonZeroU64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -79,7 +77,9 @@ impl RepoPolicy {
         validate_token("remote", &self.remote)?;
         validate_branch("base_branch", &self.base_branch)?;
         if self.base_branch != "main" {
-            return Err(SurfaceError::policy("canonical repository operations require main"));
+            return Err(SurfaceError::policy(
+                "canonical repository operations require main",
+            ));
         }
         validate_github_repository(&self.github_repository)?;
         if self.allowed_paths.is_empty() {
@@ -104,11 +104,6 @@ impl RepoPolicy {
             if !matches!(check.kind, CheckKind::GitDiffCheck) {
                 return Err(SurfaceError::policy(format!(
                     "check {name:?} has unsupported kind"
-                )));
-            }
-            if check.timeout_secs == 0 || check.timeout_secs > MAX_CHECK_TIMEOUT_SECS {
-                return Err(SurfaceError::policy(format!(
-                    "check {name:?} timeout_secs must be 1..={MAX_CHECK_TIMEOUT_SECS}"
                 )));
             }
         }
@@ -138,39 +133,55 @@ fn validate_github_repository(value: &str) -> SurfaceResult<()> {
 }
 
 fn validate_github_component(kind: &str, value: &str) -> SurfaceResult<()> {
-    if value.is_empty()
-        || value.len() > MAX_GITHUB_COMPONENT_BYTES
-        || value.starts_with('-')
-        || value.starts_with('.')
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    if value.is_empty() {
+        return Err(SurfaceError::policy(format!("{kind} is empty")));
+    }
+    if value.starts_with('-') || value.starts_with('.') {
+        return Err(SurfaceError::policy(format!(
+            "{kind} {value:?} starts with '-' or '.', which GitHub does not allow"
+        )));
+    }
+    if let Some(byte) = value
+        .bytes()
+        .find(|byte| !(byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')))
     {
-        return Err(SurfaceError::policy(format!("invalid {kind}")));
+        return Err(SurfaceError::policy(format!(
+            "{kind} {value:?} contains {:?}; GitHub names hold only letters, digits, '-', '_' and '.'",
+            char::from(byte)
+        )));
     }
     Ok(())
 }
 
 pub fn validate_id(kind: &str, value: &str) -> SurfaceResult<()> {
-    if value.is_empty()
-        || value.len() > MAX_ID_BYTES
-        || !value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+    if value.is_empty() {
+        return Err(SurfaceError::invalid(format!("{kind} is empty")));
+    }
+    if let Some(byte) = value
+        .bytes()
+        .find(|byte| !(byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')))
     {
-        return Err(SurfaceError::invalid(format!("invalid {kind}")));
+        return Err(SurfaceError::invalid(format!(
+            "{kind} {value:?} contains {:?}; an id holds only letters, digits, '-' and '_'",
+            char::from(byte)
+        )));
     }
     Ok(())
 }
 
 pub fn validate_token(kind: &str, value: &str) -> SurfaceResult<()> {
-    if value.is_empty()
-        || value.len() > MAX_TOKEN_BYTES
-        || value.starts_with('-')
-        || value.contains('\0')
-        || value.chars().any(char::is_whitespace)
-    {
-        return Err(SurfaceError::policy(format!("invalid {kind}")));
+    if value.is_empty() {
+        return Err(SurfaceError::policy(format!("{kind} is empty")));
+    }
+    if value.starts_with('-') {
+        return Err(SurfaceError::policy(format!(
+            "{kind} {value:?} starts with '-', which git would read as an option"
+        )));
+    }
+    if value.contains('\0') || value.chars().any(char::is_whitespace) {
+        return Err(SurfaceError::policy(format!(
+            "{kind} {value:?} contains whitespace or a NUL byte"
+        )));
     }
     Ok(())
 }
@@ -194,7 +205,6 @@ pub fn validate_branch(kind: &str, value: &str) -> SurfaceResult<()> {
     }
     Ok(())
 }
-
 
 pub fn validate_relative_path(path: &Path) -> SurfaceResult<()> {
     if path.as_os_str().is_empty() || path.is_absolute() {
@@ -242,4 +252,3 @@ pub fn require_owner_only_file(_path: &Path) -> SurfaceResult<()> {
         "owner-only policy enforcement requires Unix",
     ))
 }
-

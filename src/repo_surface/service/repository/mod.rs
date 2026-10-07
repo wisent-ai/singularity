@@ -156,8 +156,8 @@ pub(super) fn reject_symlink_components(root: &Path, relative: &Path) -> Surface
     Ok(())
 }
 
-mod patching;
 mod commit;
+mod patching;
 pub(super) use commit::reconcile_commit;
 
 pub(super) use patching::*;
