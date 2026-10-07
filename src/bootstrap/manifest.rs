@@ -17,9 +17,7 @@ pub(super) fn verify_manifest(
     let signature_bytes = read_hex_64(signature_path)?;
     let signature = Signature::from_slice(&signature_bytes)
         .map_err(|_| AppError::Config("invalid bootstrap manifest signature".into()))?;
-    let mut signed = Vec::with_capacity(MANIFEST_DOMAIN.len() + bytes.len());
-    signed.extend_from_slice(MANIFEST_DOMAIN);
-    signed.extend_from_slice(bytes);
+    let signed = signed_manifest_bytes(bytes);
     key.verify(&signed, &signature)
         .map_err(|_| AppError::Config("bootstrap manifest signature verification failed".into()))
 }

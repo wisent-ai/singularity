@@ -85,21 +85,28 @@ struct RedeemControl {
     secret_len: Option<usize>,
 }
 
-pub fn run_bootstrap(
+/// The bytes a launch ticket's signature covers: the v2 domain, then the
+/// manifest exactly as written.
+pub(crate) fn signed_manifest_bytes(bytes: &[u8]) -> Vec<u8> {
+    let mut signed = Vec::with_capacity(MANIFEST_DOMAIN.len() + bytes.len());
+    signed.extend_from_slice(MANIFEST_DOMAIN);
+    signed.extend_from_slice(bytes);
+    signed
+}
+
+/// Every check `singularity-bootstrap` runs on a launch ticket before it
+/// redeems anything: owner-only files, the signature against the trust root,
+/// the manifest's own rules, and the executable's digest. An issuer runs it on
+/// what it has just written, so a ticket the consumer would refuse is refused
+/// where it was made, with the same sentence.
+pub fn check_ticket(
     manifest_path: &Path,
     signature_path: &Path,
     trust_root_path: &Path,
-    runtime_root: &Path,
-) -> Result<std::convert::Infallible, AppError> {
+) -> Result<BootstrapManifest, AppError> {
     for path in [manifest_path, signature_path, trust_root_path] {
         require_owner_file(path)?;
     }
-    if !runtime_root.is_absolute() {
-        return Err(AppError::Config(
-            "bootstrap runtime root must be absolute".into(),
-        ));
-    }
-
     let manifest_bytes = fs::read(manifest_path)?;
     verify_manifest(&manifest_bytes, signature_path, trust_root_path)?;
     let manifest: BootstrapManifest = serde_json::from_slice(&manifest_bytes)?;
@@ -108,6 +115,21 @@ pub fn run_bootstrap(
         &manifest.singularity_executable,
         &manifest.executable_digest,
     )?;
+    Ok(manifest)
+}
+
+pub fn run_bootstrap(
+    manifest_path: &Path,
+    signature_path: &Path,
+    trust_root_path: &Path,
+    runtime_root: &Path,
+) -> Result<std::convert::Infallible, AppError> {
+    if !runtime_root.is_absolute() {
+        return Err(AppError::Config(
+            "bootstrap runtime root must be absolute".into(),
+        ));
+    }
+    let manifest = check_ticket(manifest_path, signature_path, trust_root_path)?;
 
     let mut private_key = read_hex_32(&manifest.workload_private_key_file, "workload key")?;
     let signing_key = SigningKey::from_bytes(&private_key);
