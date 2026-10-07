@@ -61,7 +61,6 @@ impl RepoService {
                 "^filter\\..*\\.(clean|smudge|process)$",
             ],
             None,
-            30,
         )
         .await?;
         if filters.success && !filters.stdout.trim().is_empty() {
@@ -80,7 +79,6 @@ impl RepoService {
                 &repo.root,
                 &["status", "--porcelain=v1", "--untracked-files=normal"],
                 None,
-                30,
             )
             .await?,
             "inspect source repository",
@@ -90,7 +88,7 @@ impl RepoService {
         }
         let worktree = repo.root.clone();
         let branch = successful(
-            git(&repo.root, &["branch", "--show-current"], None, 30).await?,
+            git(&repo.root, &["branch", "--show-current"], None).await?,
             "read canonical branch",
         )?
         .stdout
@@ -102,7 +100,7 @@ impl RepoService {
             ));
         }
         let worktrees = successful(
-            git(&repo.root, &["worktree", "list", "--porcelain"], None, 30).await?,
+            git(&repo.root, &["worktree", "list", "--porcelain"], None).await?,
             "inspect canonical checkout ownership",
         )?;
         if worktrees
@@ -121,7 +119,6 @@ impl RepoService {
                 &repo.root,
                 &["config", "--get", &format!("remote.{}.url", repo.remote)],
                 None,
-                30,
             )
             .await?,
             "read canonical origin",
@@ -143,7 +140,6 @@ impl RepoService {
                 &repo.root,
                 &["rev-parse", "--verify", &format!("{base_ref}^{{commit}}")],
                 None,
-                30,
             )
             .await?,
             "resolve base branch",
@@ -240,7 +236,6 @@ impl RepoService {
                     "-",
                 ],
                 Some(input.patch.as_bytes()),
-                60,
             )
             .await?,
             "validate patch",
@@ -250,7 +245,6 @@ impl RepoService {
                 &state.worktree,
                 &["apply", "--recount", "--whitespace=error-all", "-"],
                 Some(input.patch.as_bytes()),
-                60,
             )
             .await?,
             "apply patch",
@@ -266,7 +260,6 @@ impl RepoService {
                     "-",
                 ],
                 Some(input.patch.as_bytes()),
-                60,
             )
             .await?;
             if !rollback.success {

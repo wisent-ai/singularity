@@ -8,7 +8,7 @@ pub(crate) async fn reconcile_commit(
     sealed: &str,
 ) -> SurfaceResult<String> {
     let branch = successful(
-        git(&state.worktree, &["branch", "--show-current"], None, 30).await?,
+        git(&state.worktree, &["branch", "--show-current"], None).await?,
         "read commit branch",
     )?;
     if branch.stdout.trim() != state.branch {
@@ -18,31 +18,25 @@ pub(crate) async fn reconcile_commit(
     }
     let expected_message = format!("{message}\n\nWisent-Request: {request}");
     let head = successful(
-        git(&state.worktree, &["rev-parse", "HEAD"], None, 30).await?,
+        git(&state.worktree, &["rev-parse", "HEAD"], None).await?,
         "read commit head",
     )?;
     if head.stdout.trim() == state.base_commit {
         successful(
-            git(
-                &state.worktree,
-                &["commit", "-m", &expected_message],
-                None,
-                120,
-            )
-            .await?,
+            git(&state.worktree, &["commit", "-m", &expected_message], None).await?,
             "create canonical commit",
         )?;
     }
     let tree = successful(
-        git(&state.worktree, &["rev-parse", "HEAD^{tree}"], None, 30).await?,
+        git(&state.worktree, &["rev-parse", "HEAD^{tree}"], None).await?,
         "read committed tree",
     )?;
     let parent = successful(
-        git(&state.worktree, &["rev-parse", "HEAD^"], None, 30).await?,
+        git(&state.worktree, &["rev-parse", "HEAD^"], None).await?,
         "read committed parent",
     )?;
     let body = successful(
-        git(&state.worktree, &["log", "-1", "--format=%B"], None, 30).await?,
+        git(&state.worktree, &["log", "-1", "--format=%B"], None).await?,
         "read committed request identity",
     )?;
     if tree.stdout.trim() != sealed
@@ -54,7 +48,7 @@ pub(crate) async fn reconcile_commit(
         ));
     }
     Ok(successful(
-        git(&state.worktree, &["rev-parse", "HEAD"], None, 30).await?,
+        git(&state.worktree, &["rev-parse", "HEAD"], None).await?,
         "resolve canonical commit",
     )?
     .stdout

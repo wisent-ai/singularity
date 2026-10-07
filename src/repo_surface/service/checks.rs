@@ -14,14 +14,13 @@ pub(super) async fn stage_allowed(repo: &RepoPolicy, worktree: &Path) -> Surface
             .to_str()
             .ok_or_else(|| SurfaceError::invalid("non-UTF-8 path"))?;
         let attribute = successful(
-            git(worktree, &["check-attr", "filter", "--", text], None, 30).await?,
+            git(worktree, &["check-attr", "filter", "--", text], None).await?,
             "inspect clean filter policy",
         )?;
-        if attribute.truncated
-            || !attribute
-                .stdout
-                .trim_end()
-                .ends_with(": filter: unspecified")
+        if !attribute
+            .stdout
+            .trim_end()
+            .ends_with(": filter: unspecified")
         {
             return Err(SurfaceError::policy(
                 "changed paths with Git clean filters cannot be sealed",
@@ -36,16 +35,13 @@ pub(super) async fn stage_allowed(repo: &RepoPolicy, worktree: &Path) -> Surface
     let mut args = vec!["add".to_owned(), "--".to_owned()];
     args.extend(roots);
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    successful(
-        git(worktree, &refs, None, 60).await?,
-        "stage allowed changes",
-    )?;
+    successful(git(worktree, &refs, None).await?, "stage allowed changes")?;
     Ok(())
 }
 
 pub(super) async fn write_tree(worktree: &Path) -> SurfaceResult<String> {
     let tree = successful(
-        git(worktree, &["write-tree"], None, 30).await?,
+        git(worktree, &["write-tree"], None).await?,
         "write sealed tree",
     )?
     .stdout
@@ -74,7 +70,6 @@ pub(super) async fn fresh_seal(state: &WorkspaceState) -> SurfaceResult<String> 
         &state.worktree,
         &["diff", "--quiet", "--no-ext-diff", "--no-textconv", "--"],
         None,
-        30,
     )
     .await?;
     if unstaged.code == Some(1) {
@@ -86,12 +81,11 @@ pub(super) async fn fresh_seal(state: &WorkspaceState) -> SurfaceResult<String> 
             &state.worktree,
             &["ls-files", "--others", "--exclude-standard"],
             None,
-            30,
         )
         .await?,
         "verify sealed untracked files",
     )?;
-    if untracked.truncated || !untracked.stdout.is_empty() {
+    if !untracked.stdout.is_empty() {
         return Err(SurfaceError::conflict(
             "untracked files appeared after seal",
         ));
@@ -116,7 +110,7 @@ pub(super) async fn committed_head(
 ) -> SurfaceResult<String> {
     let commit = commit_ready(state, repo)?;
     let branch = successful(
-        git(&state.worktree, &["branch", "--show-current"], None, 30).await?,
+        git(&state.worktree, &["branch", "--show-current"], None).await?,
         "verify canonical publication branch",
     )?;
     if branch.stdout.trim() != repo.base_branch {
@@ -129,7 +123,6 @@ pub(super) async fn committed_head(
             &state.worktree,
             &["status", "--porcelain=v1", "--untracked-files=normal"],
             None,
-            30,
         )
         .await?,
         "verify committed workspace",
@@ -140,7 +133,7 @@ pub(super) async fn committed_head(
         ));
     }
     let head = successful(
-        git(&state.worktree, &["rev-parse", "HEAD"], None, 30).await?,
+        git(&state.worktree, &["rev-parse", "HEAD"], None).await?,
         "verify committed HEAD",
     )?
     .stdout

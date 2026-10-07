@@ -86,7 +86,8 @@ pub(crate) fn insert_patch_path(
     Ok(())
 }
 
-pub(crate) async fn bounded_diff(worktree: &Path) -> SurfaceResult<String> {
+/// The workspace's whole diff: tracked changes, then each untracked file.
+pub(crate) async fn whole_diff(worktree: &Path) -> SurfaceResult<String> {
     let tracked_diff = successful(
         git(
             worktree,
@@ -99,27 +100,17 @@ pub(crate) async fn bounded_diff(worktree: &Path) -> SurfaceResult<String> {
                 "--",
             ],
             None,
-            60,
         )
         .await?,
         "generate diff",
     )?;
-    if tracked_diff.truncated {
-        return Err(SurfaceError::conflict("diff exceeds command output limit"));
-    }
     let mut out = tracked_diff.stdout;
     for path in changed_paths(worktree).await? {
         if worktree.join(&path).is_file() {
             let text = path
                 .to_str()
                 .ok_or_else(|| SurfaceError::invalid("non-UTF-8 path"))?;
-            let tracked = git(
-                worktree,
-                &["ls-files", "--error-unmatch", "--", text],
-                None,
-                30,
-            )
-            .await?;
+            let tracked = git(worktree, &["ls-files", "--error-unmatch", "--", text], None).await?;
             if !tracked.success {
                 let diff = git(
                     worktree,
@@ -134,7 +125,6 @@ pub(crate) async fn bounded_diff(worktree: &Path) -> SurfaceResult<String> {
                         text,
                     ],
                     None,
-                    60,
                 )
                 .await?;
                 if diff.code != Some(1) && !diff.success {
@@ -142,9 +132,6 @@ pub(crate) async fn bounded_diff(worktree: &Path) -> SurfaceResult<String> {
                         "generate untracked diff failed: {}",
                         diff.stderr
                     )));
-                }
-                if diff.truncated {
-                    return Err(SurfaceError::conflict("diff exceeds command output limit"));
                 }
                 out.push_str(&diff.stdout);
             }

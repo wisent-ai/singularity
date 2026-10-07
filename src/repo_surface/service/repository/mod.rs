@@ -99,7 +99,6 @@ pub(super) async fn changed_paths(worktree: &Path) -> SurfaceResult<Vec<PathBuf>
             worktree,
             &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
             None,
-            30,
         )
         .await?,
         "inspect workspace changes",

@@ -1,3 +1,4 @@
+use std::num::NonZeroU64;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
@@ -8,15 +9,13 @@ use tokio::time::timeout;
 
 use super::{SurfaceError, SurfaceResult};
 
-pub const OUTPUT_CAP: usize = 256 * 1024;
-
+/// What a command answered, whole: nothing is cut from either stream.
 #[derive(Debug)]
 pub struct CommandOutput {
     pub success: bool,
     pub code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
-    pub truncated: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -25,24 +24,16 @@ enum EnvironmentProfile {
     GitNetwork,
 }
 
-async fn drain_capped<R: AsyncRead + Unpin>(mut reader: R) -> std::io::Result<(Vec<u8>, bool)> {
-    let mut kept = Vec::with_capacity(8192);
-    let mut buf = [0_u8; 8192];
-    let mut truncated = false;
-    loop {
-        let count = reader.read(&mut buf).await?;
-        if count == 0 {
-            break;
-        }
-        let remaining = OUTPUT_CAP.saturating_sub(kept.len());
-        kept.extend_from_slice(&buf[..count.min(remaining)]);
-        truncated |= count > remaining;
-    }
-    Ok((kept, truncated))
+async fn drain<R: AsyncRead + Unpin>(mut reader: R) -> std::io::Result<Vec<u8>> {
+    let mut kept = Vec::new();
+    reader.read_to_end(&mut kept).await?;
+    Ok(kept)
 }
 
-type DrainTask = tokio::task::JoinHandle<std::io::Result<(Vec<u8>, bool)>>;
+type DrainTask = tokio::task::JoinHandle<std::io::Result<Vec<u8>>>;
 
+/// End the command's whole process group, then let both readers finish: the
+/// pipes close with the group, so nothing is left to wait for.
 async fn terminate_child(
     child: &mut tokio::process::Child,
     process_id: Option<u32>,
@@ -57,13 +48,8 @@ async fn terminate_child(
     }
     let _ = child.kill().await;
     let _ = child.wait().await;
-    let drain_grace = Duration::from_secs(5);
-    if timeout(drain_grace, &mut *stdout_task).await.is_err() {
-        stdout_task.abort();
-    }
-    if timeout(drain_grace, &mut *stderr_task).await.is_err() {
-        stderr_task.abort();
-    }
+    let _ = (&mut *stdout_task).await;
+    let _ = (&mut *stderr_task).await;
 }
 
 async fn run_fixed(
@@ -71,7 +57,7 @@ async fn run_fixed(
     args: &[String],
     cwd: &Path,
     stdin: Option<&[u8]>,
-    timeout_secs: u64,
+    deadline: Option<NonZeroU64>,
     environment: EnvironmentProfile,
 ) -> SurfaceResult<CommandOutput> {
     let mut command = Command::new(program);
@@ -122,8 +108,8 @@ async fn run_fixed(
         .stderr
         .take()
         .ok_or_else(|| SurfaceError::internal("missing command stderr"))?;
-    let mut stdout_task = tokio::spawn(drain_capped(stdout));
-    let mut stderr_task = tokio::spawn(drain_capped(stderr));
+    let mut stdout_task = tokio::spawn(drain(stdout));
+    let mut stderr_task = tokio::spawn(drain(stderr));
     let execution = async {
         if let Some(input) = stdin {
             let mut pipe = stdin_pipe
@@ -139,24 +125,32 @@ async fn run_fixed(
             .await
             .map_err(|error| SurfaceError::command(format!("cannot wait for command: {error}")))
     };
-    let status = match timeout(Duration::from_secs(timeout_secs), execution).await {
+    // A command waits for its own answer; only a policy check carries the
+    // time its policy gives it.
+    let finished = match deadline {
+        None => Ok(execution.await),
+        Some(seconds) => timeout(Duration::from_secs(seconds.get()), execution)
+            .await
+            .map_err(|_| seconds),
+    };
+    let status = match finished {
         Ok(Ok(status)) => status,
         Ok(Err(error)) => {
             terminate_child(&mut child, process_id, &mut stdout_task, &mut stderr_task).await;
             return Err(error);
         }
-        Err(_) => {
+        Err(seconds) => {
             terminate_child(&mut child, process_id, &mut stdout_task, &mut stderr_task).await;
             return Err(SurfaceError::command(format!(
-                "command timed out after {timeout_secs}s"
+                "command ran past the {seconds} s its policy gives it and was ended"
             )));
         }
     };
-    let (stdout, stdout_truncated) = stdout_task
+    let stdout = stdout_task
         .await
         .map_err(|e| SurfaceError::internal(format!("stdout reader failed: {e}")))?
         .map_err(|e| SurfaceError::command(format!("cannot read stdout: {e}")))?;
-    let (stderr, stderr_truncated) = stderr_task
+    let stderr = stderr_task
         .await
         .map_err(|e| SurfaceError::internal(format!("stderr reader failed: {e}")))?
         .map_err(|e| SurfaceError::command(format!("cannot read stderr: {e}")))?;
@@ -165,16 +159,10 @@ async fn run_fixed(
         code: status.code(),
         stdout: String::from_utf8_lossy(&stdout).into_owned(),
         stderr: String::from_utf8_lossy(&stderr).into_owned(),
-        truncated: stdout_truncated || stderr_truncated,
     })
 }
 
-pub async fn git(
-    cwd: &Path,
-    args_input: &[&str],
-    stdin: Option<&[u8]>,
-    timeout_secs: u64,
-) -> SurfaceResult<CommandOutput> {
+fn git_arguments(args_input: &[&str]) -> Vec<String> {
     let mut args = vec![
         "-c".to_owned(),
         "core.hooksPath=/dev/null".to_owned(),
@@ -182,35 +170,52 @@ pub async fn git(
         "core.fsmonitor=false".to_owned(),
     ];
     args.extend(args_input.iter().map(|value| (*value).to_owned()));
+    args
+}
+
+/// A local git command, answered when git answers.
+pub async fn git(
+    cwd: &Path,
+    args_input: &[&str],
+    stdin: Option<&[u8]>,
+) -> SurfaceResult<CommandOutput> {
     run_fixed(
         Path::new("/usr/bin/git"),
-        &args,
+        &git_arguments(args_input),
         cwd,
         stdin,
-        timeout_secs,
+        None,
         EnvironmentProfile::Local,
     )
     .await
 }
 
-pub async fn git_network(
+/// A local git command a policy check runs, ended after the check's own
+/// `timeout_secs`.
+pub async fn git_within(
     cwd: &Path,
     args_input: &[&str],
-    timeout_secs: u64,
+    seconds: NonZeroU64,
 ) -> SurfaceResult<CommandOutput> {
-    let mut args = vec![
-        "-c".to_owned(),
-        "core.hooksPath=/dev/null".to_owned(),
-        "-c".to_owned(),
-        "core.fsmonitor=false".to_owned(),
-    ];
-    args.extend(args_input.iter().map(|value| (*value).to_owned()));
     run_fixed(
         Path::new("/usr/bin/git"),
-        &args,
+        &git_arguments(args_input),
         cwd,
         None,
-        timeout_secs,
+        Some(seconds),
+        EnvironmentProfile::Local,
+    )
+    .await
+}
+
+/// A git command that reaches the remote, answered when git answers.
+pub async fn git_network(cwd: &Path, args_input: &[&str]) -> SurfaceResult<CommandOutput> {
+    run_fixed(
+        Path::new("/usr/bin/git"),
+        &git_arguments(args_input),
+        cwd,
+        None,
+        None,
         EnvironmentProfile::GitNetwork,
     )
     .await

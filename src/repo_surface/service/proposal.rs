@@ -43,7 +43,6 @@ impl RepoService {
                 &state.worktree,
                 &["status", "--porcelain=v1", "--untracked-files=normal"],
                 None,
-                30,
             )
             .await?,
             "verify committed workspace",
@@ -83,7 +82,6 @@ impl RepoService {
         let existing = git_network(
             &state.worktree,
             &["ls-remote", "--heads", &repo.remote, &remote_ref],
-            60,
         )
         .await?;
         successful_ref(&existing, "reconcile remote branch")?;
@@ -99,7 +97,6 @@ impl RepoService {
                 git_network(
                     &state.worktree,
                     &["push", "--porcelain", &repo.remote, &refspec],
-                    180,
                 )
                 .await?,
                 "publish canonical main",
@@ -108,7 +105,6 @@ impl RepoService {
         let readback = git_network(
             &state.worktree,
             &["ls-remote", "--heads", &repo.remote, &remote_ref],
-            60,
         )
         .await?;
         successful_ref(&readback, "verify published canonical main")?;

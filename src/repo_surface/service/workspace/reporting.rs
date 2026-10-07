@@ -3,7 +3,7 @@ use chrono::Utc;
 use serde_json::{Value, json};
 
 use super::*;
-use crate::repo_surface::command::git;
+use crate::repo_surface::command::git_within;
 use crate::repo_surface::state::CheckEvidence;
 use crate::repo_surface::{SurfaceError, SurfaceResult};
 impl RepoService {
@@ -12,7 +12,7 @@ impl RepoService {
         let state = self.state.load_workspace(&input.workspace_id)?;
         let repo = self.repo(&state)?;
         enforce_changed_paths(repo, &state.worktree).await?;
-        let diff = bounded_diff(&state.worktree).await?;
+        let diff = whole_diff(&state.worktree).await?;
         Ok(json!({"workspace_id":state.id,"diff":diff}))
     }
 
@@ -22,7 +22,7 @@ impl RepoService {
         let repo = self.repo(&state)?;
         ensure_mutable(&state)?;
         enforce_changed_paths(repo, &state.worktree).await?;
-        let diff = bounded_diff(&state.worktree).await?;
+        let diff = whole_diff(&state.worktree).await?;
         if diff.is_empty() {
             return Err(SurfaceError::conflict("cannot seal an empty diff"));
         }
@@ -44,7 +44,7 @@ impl RepoService {
             .checks
             .get(&input.check)
             .ok_or_else(|| SurfaceError::policy("check is not allowlisted"))?;
-        let output = git(
+        let output = git_within(
             &state.worktree,
             &[
                 "diff",
@@ -53,8 +53,7 @@ impl RepoService {
                 "--no-ext-diff",
                 "--no-textconv",
             ],
-            None,
-            check.timeout_secs.get(),
+            check.timeout_secs,
         )
         .await?;
         let after = fresh_seal(&state).await?;
@@ -75,7 +74,6 @@ impl RepoService {
             checked_at: Utc::now().to_rfc3339(),
             stdout: output.stdout,
             stderr: output.stderr,
-            truncated: output.truncated,
         };
         state.checks.insert(input.check.clone(), evidence.clone());
         self.state.save_workspace(&state)?;

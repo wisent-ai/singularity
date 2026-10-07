@@ -31,7 +31,6 @@ pub struct CheckEvidence {
     pub checked_at: String,
     pub stdout: String,
     pub stderr: String,
-    pub truncated: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
