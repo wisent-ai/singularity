@@ -120,7 +120,3 @@ pub fn tools() -> Value {
       {"name":"finance_execute","description":"Execute a signed, approved and reconciled transaction through the isolated configured executor.","inputSchema":object(json!({"transaction_id":{"type":"string"}}),json!(["transaction_id"]))}
     ])
 }
-
-
-
-

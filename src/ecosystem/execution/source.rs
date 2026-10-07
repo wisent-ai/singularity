@@ -61,7 +61,9 @@ pub async fn product(shared: &Shared, id: &str) -> Result<Value, AppError> {
         .and_then(|rows| rows.iter().find(|row| row["id"].as_str() == Some(id)))
         .cloned()
         .ok_or_else(|| {
-            AppError::State(format!("the Stado product catalog has no registered product {id}"))
+            AppError::State(format!(
+                "the Stado product catalog has no registered product {id}"
+            ))
         })?;
     let state = shared.lock()?;
     state.store.put(

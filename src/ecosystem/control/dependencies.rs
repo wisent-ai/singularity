@@ -4,7 +4,10 @@ use serde_json::json;
 use std::sync::Arc;
 
 /// Verify the signed catalogue independently of observation readers and execution reconciliation.
-pub(in crate::ecosystem) async fn monitor(shared: Shared, config: Arc<RuntimeConfig>) -> Result<(), AppError> {
+pub(in crate::ecosystem) async fn monitor(
+    shared: Shared,
+    config: Arc<RuntimeConfig>,
+) -> Result<(), AppError> {
     let mut supervisor: Option<LasSupervisor> = None;
     let mut cadence = tokio::time::interval(config.cycle_interval);
     cadence.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -14,13 +17,23 @@ pub(in crate::ecosystem) async fn monitor(shared: Shared, config: Arc<RuntimeCon
         let result = match supervisor.as_mut() {
             Some(client) => client.refresh(&config.required_surfaces).await,
             None => match LasSupervisor::spawn(
-                &config.las_command, &config.las_entrypoint, &config.las_only,
-                config.las_skip.as_deref(), Some(&config.identity.agent_id),
-                &config.las_release_manifest, &config.las_release_manifest_signature,
-                &config.las_release_trust_store, &config.las_release_watermark,
+                &config.las_command,
+                &config.las_entrypoint,
+                &config.las_only,
+                config.las_skip.as_deref(),
+                Some(&config.identity.agent_id),
+                &config.las_release_manifest,
+                &config.las_release_manifest_signature,
+                &config.las_release_trust_store,
+                &config.las_release_watermark,
                 &config.required_surfaces,
-            ).await {
-                Ok(client) => { supervisor = Some(client); Ok(()) }
+            )
+            .await
+            {
+                Ok(client) => {
+                    supervisor = Some(client);
+                    Ok(())
+                }
                 Err(error) => Err(error),
             },
         };

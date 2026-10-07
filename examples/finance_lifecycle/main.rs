@@ -26,10 +26,10 @@ use std::os::unix::fs::DirBuilderExt;
 use std::path::PathBuf;
 
 use chrono::{Duration, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use signing::{
-    fresh_key, sha, ts, with, write_owner_only, Key, Outcome, Progress, POLICY_ID, VERSION,
+    Key, Outcome, POLICY_ID, Progress, VERSION, fresh_key, sha, ts, with, write_owner_only,
 };
 use walk::Walk;
 

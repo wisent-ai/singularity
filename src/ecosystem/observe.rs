@@ -5,9 +5,9 @@ use super::{
 };
 use crate::AppError;
 use chrono::{DateTime, Utc};
+use secrecy::ExposeSecret;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use secrecy::ExposeSecret;
 use tokio::process::Command;
 
 pub async fn text(program: &str, args: &[&str]) -> Result<String, AppError> {
@@ -30,10 +30,20 @@ pub async fn products(shared: &Shared, args: &[&str]) -> Result<Value, AppError>
     let root = shared.lock()?.policy.workspace_root.clone();
     let catalog = root.join("stado/catalog/products.yml");
     let mut child = Command::new("stado");
-    child.arg("product").arg("--catalog").arg(&catalog).args(args).env("WISENT_WORKSPACE", &root);
-    let operation = format!("stado product --catalog {} {}", catalog.display(), args.join(" "));
+    child
+        .arg("product")
+        .arg("--catalog")
+        .arg(&catalog)
+        .args(args)
+        .env("WISENT_WORKSPACE", &root);
+    let operation = format!(
+        "stado product --catalog {} {}",
+        catalog.display(),
+        args.join(" ")
+    );
     let output = process::text(child, &operation).await?;
-    serde_json::from_str(&output).map_err(|error| AppError::Runtime(format!("{operation}: invalid JSON: {error}")))
+    serde_json::from_str(&output)
+        .map_err(|error| AppError::Runtime(format!("{operation}: invalid JSON: {error}")))
 }
 
 pub async fn jeden(shared: &Shared, args: &[&str]) -> Result<Value, AppError> {
@@ -42,16 +52,21 @@ pub async fn jeden(shared: &Shared, args: &[&str]) -> Result<Value, AppError> {
         (state.config.clone(), state.directory.join("jeden"))
     };
     let mut child = Command::new("jeden");
-    child.args(args)
+    child
+        .args(args)
         .env("BRAMA_URL", config.brama_url.as_str())
         .env("BRAMA_TOKEN", config.brama_bearer.expose_secret())
-        .env("WISENT_APP_AGENT_AUTH_SECRET", config.brama_secret.expose_secret())
+        .env(
+            "WISENT_APP_AGENT_AUTH_SECRET",
+            config.brama_secret.expose_secret(),
+        )
         .env("WISENT_APP_AGENT_ID", &config.identity.agent_id)
         .env("JEDEN_MODEL", &config.brama_model)
         .env("JEDEN_PURSUIT_STATE_ROOT", directory);
     let operation = format!("jeden {}", args.join(" "));
     let output = process::text(child, &operation).await?;
-    serde_json::from_str(&output).map_err(|error| AppError::Runtime(format!("{operation}: invalid JSON: {error}")))
+    serde_json::from_str(&output)
+        .map_err(|error| AppError::Runtime(format!("{operation}: invalid JSON: {error}")))
 }
 
 pub async fn monitor(shared: Shared, source: Source) -> Result<(), AppError> {
@@ -62,14 +77,17 @@ pub async fn monitor(shared: Shared, source: Source) -> Result<(), AppError> {
         cadence.tick().await;
         let operation = format!("observe.{source:?}");
         let previous = shared.lock()?.store.meta::<DateTime<Utc>>(&operation)?;
-        if previous.is_some_and(|at| (Utc::now()-at).num_seconds()<interval as i64) {
+        if previous.is_some_and(|at| (Utc::now() - at).num_seconds() < interval as i64) {
             continue;
         }
         let (program, args): (&str, &[&str]) = match source {
             Source::ProductCatalog => ("stado", &["catalog", "--json"]),
             Source::ProductAnalytics => ("echo-cli", &["analytics", "7"]),
             Source::MarketResearch => ("echo-cli", &["market"]),
-            Source::OperatorDecisions => ("oko", &["transcripts", "tasks", "--open", "--read-only", "--json"]),
+            Source::OperatorDecisions => (
+                "oko",
+                &["transcripts", "tasks", "--open", "--read-only", "--json"],
+            ),
             Source::FleetServices => ("stado", &["service", "list", "--json"]),
         };
         let result = match source {
@@ -87,13 +105,20 @@ pub async fn monitor(shared: Shared, source: Source) -> Result<(), AppError> {
                     content_sha256: hex::encode(Sha256::digest(serde_json::to_vec(&content)?)),
                     content,
                 };
-                state.store.put("observation", &observation.id, &observation, None,
-                    &format!("Observed {program} {}", args.join(" ")))?;
+                state.store.put(
+                    "observation",
+                    &observation.id,
+                    &observation,
+                    None,
+                    &format!("Observed {program} {}", args.join(" ")),
+                )?;
                 state.store.clear_issue(&operation)?;
             }
             Err(error) => state.store.issue(&Issue {
-                code: "observation_failed".into(), operation: operation.clone(),
-                message: error.to_string(), retryable: true,
+                code: "observation_failed".into(),
+                operation: operation.clone(),
+                message: error.to_string(),
+                retryable: true,
             })?,
         }
         state.store.set_meta(&operation, &Utc::now())?;

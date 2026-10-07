@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use chrono::{DateTime, Duration, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::signing::{key_from, ts, write_owner_only, Key, Outcome, Progress, POLICY_ID, VERSION};
+use super::signing::{Key, Outcome, POLICY_ID, Progress, VERSION, key_from, ts, write_owner_only};
 
 fn summary(value: &Value, keys: &[&str]) {
     let picked: serde_json::Map<String, Value> = keys

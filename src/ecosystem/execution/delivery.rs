@@ -87,7 +87,9 @@ pub async fn advance(
     let run = if let Some(previous) = previous {
         recorded_run(product_id, &version, commit, previous["run_id"].as_str()).await?
     } else {
-        if paused || !shared.admission_open()? { return Ok(()); }
+        if paused || !shared.admission_open()? {
+            return Ok(());
+        }
         observe::command(
             "stado",
             &["release", "catalog", "sync", "--root", cwd_text, "--json"],
@@ -162,14 +164,41 @@ pub async fn advance(
                     "accepted execution did not bind {repository} to a source revision"
                 ))
             })?;
-        // Required Stado deliveries own installation. Never compile or install current
-        // origin/main as a substitute for the independently accepted release.
+        if surface == "cli" && installation["kind"] == "stado-release" && expected == commit {
+            if !shared.admission_open()? {
+                return Ok(());
+            }
+            let installed = observe::products(
+                shared,
+                &[
+                    "install",
+                    product_id,
+                    "--surface",
+                    surface,
+                    "--release-version",
+                    &version,
+                    "--source-commit",
+                    expected,
+                    "--json",
+                ],
+            )
+            .await?;
+            shared.lock()?.store.put(
+                "installation",
+                &format!("{}-{surface}", execution.request_id),
+                &installed,
+                Some(&initiative.id),
+                "Installed verified published bytes for the accepted source without compiling",
+            )?;
+        }
         let after = observe::products(
             shared,
             &["status", product_id, "--surface", surface, "--json"],
         )
         .await?;
-        if after["source_revision"].as_str() != Some(expected) || after["readiness"]["ready"] != true {
+        if after["source_revision"].as_str() != Some(expected)
+            || after["readiness"]["ready"] != true
+        {
             return Err(AppError::State(format!(
                 "{product_id}/{surface} did not run the accepted revision {expected}: {after}"
             )));
@@ -190,18 +219,29 @@ pub async fn advance(
     Ok(())
 }
 
-async fn recorded_run(product: &str, version: &str, commit: &str, id: Option<&str>) -> Result<Value, AppError> {
+async fn recorded_run(
+    product: &str,
+    version: &str,
+    commit: &str,
+    id: Option<&str>,
+) -> Result<Value, AppError> {
     let mut args = vec!["release", "status", product, "--json"];
     match id {
         Some(id) => args.extend(["--run", id]),
         None => args.extend(["--version", version]),
     }
     let report = observe::command("stado", &args).await?;
-    let matches = report["runs"].as_array()
+    let matches = report["runs"]
+        .as_array()
         .ok_or_else(|| AppError::State("release status has no run register".into()))?
-        .iter().filter(|run| run["source_commit"].as_str() == Some(commit)
-            && run["version"].as_str() == Some(version) && run["channel"] == "stable"
-            && id.is_none_or(|id| run["run_id"].as_str() == Some(id))).collect::<Vec<_>>();
+        .iter()
+        .filter(|run| {
+            run["source_commit"].as_str() == Some(commit)
+                && run["version"].as_str() == Some(version)
+                && run["channel"] == "stable"
+                && id.is_none_or(|id| run["run_id"].as_str() == Some(id))
+        })
+        .collect::<Vec<_>>();
     if matches.len() != 1 {
         return Err(AppError::State("the exact release submission outcome is unresolved; no duplicate build will be submitted".into()));
     }

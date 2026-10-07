@@ -121,9 +121,12 @@ impl LasSupervisor {
             );
         }
         if (only.trim().is_empty() || selected(only, "warsztat"))
-            && !skip.is_some_and(|surfaces| selected(surfaces, "warsztat")) {
+            && !skip.is_some_and(|surfaces| selected(surfaces, "warsztat"))
+        {
             for name in ["JEDEN_REPO_POLICY_FILE", "JEDEN_REPO_STATE_DIR"] {
-                if let Some(value) = std::env::var_os(name) { process.env(name, value); }
+                if let Some(value) = std::env::var_os(name) {
+                    process.env(name, value);
+                }
             }
         }
         let mut child = process
@@ -168,7 +171,10 @@ impl LasSupervisor {
         for surface in required_surfaces {
             let prefix = format!("{surface}__");
             if !list.tools.iter().any(|tool| tool.name.starts_with(&prefix)) {
-                return Err(mcp(ErrorClass::Permanent, format!("required Las surface unavailable: {surface}")));
+                return Err(mcp(
+                    ErrorClass::Permanent,
+                    format!("required Las surface unavailable: {surface}"),
+                ));
             }
         }
         self.tools = list.tools;
