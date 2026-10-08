@@ -72,3 +72,8 @@ uuid = { version = "1", features = ["serde", "v4"] }
 wisent-onboarding-client = { git = "https://github.com/wisent-ai/echo-web", rev = "e2e4bdc08b336d41818a8589527cc6595cfc6c65", package = "wisent-onboarding-client" }
 url = "2"
 zeroize = "1"
+
+[features]
+# `singularity ticket key --holder workload` writes the PEM public key
+# Skarbiec's grant issue requires; ed25519-dalek encodes it.
+default = ["ed25519-dalek/pem"]

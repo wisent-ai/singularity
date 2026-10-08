@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 
 /// `singularity ticket`: write the keys and the signed launch ticket
 /// `singularity-bootstrap` starts a managed being from.
@@ -15,7 +15,7 @@ pub struct TicketArgs {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum TicketVerb {
-    /// Write a fresh Ed25519 key pair: a supervisor's (its public half is the trust root) or a workload's (its public half is what skarbiec grant issue --workload-public-key-file registers)
+    /// Write a fresh Ed25519 key pair for its holder: a supervisor's public half is the hex trust root singularity-bootstrap reads, a workload's is the PEM public key skarbiec grant issue --workload-public-key-file requires
     Key(KeyArgs),
     /// Write one singularity.bootstrap.v2 manifest and its signature from explicit inputs, then check it the way singularity-bootstrap will
     Sign(SignArgs),
@@ -23,12 +23,24 @@ pub enum TicketVerb {
 
 #[derive(Debug, Clone, Args)]
 pub struct KeyArgs {
-    /// Absolute path of the private key; refused when it exists
+    /// Whose key this is; it decides the encoding of the public half, which each reader requires
+    #[arg(long, value_enum)]
+    pub holder: KeyHolder,
+    /// Absolute path of the private key (hex seed); refused when it exists
     #[arg(long)]
     pub out: PathBuf,
-    /// Absolute path of the public key: the trust root of a supervisor key, or the file skarbiec grant issue --workload-public-key-file reads for a workload key
+    /// Absolute path of the public key; refused when it exists
     #[arg(long)]
     pub public_out: PathBuf,
+}
+
+/// Who holds a key, and so who reads its public half.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum KeyHolder {
+    /// The supervisor that signs tickets: its public half is the hex trust root singularity-bootstrap is given as --trust-root
+    Supervisor,
+    /// The workload that redeems capabilities: its public half is the PEM public key skarbiec grant issue --workload-public-key-file registers, and Skarbiec verifies every redemption proof against it with openssl
+    Workload,
 }
 
 #[derive(Debug, Clone, Args)]

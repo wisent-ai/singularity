@@ -60,9 +60,12 @@ fn owner_only(path: &Path) -> bool {
     shared == shared & !shared
 }
 
-fn key(case: &Case, name: &str) -> (PathBuf, PathBuf) {
-    let (private, public) = (case.path(&format!("{name}.key")), case.path(&format!("{name}.pub")));
-    let answer = run(SINGULARITY, &["ticket", "key", "--out", text(&private), "--public-out", text(&public)]);
+fn key(case: &Case, holder: &str) -> (PathBuf, PathBuf) {
+    let (private, public) = (case.path(&format!("{holder}.key")), case.path(&format!("{holder}.pub")));
+    let answer = run(
+        SINGULARITY,
+        &["ticket", "key", "--holder", holder, "--out", text(&private), "--public-out", text(&public)],
+    );
     assert!(answer.status.success(), "{}", String::from_utf8_lossy(&answer.stderr));
     (private, public)
 }
@@ -138,9 +141,24 @@ fn a_key_is_never_written_over_an_existing_file() {
     let case = Case::start("existing-key");
     let (private, public) = key(&case, "supervisor");
     let before = fs::read(&private).unwrap();
-    let answer = run(SINGULARITY, &["ticket", "key", "--out", text(&private), "--public-out", text(&public)]);
+    let answer = run(
+        SINGULARITY,
+        &["ticket", "key", "--holder", "supervisor", "--out", text(&private), "--public-out", text(&public)],
+    );
     let stderr = String::from_utf8_lossy(&answer.stderr);
     assert!(!answer.status.success(), "{stderr}");
     assert!(stderr.contains("could not be created as a new owner-only file"), "{stderr}");
     assert_eq!(fs::read(&private).unwrap(), before, "the existing key is unchanged");
+}
+
+#[test]
+fn a_workload_public_key_is_the_pem_skarbiec_verifies_proofs_with() {
+    let case = Case::start("workload-pem");
+    let (_, public) = key(&case, "workload");
+    let written = fs::read_to_string(&public).unwrap();
+    assert!(written.contains("-----BEGIN PUBLIC KEY-----"), "{written}");
+    // Skarbiec hands the registered key to `openssl pkeyutl -verify -pubin`;
+    // the same reader must accept it here.
+    let parsed = run("openssl", &["pkey", "-pubin", "-in", text(&public), "-noout"]);
+    assert!(parsed.status.success(), "{}", String::from_utf8_lossy(&parsed.stderr));
 }

@@ -6,9 +6,11 @@
 //! key is the trust root, naming a workload key, the executable's and the
 //! policy's digests and three Skarbiec capabilities. Nothing wrote one, so no
 //! host could start a managed Singularity. `key` writes a fresh Ed25519 key
-//! (a supervisor's, whose public half is the trust root, or a workload's,
-//! whose public half `skarbiec grant issue --workload-public-key-file`
-//! registers). `sign` writes the manifest from explicit inputs, signs the
+//! for its holder: a supervisor's public half is the hex trust root
+//! `singularity-bootstrap` reads, a workload's is the PEM public key
+//! `skarbiec grant issue --workload-public-key-file` requires (Skarbiec
+//! refuses anything else and verifies every redemption proof against it with
+//! openssl). `sign` writes the manifest from explicit inputs, signs the
 //! bytes the consumer verifies, and runs the consumer's own `check_ticket`
 //! on what it wrote: a ticket `singularity-bootstrap` would refuse is removed
 //! and refused here with the same sentence.
@@ -19,6 +21,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Duration, Utc};
+use ed25519_dalek::pkcs8::{EncodePublicKey, LineEnding};
 use ed25519_dalek::{Signer, SigningKey};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -33,7 +36,7 @@ use crate::error::AppError;
 
 mod args;
 
-pub use args::{KeyArgs, SignArgs, TicketArgs, TicketVerb};
+pub use args::{KeyArgs, KeyHolder, SignArgs, TicketArgs, TicketVerb};
 
 /// Where a fresh key's seed is read from.
 const RANDOM_SOURCE: &str = "/dev/urandom";
@@ -73,8 +76,15 @@ pub fn key(args: &KeyArgs) -> Result<KeyReport, AppError> {
     let written = write_owner_only(&args.out, private_hex.as_bytes());
     private_hex.zeroize();
     written?;
-    let public_key_hex = hex::encode(signing.verifying_key().as_bytes());
-    write_owner_only(&args.public_out, public_key_hex.as_bytes())?;
+    let verifying = signing.verifying_key();
+    let public_key_hex = hex::encode(verifying.as_bytes());
+    let public_half = match args.holder {
+        KeyHolder::Supervisor => public_key_hex.clone(),
+        KeyHolder::Workload => verifying.to_public_key_pem(LineEnding::LF).map_err(|error| {
+            AppError::Config(format!("the workload public key could not be encoded as PEM: {error}"))
+        })?,
+    };
+    write_owner_only(&args.public_out, public_half.as_bytes())?;
     Ok(KeyReport { private_key: args.out.clone(), public_key: args.public_out.clone(), public_key_hex })
 }
 
