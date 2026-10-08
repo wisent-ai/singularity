@@ -41,6 +41,8 @@ pub enum Command {
     Onboarding(OnboardingArgs),
     /// Direct and inspect the durable ecosystem portfolio.
     Ecosystem(crate::ecosystem::EcosystemArgs),
+    /// Write the keys and the signed launch ticket singularity-bootstrap starts a managed being from
+    Ticket(crate::ticket::TicketArgs),
 }
 
 #[derive(Debug, Clone, Args)]

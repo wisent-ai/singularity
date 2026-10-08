@@ -22,9 +22,9 @@ pub(super) fn verify_manifest(
         .map_err(|_| AppError::Config("bootstrap manifest signature verification failed".into()))
 }
 
-pub(super) fn validate_manifest(manifest: &BootstrapManifest) -> Result<(), AppError> {
+pub(crate) fn validate_manifest(manifest: &BootstrapManifest) -> Result<(), AppError> {
     let now = Utc::now();
-    if manifest.version != "singularity.bootstrap.v2"
+    if manifest.version != MANIFEST_VERSION
         || manifest.policy_sequence == 0
         || manifest.expires_at <= now
         || manifest.expires_at <= manifest.issued_at
@@ -53,17 +53,17 @@ pub(super) fn validate_manifest(manifest: &BootstrapManifest) -> Result<(), AppE
         || manifest.capabilities.brama_bearer.id == manifest.capabilities.most.id
         || !valid_capability_binding(
             &manifest.capabilities.brama,
-            "singularity.brama.bootstrap",
+            BRAMA_PURPOSE,
             "brama:",
         )
         || !valid_capability_binding(
             &manifest.capabilities.brama_bearer,
-            "singularity.brama.authorization",
+            BRAMA_BEARER_PURPOSE,
             "brama:",
         )
         || !valid_capability_binding(
             &manifest.capabilities.most,
-            "singularity.most.bootstrap",
+            MOST_PURPOSE,
             "most:",
         )
         || !manifest.broker_socket.is_absolute()

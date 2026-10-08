@@ -78,14 +78,14 @@ pub(super) fn valid_capability_binding(
     purpose: &str,
     resource_prefix: &str,
 ) -> bool {
-    capability.target == "singularity-bootstrap"
+    capability.target == CAPABILITY_TARGET
         && capability.purpose == purpose
         && capability.resource.starts_with(resource_prefix)
         && valid_atom(&capability.resource[resource_prefix.len()..], 512)
         && !capability.resource.contains('*')
 }
 
-pub(super) fn read_hex_32(path: &Path, label: &str) -> Result<[u8; KEY_BYTES], AppError> {
+pub(crate) fn read_hex_32(path: &Path, label: &str) -> Result<[u8; KEY_BYTES], AppError> {
     require_owner_file(path)?;
     let mut text = fs::read_to_string(path)?;
     let mut decoded =

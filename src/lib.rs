@@ -19,6 +19,7 @@ pub mod onboarding;
 pub mod state_service;
 #[path = "platform/tools/mod.rs"]
 pub mod tools;
+pub mod ticket;
 
 pub use agent::{Agent, CycleReport};
 pub use brama::BramaClient;

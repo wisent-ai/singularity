@@ -39,6 +39,10 @@ path = "bin/singularity-bootstrap.rs"
 name = "launch-declarations"
 path = "tests/configuration/launch.rs"
 
+[[test]]
+name = "launch-ticket"
+path = "tests/bootstrap/ticket.rs"
+
 [dependencies]
 async-trait = "0.1"
 base64 = "0.22"

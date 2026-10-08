@@ -46,6 +46,10 @@ pub async fn execute(
 ) -> Result<(), AppError> {
     match command {
         Command::Ecosystem(args) => crate::ecosystem::execute(args, cancellation).await,
+        Command::Ticket(args) => match args.verb {
+            crate::ticket::TicketVerb::Key(key) => answer(&crate::ticket::key(&key)?, text),
+            crate::ticket::TicketVerb::Sign(sign) => answer(&crate::ticket::sign(&sign)?, text),
+        },
         Command::Run(args) => {
             let startup_import = startup_import(&args)?;
             let (mut agent, startup_report) = Agent::bootstrap_with_import(

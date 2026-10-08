@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zeroize::Zeroize;
 
@@ -21,10 +21,17 @@ const NO_AUTHORIZATION: &str = "";
 // How long a manifest lives is the issuer's signed expires_at; a broker answer is waited for,
 // and a secret or control line is as long as the broker sends.
 /// An Ed25519 key is 32 bytes, spelled as 64 hex characters.
-const KEY_BYTES: usize = 32;
+pub(crate) const KEY_BYTES: usize = 32;
 const KEY_HEX_CHARS: usize = 64;
+/// The manifest edition this bootstrap accepts, and the target and purposes
+/// its three capabilities must be bound to; the issuer writes the same words.
+pub(crate) const MANIFEST_VERSION: &str = "singularity.bootstrap.v2";
+pub(crate) const CAPABILITY_TARGET: &str = "singularity-bootstrap";
+pub(crate) const BRAMA_PURPOSE: &str = "singularity.brama.bootstrap";
+pub(crate) const BRAMA_BEARER_PURPOSE: &str = "singularity.brama.authorization";
+pub(crate) const MOST_PURPOSE: &str = "singularity.most.bootstrap";
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BootstrapManifest {
     pub version: String,
@@ -47,7 +54,7 @@ pub struct BootstrapManifest {
     pub capabilities: BootstrapCapabilities,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BootstrapCapabilities {
     pub brama: BootstrapCapability,
@@ -55,7 +62,7 @@ pub struct BootstrapCapabilities {
     pub most: BootstrapCapability,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BootstrapCapability {
     pub id: String,
@@ -185,5 +192,7 @@ pub use credentials::adopt_credentials;
 pub(crate) use credentials::{inherit_for_child, inherited_credentials};
 
 use files::*;
+pub(crate) use files::read_hex_32;
 use manifest::*;
+pub(crate) use manifest::validate_manifest;
 use redeem::*;
