@@ -160,6 +160,16 @@ without its certificate file is refused with both variables named.
 The bootstrap also binds the runtime to its workload identity, host, role,
 environment, executable digest, code digest and policy sequence.
 
+`--resume` (`SINGULARITY_RESUME`) continues the being stored in the state
+directory when who it is matches the configuration: agent id, name, ticker,
+type, specialty, role, environment, host and workload id. What every
+`singularity ticket launch` issues anew (the workload key, the executable and
+code digests, the policy digest) is taken from the new start, so a restart,
+an upgrade or a new policy keeps the being's mind, memory and actions. A
+policy sequence older than the one the state last ran under is refused, as is
+any change to who the being is; the refusal names each differing field with
+its stored and configured value.
+
 `singularity-bootstrap` is not a resident wrapper. It verifies the signed
 manifest, redeems the Brama HMAC, Brama bearer and Most token from Skarbiec,
 writes each into an owner-only file that it unlinks at once, and then replaces

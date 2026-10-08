@@ -47,12 +47,11 @@ impl Agent {
         let loaded = store.load()?;
         let system = system_prompt(&config);
         let mut state = match (config.resume, loaded) {
-            (true, Some(state)) => {
-                if state.identity != config.identity {
-                    return Err(AppError::State(
-                        "resume identity does not match configuration".into(),
-                    ));
-                }
+            (true, Some(mut state)) => {
+                state
+                    .identity
+                    .resume_as(&config.identity)
+                    .map_err(AppError::State)?;
                 state
             }
             (true, None) => {

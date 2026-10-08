@@ -77,6 +77,13 @@ step 'resume accepted: same being, one cycle older'
 "$BIN" once --resume 2>&1; echo "exit=$?"
 sed -En 's/.*"cycle"[[:space:]]*:[[:space:]]*([0-9]+).*/cycle = \1/p' "$SBX/state/state.json"
 
+step 'resume accepted: a new launch brings its own workload key, executable and policy'
+SINGULARITY_WORKLOAD_PUBLIC_KEY="$(hex e)" SINGULARITY_EXECUTABLE_SHA256="$(hex f)" \
+  SINGULARITY_POLICY_SEQUENCE=2 "$BIN" once --resume 2>&1; echo "exit=$?"
+
+step 'resume gate: a policy sequence older than the state last ran under'
+"$BIN" once --resume 2>&1; echo "exit=$?"
+
 step 'resume gate: no state to resume'
 SINGULARITY_STATE_DIR="$SBX/state-none" "$BIN" once --resume 2>&1; echo "exit=$?"
 

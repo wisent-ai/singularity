@@ -73,6 +73,46 @@ pub struct AgentIdentity {
     pub policy_sequence: u64,
 }
 
+impl AgentIdentity {
+    /// Take a new launch's identity for a resumed being. Who the being is
+    /// (agent, persona, role, environment, host, workload) must be unchanged;
+    /// what every launch issues anew (its workload key, the executable and
+    /// code it runs, the policy digest) comes from the launch. A policy
+    /// sequence older than the one the state last ran under is refused.
+    pub fn resume_as(&mut self, launched: &AgentIdentity) -> Result<(), String> {
+        let same_being = [
+            ("agent id", &self.agent_id, &launched.agent_id),
+            ("name", &self.name, &launched.name),
+            ("ticker", &self.ticker, &launched.ticker),
+            ("agent type", &self.agent_type, &launched.agent_type),
+            ("specialty", &self.specialty, &launched.specialty),
+            ("role", &self.role, &launched.role),
+            ("environment", &self.environment, &launched.environment),
+            ("host", &self.host, &launched.host),
+            ("workload id", &self.workload_id, &launched.workload_id),
+        ];
+        let differing: Vec<String> = same_being
+            .iter()
+            .filter(|(_, stored, now)| stored != now)
+            .map(|(field, stored, now)| format!("{field} {stored:?} is now {now:?}"))
+            .collect();
+        if !differing.is_empty() {
+            return Err(format!(
+                "resume identity does not match configuration: {}",
+                differing.join("; ")
+            ));
+        }
+        if launched.policy_sequence < self.policy_sequence {
+            return Err(format!(
+                "resume identity does not match configuration: policy sequence {} is older than {}, the one this state last ran under",
+                launched.policy_sequence, self.policy_sequence
+            ));
+        }
+        *self = launched.clone();
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionRecord {
     pub cycle: u64,
