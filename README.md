@@ -263,4 +263,13 @@ The package builds `singularity`, `singularity-bootstrap`,
 `singularity-repo-mcp`, `singularity-finance-mcp`, and
 `singularity-finance-executor-http`.
 
+Release workers run `stado product cargo` with the immutable
+`private-cargo-sources` input, not GitHub credentials. From a committed source,
+publish and pin it with
+`stado release catalog pin-input . --name private-cargo-sources --source . --revision HEAD --cargo --json`,
+then commit the updated release manifest. Repeat when locked private packages
+change. The shared [Cargo input contract](https://stado.wisent.com/docs/builds#private-cargo-build-inputs)
+covers publication, checksums, desktop controls and missing or stale input
+refusals. Native builds still require a qualified Stado publisher and worker.
+
 License: MIT.
