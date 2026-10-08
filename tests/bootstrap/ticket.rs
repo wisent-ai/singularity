@@ -180,7 +180,7 @@ fn a_launch_without_skarbiec_stops_before_any_capability_or_ticket() {
             "--skarbiec", text(&absent), "--grant-capabilities", "acquire:brama#hmac",
             "--grant-ttl-seconds", "60", "--capability-ttl-seconds", "60", "--capability-max-uses", "1",
             "--broker-socket", text(&case.path("absent-broker.sock")),
-            "--executable", SINGULARITY, "--code-digest", &hex_id("code"),
+            "--executable", SINGULARITY,
             "--policy-file", text(&policy), "--policy-sequence", "1", "--expires-in-seconds", "300",
             "--brama-resource", "brama:hmac", "--brama-bearer-resource", "brama:bearer",
             "--most-resource", "most:token",

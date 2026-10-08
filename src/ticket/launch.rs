@@ -18,7 +18,7 @@ use std::process::Command;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::{absolute, key, sign, KeyArgs, KeyHolder, LaunchArgs, SignArgs};
+use super::{absolute, file_digest, key, sign, KeyArgs, KeyHolder, LaunchArgs, SignArgs};
 use crate::bootstrap::{run_bootstrap, BRAMA_BEARER_PURPOSE, BRAMA_PURPOSE, CAPABILITY_TARGET, MOST_PURPOSE};
 use crate::error::AppError;
 
@@ -63,7 +63,7 @@ pub fn launch(args: &LaunchArgs) -> Result<std::convert::Infallible, AppError> {
         workload_key,
         broker_socket: args.broker_socket.clone(),
         executable: args.executable.clone(),
-        code_digest: args.code_digest.clone(),
+        code_digest: file_digest(&args.executable, "--executable")?,
         policy_file: args.policy_file.clone(),
         policy_sequence: args.policy_sequence,
         expires_in_seconds: args.expires_in_seconds,

@@ -158,7 +158,10 @@ verified against) name the store directly and none of those steps runs; a URL
 without its certificate file is refused with both variables named.
 
 The bootstrap also binds the runtime to its workload identity, host, role,
-environment, executable digest, code digest and policy sequence.
+environment, executable digest, code digest and policy sequence. `singularity
+ticket launch` reads both digests from `--executable`: a compiled being runs no
+code but its executable, so a service declaration names the installed binary
+and never restates a digest that changes with every release.
 
 `--resume` (`SINGULARITY_RESUME`) continues the being stored in the state
 directory when who it is matches the configuration: agent id, name, ticker,

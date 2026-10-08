@@ -148,12 +148,12 @@ pub struct LaunchArgs {
     /// The Skarbiec broker socket the capabilities are redeemed through
     #[arg(long)]
     pub broker_socket: PathBuf,
-    /// The singularity executable the bootstrap execs; its SHA-256 goes into the ticket
+    /// The singularity executable the bootstrap execs. Its SHA-256 goes into
+    /// the ticket twice: as the executable digest, and as the code digest,
+    /// because a compiled being runs no code but its executable, so the
+    /// digest changes with every release without a declaration restating it
     #[arg(long)]
     pub executable: PathBuf,
-    /// The code digest the runtime reports (lowercase SHA-256 hex)
-    #[arg(long)]
-    pub code_digest: String,
     /// The ecosystem policy file; its SHA-256 goes into the ticket
     #[arg(long)]
     pub policy_file: PathBuf,
