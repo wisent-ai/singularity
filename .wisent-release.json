@@ -10,7 +10,18 @@
   "platforms": {
     "darwin-arm64": {
       "runner_platform": "darwin-arm64",
-      "quality": [{"name": "fmt", "argv": ["cargo", "fmt", "--all", "--", "--check"]}],
+      "quality": [
+        {
+          "name": "fmt",
+          "argv": [
+            "cargo",
+            "fmt",
+            "--all",
+            "--",
+            "--check"
+          ]
+        }
+      ],
       "build": {
         "argv": [
           "./release/build.sh"
@@ -26,7 +37,18 @@
     },
     "linux-amd64": {
       "runner_platform": "linux-amd64",
-      "quality": [{"name": "fmt", "argv": ["cargo", "fmt", "--all", "--", "--check"]}],
+      "quality": [
+        {
+          "name": "fmt",
+          "argv": [
+            "cargo",
+            "fmt",
+            "--all",
+            "--",
+            "--check"
+          ]
+        }
+      ],
       "build": {
         "argv": [
           "./release/build.sh"
@@ -47,5 +69,13 @@
       "stable"
     ],
     "reconcile": false
+  },
+  "inputs": {
+    "private-cargo-sources": {
+      "uri": "stado://sources/singularity/dependencies/private-cargo-sources/sha256/0efc306b22696820b2da1006f87a4baf8a8d2c9a65115bc899097f4fa7315bb3/source.tar.gz",
+      "sha256": "0efc306b22696820b2da1006f87a4baf8a8d2c9a65115bc899097f4fa7315bb3",
+      "mount": "private-cargo-sources",
+      "extract": true
+    }
   }
 }
