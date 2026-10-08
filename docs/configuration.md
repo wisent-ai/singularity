@@ -167,8 +167,8 @@ Every other `ticket launch` input is a flag or the `SINGULARITY_LAUNCH_*`
 variable of the same name (`--policy-file` is `SINGULARITY_LAUNCH_POLICY_FILE`,
 `--supervisor-key` is `SINGULARITY_LAUNCH_SUPERVISOR_KEY`, and so on; `singularity
 ticket launch --help` lists each). Stado's catalog service runs the same
-`singularity ticket launch` on every host, and each host's deployment
-environment file (`stado service env set singularity …`) states that host's
+`singularity ticket launch` on every host, and each host's unit environment
+(`stado service env-set singularity --host … --key … --env-file <unit> --value-file …`) states that host's
 supervisor key, trust root, policy file, Skarbiec resources, lifetimes, runtime
 root and the being's own arguments: `SINGULARITY_LAUNCH_BEING_ARGS` is a JSON
 array of strings, for example
