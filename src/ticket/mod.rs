@@ -1,5 +1,5 @@
-//! `singularity ticket key|sign`: the issuer of the signed launch ticket
-//! `singularity-bootstrap` accepts.
+//! `singularity ticket key|sign|launch`: the issuer of the signed launch
+//! ticket `singularity-bootstrap` accepts, and the managed start built on it.
 //!
 //! `singularity-bootstrap` starts a managed being only from a
 //! `singularity.bootstrap.v2` manifest signed by the supervisor whose public
@@ -35,8 +35,10 @@ use crate::bootstrap::{
 use crate::error::AppError;
 
 mod args;
+mod launch;
 
-pub use args::{KeyArgs, KeyHolder, SignArgs, TicketArgs, TicketVerb};
+pub use args::{KeyArgs, KeyHolder, LaunchArgs, SignArgs, TicketArgs, TicketVerb};
+pub use launch::launch;
 
 /// Where a fresh key's seed is read from.
 const RANDOM_SOURCE: &str = "/dev/urandom";

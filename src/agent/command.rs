@@ -49,6 +49,7 @@ pub async fn execute(
         Command::Ticket(args) => match args.verb {
             crate::ticket::TicketVerb::Key(key) => answer(&crate::ticket::key(&key)?, text),
             crate::ticket::TicketVerb::Sign(sign) => answer(&crate::ticket::sign(&sign)?, text),
+            crate::ticket::TicketVerb::Launch(launch) => match crate::ticket::launch(&launch)? {},
         },
         Command::Run(args) => {
             let startup_import = startup_import(&args)?;

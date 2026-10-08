@@ -1,4 +1,4 @@
-//! `singularity ticket key|sign` through the real binaries: a ticket the
+//! `singularity ticket key|sign|launch` through the real binaries: a ticket the
 //! issuer writes is accepted by `singularity-bootstrap` up to the broker it
 //! names (a socket nobody listens on, so redemption is the first refusal),
 //! and the issuer's refusals leave nothing behind. Every file lives under
@@ -161,4 +161,39 @@ fn a_workload_public_key_is_the_pem_skarbiec_verifies_proofs_with() {
     // the same reader must accept it here.
     let parsed = run("openssl", &["pkey", "-pubin", "-in", text(&public), "-noout"]);
     assert!(parsed.status.success(), "{}", String::from_utf8_lossy(&parsed.stderr));
+}
+
+#[test]
+fn a_launch_without_skarbiec_stops_before_any_capability_or_ticket() {
+    let case = Case::start("launch-no-skarbiec");
+    let (supervisor, trust_root) = key(&case, "supervisor");
+    let policy = case.path("policy.json");
+    fs::write(&policy, "{}").unwrap();
+    let runtime = case.path("runtime");
+    let absent = case.path("absent-skarbiec");
+    let answer = run(
+        SINGULARITY,
+        &[
+            "ticket", "launch",
+            "--agent-id", "ticket-test", "--role", "test", "--environment", "test",
+            "--host", "test-host", "--workload-id", "ticket-test-workload",
+            "--skarbiec", text(&absent), "--grant-capabilities", "acquire:brama#hmac",
+            "--grant-ttl-seconds", "60", "--capability-ttl-seconds", "60", "--capability-max-uses", "1",
+            "--broker-socket", text(&case.path("absent-broker.sock")),
+            "--executable", SINGULARITY, "--code-digest", &hex_id("code"),
+            "--policy-file", text(&policy), "--policy-sequence", "1", "--expires-in-seconds", "300",
+            "--brama-resource", "brama:hmac", "--brama-bearer-resource", "brama:bearer",
+            "--most-resource", "most:token",
+            "--supervisor-key", text(&supervisor), "--trust-root", text(&trust_root),
+            "--runtime-root", text(&runtime),
+            "--", "doctor",
+        ],
+    );
+    let stderr = String::from_utf8_lossy(&answer.stderr);
+    assert!(!answer.status.success(), "{stderr}");
+    assert!(stderr.contains("could not be started"), "{stderr}");
+    let tickets: Vec<_> = fs::read_dir(&runtime).unwrap().map(|entry| entry.unwrap().path()).collect();
+    for ticket in tickets {
+        assert!(!ticket.join("manifest.json").exists(), "no ticket is signed without capabilities");
+    }
 }

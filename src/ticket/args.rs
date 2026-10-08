@@ -19,6 +19,8 @@ pub enum TicketVerb {
     Key(KeyArgs),
     /// Write one singularity.bootstrap.v2 manifest and its signature from explicit inputs, then check it the way singularity-bootstrap will
     Sign(SignArgs),
+    /// Start one managed being end to end: a fresh workload key registered with Skarbiec, the three capabilities issued to it, a ticket signed for them, and singularity-bootstrap run on that ticket
+    Launch(LaunchArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -107,6 +109,78 @@ pub struct SignArgs {
     /// Absolute path of the signature to write; refused when it exists
     #[arg(long)]
     pub signature_out: PathBuf,
+    /// Arguments singularity is started with, after `--`
+    #[arg(last = true)]
+    pub singularity_args: Vec<String>,
+}
+
+/// `ticket launch`: every input a managed start needs, stated by the service
+/// declaration that runs it. The workload key, the capability ids and the
+/// ticket files are made by the launch itself, under `--runtime-root`.
+#[derive(Debug, Clone, Args)]
+pub struct LaunchArgs {
+    /// Also the Skarbiec agent the workload key is registered for and the capabilities are issued to
+    #[arg(long)]
+    pub agent_id: String,
+    #[arg(long)]
+    pub role: String,
+    #[arg(long)]
+    pub environment: String,
+    #[arg(long)]
+    pub host: String,
+    #[arg(long)]
+    pub workload_id: String,
+    /// The skarbiec executable whose grant issue registers the workload key and whose grant capability issues the three capabilities
+    #[arg(long)]
+    pub skarbiec: PathBuf,
+    /// What the workload's token may acquire, exactly as skarbiec grant issue --capabilities takes it
+    #[arg(long)]
+    pub grant_capabilities: String,
+    /// How long the workload's token lives
+    #[arg(long)]
+    pub grant_ttl_seconds: u64,
+    /// How long each of the three capabilities may be redeemed
+    #[arg(long)]
+    pub capability_ttl_seconds: u64,
+    /// How many redemptions each capability allows
+    #[arg(long)]
+    pub capability_max_uses: u64,
+    /// The Skarbiec broker socket the capabilities are redeemed through
+    #[arg(long)]
+    pub broker_socket: PathBuf,
+    /// The singularity executable the bootstrap execs; its SHA-256 goes into the ticket
+    #[arg(long)]
+    pub executable: PathBuf,
+    /// The code digest the runtime reports (lowercase SHA-256 hex)
+    #[arg(long)]
+    pub code_digest: String,
+    /// The ecosystem policy file; its SHA-256 goes into the ticket
+    #[arg(long)]
+    pub policy_file: PathBuf,
+    /// The policy sequence, greater than the last one this being ran under
+    #[arg(long)]
+    pub policy_sequence: u64,
+    /// How long the ticket is valid from now
+    #[arg(long)]
+    pub expires_in_seconds: u32,
+    /// The Brama HMAC resource, brama:<field>
+    #[arg(long)]
+    pub brama_resource: String,
+    /// The Brama bearer resource, brama:<field>
+    #[arg(long)]
+    pub brama_bearer_resource: String,
+    /// The Most token resource, most:<field>
+    #[arg(long)]
+    pub most_resource: String,
+    /// The supervisor's private key file
+    #[arg(long)]
+    pub supervisor_key: PathBuf,
+    /// The supervisor's public key file (hex trust root)
+    #[arg(long)]
+    pub trust_root: PathBuf,
+    /// Absolute owner-only directory the ticket files and the bootstrap's runtime directory are created under
+    #[arg(long)]
+    pub runtime_root: PathBuf,
     /// Arguments singularity is started with, after `--`
     #[arg(last = true)]
     pub singularity_args: Vec<String>,
