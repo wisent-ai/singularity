@@ -23,9 +23,7 @@
         }
       ],
       "build": {
-        "argv": [
-          "./release/build.sh"
-        ]
+        "argv": ["stado", "product", "cargo", "stage", "--bin", "singularity", "--bin", "singularity-bootstrap", "--bin", "singularity-repo-mcp", "--bin", "singularity-finance-mcp", "--bin", "singularity-finance-executor-http"]
       },
       "stage": {
         "singularity": "bin/singularity",
@@ -50,9 +48,7 @@
         }
       ],
       "build": {
-        "argv": [
-          "./release/build.sh"
-        ]
+        "argv": ["stado", "product", "cargo", "stage", "--bin", "singularity", "--bin", "singularity-bootstrap", "--bin", "singularity-repo-mcp", "--bin", "singularity-finance-mcp", "--bin", "singularity-finance-executor-http"]
       },
       "stage": {
         "singularity": "bin/singularity",
