@@ -26,6 +26,7 @@ use crate::error::AppError;
 /// become the being. Returns only with the step that refused.
 pub fn launch(args: &LaunchArgs) -> Result<std::convert::Infallible, AppError> {
     absolute(&args.runtime_root, "--runtime-root")?;
+    let singularity_args = being_args(args)?;
     let ticket_dir = args.runtime_root.join(format!("ticket-{}", Uuid::new_v4()));
     DirBuilder::new()
         .recursive(true)
@@ -77,7 +78,7 @@ pub fn launch(args: &LaunchArgs) -> Result<std::convert::Infallible, AppError> {
         trust_root: args.trust_root.clone(),
         manifest_out: manifest.clone(),
         signature_out: signature.clone(),
-        singularity_args: args.singularity_args.clone(),
+        singularity_args,
     })?;
     run_bootstrap(&manifest, &signature, &args.trust_root, &args.runtime_root)
 }
@@ -134,4 +135,26 @@ fn skarbiec(args: &LaunchArgs, label: &str, words: &[&str]) -> Result<Vec<u8>, A
 fn text(path: &Path) -> Result<&str, AppError> {
     path.to_str()
         .ok_or_else(|| AppError::Config(format!("{} is not UTF-8", path.display())))
+}
+
+/// The being's arguments: those after `--`, or the JSON array of
+/// `--being-args` (`SINGULARITY_LAUNCH_BEING_ARGS`) when a service's declared
+/// arguments stop at `ticket launch`. Both, or neither, is refused.
+fn being_args(args: &LaunchArgs) -> Result<Vec<String>, AppError> {
+    match (&args.being_args, args.singularity_args.is_empty()) {
+        (Some(_), false) => Err(AppError::Config(
+            "ticket launch takes the being's arguments after -- or from --being-args (SINGULARITY_LAUNCH_BEING_ARGS), not both"
+                .to_owned(),
+        )),
+        (None, true) => Err(AppError::Config(
+            "ticket launch needs the being's arguments after -- or as a JSON array in --being-args (SINGULARITY_LAUNCH_BEING_ARGS)"
+                .to_owned(),
+        )),
+        (None, false) => Ok(args.singularity_args.clone()),
+        (Some(json), true) => serde_json::from_str::<Vec<String>>(json).map_err(|error| {
+            AppError::Config(format!(
+                "--being-args (SINGULARITY_LAUNCH_BEING_ARGS) is not a JSON array of strings: {error}"
+            ))
+        }),
+    }
 }

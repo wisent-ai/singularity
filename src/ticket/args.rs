@@ -115,72 +115,80 @@ pub struct SignArgs {
 }
 
 /// `ticket launch`: every input a managed start needs, stated by the service
-/// declaration that runs it. The workload key, the capability ids and the
+/// declaration that runs it, either as a flag or as the `SINGULARITY_LAUNCH_*`
+/// variable beside it, so a catalog service whose arguments are the same on
+/// every host takes the host's own paths and resources from that host's
+/// deployment environment file. The workload key, the capability ids and the
 /// ticket files are made by the launch itself, under `--runtime-root`.
 #[derive(Debug, Clone, Args)]
 pub struct LaunchArgs {
     /// Also the Skarbiec agent the workload key is registered for and the capabilities are issued to
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_AGENT_ID")]
     pub agent_id: String,
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_ROLE")]
     pub role: String,
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_ENVIRONMENT")]
     pub environment: String,
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_HOST")]
     pub host: String,
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_WORKLOAD_ID")]
     pub workload_id: String,
     /// The skarbiec executable whose grant issue registers the workload key and whose grant capability issues the three capabilities
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_SKARBIEC")]
     pub skarbiec: PathBuf,
     /// What the workload's token may acquire, exactly as skarbiec grant issue --capabilities takes it
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_GRANT_CAPABILITIES")]
     pub grant_capabilities: String,
     /// How long the workload's token lives
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_GRANT_TTL_SECONDS")]
     pub grant_ttl_seconds: u64,
     /// How long each of the three capabilities may be redeemed
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_CAPABILITY_TTL_SECONDS")]
     pub capability_ttl_seconds: u64,
     /// How many redemptions each capability allows
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_CAPABILITY_MAX_USES")]
     pub capability_max_uses: u64,
     /// The Skarbiec broker socket the capabilities are redeemed through
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_BROKER_SOCKET")]
     pub broker_socket: PathBuf,
     /// The singularity executable the bootstrap execs. Its SHA-256 goes into
     /// the ticket twice: as the executable digest, and as the code digest,
     /// because a compiled being runs no code but its executable, so the
     /// digest changes with every release without a declaration restating it
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_EXECUTABLE")]
     pub executable: PathBuf,
     /// The ecosystem policy file; its SHA-256 goes into the ticket
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_POLICY_FILE")]
     pub policy_file: PathBuf,
     /// The policy sequence, greater than the last one this being ran under
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_POLICY_SEQUENCE")]
     pub policy_sequence: u64,
     /// How long the ticket is valid from now
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_EXPIRES_IN_SECONDS")]
     pub expires_in_seconds: u32,
     /// The Brama HMAC resource, brama:<field>
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_BRAMA_RESOURCE")]
     pub brama_resource: String,
     /// The Brama bearer resource, brama:<field>
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_BRAMA_BEARER_RESOURCE")]
     pub brama_bearer_resource: String,
     /// The Most token resource, most:<field>
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_MOST_RESOURCE")]
     pub most_resource: String,
     /// The supervisor's private key file
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_SUPERVISOR_KEY")]
     pub supervisor_key: PathBuf,
     /// The supervisor's public key file (hex trust root)
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_TRUST_ROOT")]
     pub trust_root: PathBuf,
     /// Absolute owner-only directory the ticket files and the bootstrap's runtime directory are created under
-    #[arg(long)]
+    #[arg(long, env = "SINGULARITY_LAUNCH_RUNTIME_ROOT")]
     pub runtime_root: PathBuf,
+    /// The being's arguments as a JSON array of strings, for a service whose
+    /// declared arguments stop at `ticket launch`; refused beside arguments
+    /// after `--`, and one of the two is required
+    #[arg(long, env = "SINGULARITY_LAUNCH_BEING_ARGS")]
+    pub being_args: Option<String>,
     /// Arguments singularity is started with, after `--`
     #[arg(last = true)]
     pub singularity_args: Vec<String>,

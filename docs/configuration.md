@@ -163,6 +163,21 @@ ticket launch` reads both digests from `--executable`: a compiled being runs no
 code but its executable, so a service declaration names the installed binary
 and never restates a digest that changes with every release.
 
+Every other `ticket launch` input is a flag or the `SINGULARITY_LAUNCH_*`
+variable of the same name (`--policy-file` is `SINGULARITY_LAUNCH_POLICY_FILE`,
+`--supervisor-key` is `SINGULARITY_LAUNCH_SUPERVISOR_KEY`, and so on; `singularity
+ticket launch --help` lists each). Stado's catalog service runs the same
+`singularity ticket launch` on every host, and each host's deployment
+environment file (`stado service env set singularity …`) states that host's
+supervisor key, trust root, policy file, Skarbiec resources, lifetimes, runtime
+root and the being's own arguments: `SINGULARITY_LAUNCH_BEING_ARGS` is a JSON
+array of strings, for example
+`["ecosystem","run","--policy","/path/policy.json", …]`, used when nothing
+follows `--`; both at once, or neither, is refused. A missing input is refused
+by clap with its flag and variable named. None of them reaches the being: the
+bootstrap clears the environment before it starts `singularity`, so the being
+sees only its arguments and the identity the ticket binds.
+
 `--resume` (`SINGULARITY_RESUME`) continues the being stored in the state
 directory when who it is matches the configuration: agent id, name, ticker,
 type, specialty, role, environment, host and workload id. What every
