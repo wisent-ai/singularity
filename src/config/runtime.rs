@@ -37,6 +37,8 @@ pub struct RuntimeConfig {
     /// Most, when a Most credential is configured; its URL is then required.
     pub most: Option<MostEndpoint>,
     pub required_surfaces: Vec<String>,
+    /// The trading surface inputs, when this being is served the trading platform.
+    pub trading: Option<crate::trading::TradingSurface>,
 }
 
 /// Where Most is reached and the service credential that reaches it.
@@ -170,6 +172,7 @@ impl RuntimeConfig {
             las_release_trust_store: args.las_release_trust_store.clone(),
             las_release_watermark: args.las_release_watermark.clone(),
             required_surfaces,
+            trading: args.trading.surface()?,
             most: match (
                 args.most_url.as_deref(),
                 match (args.most_token_file.as_ref(), inherited) {

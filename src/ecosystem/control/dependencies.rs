@@ -27,6 +27,7 @@ pub(in crate::ecosystem) async fn monitor(
                 &config.las_release_trust_store,
                 &config.las_release_watermark,
                 &config.required_surfaces,
+                config.trading.as_ref(),
             )
             .await
             {

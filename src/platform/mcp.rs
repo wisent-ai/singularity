@@ -21,12 +21,6 @@ const SKARBIEC_PATH_ENV: [&str; 9] = [
     "SKARBIEC_WORM_CHECKPOINT",
 ];
 const SKARBIEC_COMMAND_ENV: &str = "SKARBIEC_WORM_RECEIPT_COMMAND";
-/// What the `trading` surface needs to reach the agent proxy as this being.
-const TRADING_ENV: &[&str] = &[
-    "TRADING_AUTONOMY_PROXY_URL",
-    "TRADING_AUTONOMY_INSTANCE_ID",
-    "TRADING_AUTONOMY_AUTH_SECRET_FILE",
-];
 
 fn selected(csv: &str, name: &str) -> bool {
     csv.split(',').map(str::trim).any(|item| item == name)
@@ -73,6 +67,7 @@ impl LasSupervisor {
         release_trust_store: &Path,
         release_watermark: &Path,
         required_surfaces: &[String],
+        trading: Option<&crate::trading::TradingSurface>,
     ) -> Result<Self, AppError> {
         if let Some(value) = agent_id
             && !valid_agent_id(value)
@@ -138,10 +133,8 @@ impl LasSupervisor {
         if (only.trim().is_empty() || selected(only, "trading"))
             && !skip.is_some_and(|surfaces| selected(surfaces, "trading"))
         {
-            for name in TRADING_ENV {
-                if let Some(value) = std::env::var_os(name) {
-                    process.env(name, value);
-                }
+            if let Some(surface) = trading {
+                process.envs(surface.environment());
             }
         }
         let mut child = process

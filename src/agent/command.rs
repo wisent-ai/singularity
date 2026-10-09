@@ -170,6 +170,7 @@ pub(super) async fn doctor(args: &CommonArgs, text: bool) -> Result<(), AppError
         &config.las_release_trust_store,
         &config.las_release_watermark,
         &config.required_surfaces,
+        config.trading.as_ref(),
     )
     .await?;
     let tools = las.tools().len();
@@ -189,6 +190,7 @@ pub(super) async fn list_tools(args: &ToolsArgs) -> Result<(), AppError> {
         )));
     }
     let required = Vec::new();
+    let trading = args.trading.surface()?;
     let mut las = LasSupervisor::spawn(
         &args.las_command,
         &args.las_entrypoint,
@@ -200,6 +202,7 @@ pub(super) async fn list_tools(args: &ToolsArgs) -> Result<(), AppError> {
         &args.las_release_trust_store,
         &args.las_release_watermark,
         &required,
+        trading.as_ref(),
     )
     .await?;
     let catalog = ToolCatalog::build(las.tools(), false)?;

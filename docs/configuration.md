@@ -178,6 +178,17 @@ by clap with its flag and variable named. None of them reaches the being: the
 bootstrap clears the environment before it starts `singularity`, so the being
 sees only its arguments and the identity the ticket binds.
 
+A being served the trading platform (Las surface `trading`) takes three more
+arguments, all or none: `--trading-proxy-url` (the agent proxy route of its
+trading deployment), `--trading-instance-id` (the agent instance that proxy
+knows it as) and `--trading-auth-secret-file` (an owner-only file holding that
+instance secret). In a launch they belong in `SINGULARITY_LAUNCH_BEING_ARGS`,
+since the environment does not reach the being; an unmanaged run may give them
+as `TRADING_AUTONOMY_PROXY_URL`, `TRADING_AUTONOMY_INSTANCE_ID` and
+`TRADING_AUTONOMY_AUTH_SECRET_FILE`. Las receives them only when `trading` is
+among its selected surfaces; two of the three are refused with the missing
+flag named.
+
 `--resume` (`SINGULARITY_RESUME`) continues the being stored in the state
 directory when who it is matches the configuration: agent id, name, ticker,
 type, specialty, role, environment, host and workload id. What every

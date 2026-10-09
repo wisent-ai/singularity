@@ -94,6 +94,8 @@ pub struct ToolsArgs {
     pub las_release_trust_store: PathBuf,
     #[arg(long, env = "LAS_RELEASE_WATERMARK_FILE")]
     pub las_release_watermark: PathBuf,
+    #[command(flatten)]
+    pub trading: crate::trading::TradingArgs,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
     pub format: OutputFormat,
 }
@@ -214,6 +216,8 @@ pub struct CommonArgs {
     pub most_url: Option<String>,
     #[arg(long, env = "MOST_SERVICE_TOKEN_FILE")]
     pub most_token_file: Option<PathBuf>,
+    #[command(flatten)]
+    pub trading: crate::trading::TradingArgs,
 }
 
 mod runtime;

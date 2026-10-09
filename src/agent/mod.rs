@@ -111,6 +111,7 @@ impl Agent {
             &config.las_release_trust_store,
             &config.las_release_watermark,
             &config.required_surfaces,
+            config.trading.as_ref(),
         )
         .await?;
         let catalog = match ToolCatalog::build(las.tools(), config.most.is_some()) {
