@@ -58,7 +58,7 @@ pub(super) fn redeem(
         authorization_id: NO_AUTHORIZATION,
         proof,
     };
-    let mut encoded = serde_json::to_vec(&request)?;
+    let mut encoded = zeroize::Zeroizing::new(serde_json::to_vec(&request)?);
     encoded.push(b'\n');
     let mut stream = UnixStream::connect(socket)
         .map_err(|error| AppError::Secret(format!(
@@ -91,7 +91,11 @@ pub(super) fn redeem(
             "capability broker {} accepted redemption without a positive secret_len",
             socket.display()
         )))?;
-    let mut secret = vec![0_u8; length];
+    let mut secret = Vec::new();
+    secret.try_reserve_exact(length).map_err(|error| AppError::Secret(format!(
+        "allocate declared {length}-byte credential from {}: {error}", socket.display()
+    )))?;
+    secret.resize(length, 0_u8);
     if let Err(error) = stream.read_exact(&mut secret) {
         secret.zeroize();
         return Err(AppError::Secret(format!(
