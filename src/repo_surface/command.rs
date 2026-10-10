@@ -6,6 +6,7 @@ use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
+use stado_wait as wait;
 
 use super::{SurfaceError, SurfaceResult};
 
@@ -32,57 +33,29 @@ async fn drain<R: AsyncRead + Unpin>(mut reader: R) -> std::io::Result<Vec<u8>> 
 
 type DrainTask = tokio::task::JoinHandle<std::io::Result<Vec<u8>>>;
 
-struct CommandWait {
-    operation: String,
-    started: std::time::Instant,
-}
 
-impl CommandWait {
-    fn start(program: &Path, cwd: &Path, process_id: Option<u32>) -> Self {
-        let operation = format!(
-            "approved command {} in {} (process {process_id:?})",
-            program.display(),
-            cwd.display()
-        );
-        eprintln!(
-            "waiting: {operation}; command exit and output EOF; since {:?}",
-            std::time::SystemTime::now()
-        );
-        Self {
-            operation,
-            started: std::time::Instant::now(),
-        }
-    }
-}
-
-impl Drop for CommandWait {
-    fn drop(&mut self) {
-        eprintln!(
-            "wait ended: {}; elapsed {:?}; completion is reported separately",
-            self.operation,
-            self.started.elapsed()
-        );
-    }
-}
-
-/// End the command's whole process group, then let both readers finish: the
-/// pipes close with the group, so nothing is left to wait for.
+/// Stop readers before terminating the group: descendants may retain inherited
+/// pipe descriptors after the direct child exits.
 async fn terminate_child(
     child: &mut tokio::process::Child,
     process_id: Option<u32>,
     stdout_task: &mut DrainTask,
     stderr_task: &mut DrainTask,
 ) {
+    stdout_task.abort();
+    stderr_task.abort();
     #[cfg(unix)]
     if let Some(process_id) = process_id {
-        unsafe {
-            kill(-(process_id as i32), SIGKILL);
+        if unsafe { kill(-(process_id as i32), SIGKILL) } != 0 {
+            eprintln!("command cleanup: killing process group {process_id} failed: {}", std::io::Error::last_os_error());
         }
     }
-    let _ = child.kill().await;
-    let _ = child.wait().await;
-    let _ = (&mut *stdout_task).await;
-    let _ = (&mut *stderr_task).await;
+    if let Err(error) = wait::until(wait::Kind::Process, "terminate approved command", format!("process {process_id:?}"), child.kill()).await {
+        eprintln!("command cleanup failed: {error}");
+    }
+    if let Err(error) = wait::until(wait::Kind::Process, "reap approved command", format!("process {process_id:?}"), child.wait()).await {
+        eprintln!("command cleanup failed: {error}");
+    }
 }
 
 async fn run_fixed(
@@ -132,7 +105,6 @@ async fn run_fixed(
         .spawn()
         .map_err(|e| SurfaceError::command(format!("cannot start approved command: {e}")))?;
     let process_id = child.id();
-    let _wait = CommandWait::start(program, cwd, process_id);
     let mut stdin_pipe = child.stdin.take();
     let stdout = child
         .stdout
@@ -154,21 +126,30 @@ async fn run_fixed(
             })?;
         }
         drop(stdin_pipe);
-        child
-            .wait()
-            .await
-            .map_err(|error| SurfaceError::command(format!("cannot wait for command: {error}")))
+        let status = wait::until(
+            wait::Kind::Process,
+            format!("approved command {}", program.display()),
+            cwd.display(),
+            child.wait(),
+        ).await.map_err(|error| SurfaceError::command(format!("cannot wait for command: {error}")))?;
+        let stdout = (&mut stdout_task).await
+            .map_err(|e| SurfaceError::internal(format!("stdout reader failed: {e}")))?
+            .map_err(|e| SurfaceError::command(format!("cannot read stdout: {e}")))?;
+        let stderr = (&mut stderr_task).await
+            .map_err(|e| SurfaceError::internal(format!("stderr reader failed: {e}")))?
+            .map_err(|e| SurfaceError::command(format!("cannot read stderr: {e}")))?;
+        Ok((status, stdout, stderr))
     };
-    // A command waits for its own answer; only a policy check carries the
-    // time its policy gives it.
+    // The policy duration includes stdin, child exit and both output EOFs.
+    let execution = wait::until(wait::Kind::Process, "command input, exit and output EOF", cwd.display(), execution);
     let finished = match deadline {
         None => Ok(execution.await),
         Some(seconds) => timeout(Duration::from_secs(seconds.get()), execution)
             .await
             .map_err(|_| seconds),
     };
-    let status = match finished {
-        Ok(Ok(status)) => status,
+    let (status, stdout, stderr) = match finished {
+        Ok(Ok(output)) => output,
         Ok(Err(error)) => {
             terminate_child(&mut child, process_id, &mut stdout_task, &mut stderr_task).await;
             return Err(error);
@@ -176,18 +157,10 @@ async fn run_fixed(
         Err(seconds) => {
             terminate_child(&mut child, process_id, &mut stdout_task, &mut stderr_task).await;
             return Err(SurfaceError::command(format!(
-                "command ran past the {seconds} s its policy gives it and was ended"
+                "command exceeded the {seconds} s its policy gives input, execution and output; termination requested"
             )));
         }
     };
-    let stdout = stdout_task
-        .await
-        .map_err(|e| SurfaceError::internal(format!("stdout reader failed: {e}")))?
-        .map_err(|e| SurfaceError::command(format!("cannot read stdout: {e}")))?;
-    let stderr = stderr_task
-        .await
-        .map_err(|e| SurfaceError::internal(format!("stderr reader failed: {e}")))?
-        .map_err(|e| SurfaceError::command(format!("cannot read stderr: {e}")))?;
     Ok(CommandOutput {
         success: status.success(),
         code: status.code(),

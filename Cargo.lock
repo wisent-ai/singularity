@@ -1805,7 +1805,9 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64",
  "bytes",
+ "futures-channel",
  "futures-core",
+ "futures-util",
  "http",
  "http-body",
  "http-body-util",
@@ -2295,6 +2297,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "stado-database",
+ "stado-wait",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -2556,6 +2559,16 @@ dependencies = [
  "serde_json",
  "sqlx",
  "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "stado-wait"
+version = "0.1.0"
+source = "git+https://github.com/wisent-ai/stado?rev=621ce16d054a7af678ede817bfcb2e2b6df6400d#621ce16d054a7af678ede817bfcb2e2b6df6400d"
+dependencies = [
+ "chrono",
+ "reqwest",
  "tokio",
 ]
 

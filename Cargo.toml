@@ -59,6 +59,7 @@ rust_decimal = { version = "1", features = ["serde"] }
 sea-orm = { version = "1.1", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros", "postgres-array"] }
 sea-orm-migration = { version = "1.1", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls"] }
 stado-database = { git = "https://github.com/wisent-ai/stado", package = "stado-database" }
+stado-wait = { git = "https://github.com/wisent-ai/stado", rev = "621ce16d054a7af678ede817bfcb2e2b6df6400d" }
 secrecy = "0.10"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
