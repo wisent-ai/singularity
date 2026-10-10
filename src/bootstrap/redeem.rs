@@ -99,6 +99,7 @@ pub(super) fn materialize(
             .write(true)
             .mode(0o600)
             .open(destination)?;
+        fs::remove_file(destination)?;
         file.write_all(&secret)?;
         file.sync_all()?;
         let metadata = file.metadata()?;
@@ -107,7 +108,6 @@ pub(super) fn materialize(
                 "bootstrap credential file is not owner-only".into(),
             ));
         }
-        fs::remove_file(destination)?;
         Ok(file)
     })();
     secret.zeroize();
