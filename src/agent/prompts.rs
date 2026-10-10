@@ -24,7 +24,6 @@ pub(super) fn cycle_message(state: &AgentState) -> String {
         .recent_actions
         .iter()
         .rev()
-        .take(10)
         .map(|action| format!("{}:{}", action.tool, action.status))
         .collect::<Vec<_>>()
         .join(", ");
@@ -57,7 +56,6 @@ pub(super) fn cognition_messages(state: &AgentState) -> Vec<ChatMessage> {
         .memories
         .iter()
         .rev()
-        .take(20)
         .map(|entry| format!("{}: {}", entry.kind, entry.text))
         .collect::<Vec<_>>();
     if !memories.is_empty() {

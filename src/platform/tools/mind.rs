@@ -59,7 +59,6 @@ pub(super) fn recall(state: &AgentState, arguments: Map<String, Value>) -> ToolO
             entry.kind.to_ascii_lowercase().contains(&query)
                 || entry.text.to_ascii_lowercase().contains(&query)
         })
-        .take(50)
         .collect::<Vec<_>>();
     success(json!({"memories":memories}), None, None)
 }

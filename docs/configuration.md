@@ -199,6 +199,13 @@ policy sequence older than the one the state last ran under is refused, as is
 any change to who the being is; the refusal names each differing field with
 its stored and configured value.
 
+The runtime keeps recorded actions and memories whole. Each cognition request
+includes all persisted memories and each cycle summary includes all recorded
+actions, newest first. `singularity_memory_recall` returns every kind/text match,
+also newest first; it does not silently hide matches after a built-in count.
+Brama and the served model own their actual context limits. A provider refusal
+is reported rather than substituting a silently shortened mind.
+
 `singularity-bootstrap` is not a resident wrapper. It verifies the signed
 manifest, redeems the Brama HMAC, Brama bearer and Most token from Skarbiec,
 writes each into an owner-only file that it unlinks at once, and then replaces
