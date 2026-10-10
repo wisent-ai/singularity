@@ -186,6 +186,10 @@ and reserves memory fallibly before reading. Inspection, allocation and read
 failures name the affected descriptor declaration and operation, with the
 observed length and underlying cause where available; credential bytes are
 not included. Ordinary child processes cannot inherit these descriptors.
+An invalid file reports the observed regular-file status, link count, owner,
+effective owner, permissions and length. Failure to set close-on-exec reports
+the descriptor declaration, descriptor number and operating-system cause
+instead of an unnamed I/O failure.
 
 A being served the trading platform (Las surface `trading`) takes three more
 arguments, all or none: `--trading-proxy-url` (the agent proxy route of its

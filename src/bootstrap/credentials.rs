@@ -72,7 +72,9 @@ pub fn adopt_credentials() -> Result<(), AppError> {
     // Rust owner in this new process image. Adoption runs before other threads.
     let files = descriptors.map(|descriptor| unsafe { File::from_raw_fd(descriptor) });
     for (name, file) in DESCRIPTORS.iter().zip(&files) {
-        let metadata = file.metadata()?;
+        let metadata = file.metadata().map_err(|error| {
+            AppError::Secret(format!("{name}: inspecting inherited descriptor {} failed: {error}", file.as_raw_fd()))
+        })?;
         // SAFETY: geteuid has no arguments or memory preconditions.
         let owner = unsafe { libc::geteuid() };
         if !metadata.is_file()
@@ -82,10 +84,14 @@ pub fn adopt_credentials() -> Result<(), AppError> {
             || metadata.len() == 0
         {
             return Err(AppError::Secret(format!(
-                "{name} is not an anonymous owner-only credential file"
+                "{name}: inherited descriptor {} must be an anonymous, nonempty, owner-only regular file; observed regular={}, links={}, uid={}, effective_uid={owner}, mode={:o}, bytes={}",
+                file.as_raw_fd(), metadata.is_file(), metadata.nlink(), metadata.uid(),
+                metadata.permissions().mode(), metadata.len()
             )));
         }
-        close_on_exec(file.as_raw_fd(), true)?;
+        close_on_exec(file.as_raw_fd(), true).map_err(|error| {
+            AppError::Secret(format!("{name}: protecting inherited descriptor {} from child inheritance failed: {error}", file.as_raw_fd()))
+        })?;
     }
     let credential = |index: usize| -> Result<SecretString, AppError> {
         let name = DESCRIPTORS[index];
