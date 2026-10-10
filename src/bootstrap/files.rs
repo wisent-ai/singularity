@@ -17,7 +17,10 @@ pub(super) fn read_control_line(stream: &mut UnixStream) -> Result<Vec<u8>, AppE
         let mut byte = [0_u8; 1];
         stream
             .read_exact(&mut byte)
-            .map_err(|_| AppError::Secret("capability redemption denied".into()))?;
+            .map_err(|error| AppError::Secret(format!(
+                "capability redemption control read failed after {} bytes before newline: {error}",
+                line.len()
+            )))?;
         if byte[0] == b'\n' {
             return Ok(line);
         }

@@ -23,9 +23,14 @@ pub(super) fn redeem(
     signing_key: &SigningKey,
 ) -> Result<Vec<u8>, AppError> {
     let socket_metadata = fs::symlink_metadata(socket)
-        .map_err(|_| AppError::Secret("capability redemption denied".into()))?;
+        .map_err(|error| AppError::Secret(format!(
+            "inspect capability broker socket {}: {error}", socket.display()
+        )))?;
     if socket_metadata.file_type().is_symlink() || !socket_metadata.file_type().is_socket() {
-        return Err(AppError::Secret("capability redemption denied".into()));
+        return Err(AppError::Secret(format!(
+            "capability broker path {} must be a Unix socket, not a symlink or another file type",
+            socket.display()
+        )));
     }
     let nonce = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     // The proof Skarbiec verifies (`skarbiec.redeem.v1`): the domain, then the
@@ -34,7 +39,10 @@ pub(super) fn redeem(
     let mut proof_input = Vec::from(PROOF_DOMAIN);
     for part in [capability_id, nonce.as_str(), workload_id, REDEEM_OPERATION] {
         let part = std::ffi::CString::new(part)
-            .map_err(|_| AppError::Secret("capability redemption denied".into()))?;
+            .map_err(|error| AppError::Secret(format!(
+                "capability redemption proof field contains NUL at byte {}",
+                error.nul_position()
+            )))?;
         proof_input.extend_from_slice(part.as_bytes_with_nul());
     }
     proof_input.extend_from_slice(NO_AUTHORIZATION.as_bytes());
@@ -53,32 +61,59 @@ pub(super) fn redeem(
     let mut encoded = serde_json::to_vec(&request)?;
     encoded.push(b'\n');
     let mut stream = UnixStream::connect(socket)
-        .map_err(|_| AppError::Secret("capability redemption denied".into()))?;
+        .map_err(|error| AppError::Secret(format!(
+            "connect to capability broker {}: {error}", socket.display()
+        )))?;
     let write_result = stream.write_all(&encoded);
     encoded.zeroize();
-    write_result.map_err(|_| AppError::Secret("capability redemption denied".into()))?;
+    write_result.map_err(|error| AppError::Secret(format!(
+        "write capability redemption request to {}: {error}", socket.display()
+    )))?;
 
-    let line = read_control_line(&mut stream)?;
+    let line = read_control_line(&mut stream).map_err(|error| AppError::Secret(format!(
+        "read capability broker {} control response: {error}", socket.display()
+    )))?;
     let control: RedeemControl = serde_json::from_slice(&line)
-        .map_err(|_| AppError::Secret("capability redemption denied".into()))?;
+        .map_err(|error| AppError::Secret(format!(
+            "decode capability broker {} control response ({} bytes): {error}",
+            socket.display(), line.len()
+        )))?;
     if control.version != WIRE_VERSION || control.status != "ok" {
-        return Err(AppError::Secret("capability redemption denied".into()));
+        return Err(AppError::Secret(format!(
+            "capability redemption denied by {}: version {:?}, status {:?}",
+            socket.display(), control.version, control.status
+        )));
     }
     let length = control
         .secret_len
         .filter(|length| *length > 0)
-        .ok_or_else(|| AppError::Secret("capability redemption denied".into()))?;
+        .ok_or_else(|| AppError::Secret(format!(
+            "capability broker {} accepted redemption without a positive secret_len",
+            socket.display()
+        )))?;
     let mut secret = vec![0_u8; length];
-    if stream.read_exact(&mut secret).is_err() {
+    if let Err(error) = stream.read_exact(&mut secret) {
         secret.zeroize();
-        return Err(AppError::Secret("capability redemption denied".into()));
+        return Err(AppError::Secret(format!(
+            "read declared {length}-byte credential from {}: {error}", socket.display()
+        )));
     }
     let mut extra = [0_u8; 1];
     match stream.read(&mut extra) {
         Ok(0) => {}
-        Ok(_) | Err(_) => {
+        Ok(_) => {
             secret.zeroize();
-            return Err(AppError::Secret("capability redemption denied".into()));
+            return Err(AppError::Secret(format!(
+                "capability broker {} sent data after its declared {length}-byte credential",
+                socket.display()
+            )));
+        }
+        Err(error) => {
+            secret.zeroize();
+            return Err(AppError::Secret(format!(
+                "read completion of capability broker {} credential stream: {error}",
+                socket.display()
+            )));
         }
     }
     Ok(secret)

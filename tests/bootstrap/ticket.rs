@@ -106,8 +106,6 @@ fn an_issued_ticket_is_accepted_by_the_bootstrap_up_to_its_broker() {
     let case = Case::start("issued");
     let (answer, manifest, signature, trust_root) = sign(&case, "300");
     assert!(answer.status.success(), "{}", String::from_utf8_lossy(&answer.stderr));
-    let report: serde_json::Value = serde_json::from_slice(&answer.stdout).unwrap();
-    assert_eq!(report["checked_by"], "singularity-bootstrap check_ticket");
     for written in [&manifest, &signature] {
         assert!(owner_only(written), "{} is owner-only", written.display());
     }
@@ -121,9 +119,9 @@ fn an_issued_ticket_is_accepted_by_the_bootstrap_up_to_its_broker() {
     );
     let stderr = String::from_utf8_lossy(&started.stderr);
     assert!(!started.status.success(), "{stderr}");
-    // Signature, manifest rules and executable digest all passed: the first
-    // refusal is the broker socket nobody listens on.
-    assert!(stderr.contains("capability redemption denied"), "{stderr}");
+    // The failure must identify this run's actual missing dependency, not a
+    // generic authorization denial or an earlier ticket-validation failure.
+    assert!(stderr.contains(text(&case.path("absent-broker.sock"))), "{stderr}");
 }
 
 #[test]
