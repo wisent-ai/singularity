@@ -221,8 +221,12 @@ is reported rather than substituting a silently shortened mind.
 
 `singularity-bootstrap` is not a resident wrapper. It verifies the signed
 manifest, redeems the Brama HMAC, Brama bearer and Most token from Skarbiec,
-writes each into an owner-only file that it unlinks at once, and then replaces
-its own process image with `singularity` (same PID, same service unit). The
+opens an owner-only file for each credential, unlinks it before writing any
+secret bytes, and then replaces its own process image with `singularity`
+(same PID, same service unit). Creation, unlink, write, sync and descriptor
+inspection failures name the failed operation, destination and underlying cause
+without including credential contents. An unlink failure leaves at most the
+empty file: writing secret bytes has not started. The
 credentials cross that exec only as open descriptors named by
 `SINGULARITY_BRAMA_HMAC_FD`, `SINGULARITY_BRAMA_BEARER_FD` and
 `SINGULARITY_MOST_TOKEN_FD`; no credential file exists on disk while the agent

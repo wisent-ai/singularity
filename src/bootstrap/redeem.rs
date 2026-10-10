@@ -137,15 +137,31 @@ pub(super) fn materialize(
             .read(true)
             .write(true)
             .mode(0o600)
-            .open(destination)?;
-        fs::remove_file(destination)?;
-        file.write_all(&secret)?;
-        file.sync_all()?;
-        let metadata = file.metadata()?;
+            .open(destination)
+            .map_err(|error| AppError::Secret(format!(
+                "create credential descriptor at {}: {error}", destination.display()
+            )))?;
+        fs::remove_file(destination).map_err(|error| AppError::Secret(format!(
+            "unlink empty credential file {} before writing secret bytes: {error}",
+            destination.display()
+        )))?;
+        file.write_all(&secret).map_err(|error| AppError::Secret(format!(
+            "write credential to anonymous descriptor created at {}: {error}",
+            destination.display()
+        )))?;
+        file.sync_all().map_err(|error| AppError::Secret(format!(
+            "sync anonymous credential descriptor created at {}: {error}",
+            destination.display()
+        )))?;
+        let metadata = file.metadata().map_err(|error| AppError::Secret(format!(
+            "inspect anonymous credential descriptor created at {}: {error}",
+            destination.display()
+        )))?;
         if !metadata.is_file() || metadata.permissions().mode() & GROUP_OR_OTHER_ACCESS != 0 {
-            return Err(AppError::Config(
-                "bootstrap credential file is not owner-only".into(),
-            ));
+            return Err(AppError::Config(format!(
+                "bootstrap credential descriptor created at {} is not an owner-only regular file: regular={}, mode={:o}",
+                destination.display(), metadata.is_file(), metadata.permissions().mode()
+            )));
         }
         Ok(file)
     })();
