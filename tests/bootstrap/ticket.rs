@@ -122,6 +122,10 @@ fn an_issued_ticket_is_accepted_by_the_bootstrap_up_to_its_broker() {
     // The failure must identify this run's actual missing dependency, not a
     // generic authorization denial or an earlier ticket-validation failure.
     assert!(stderr.contains(text(&case.path("absent-broker.sock"))), "{stderr}");
+    assert!(
+        fs::read_dir(&runtime).unwrap().next().is_none(),
+        "failed broker redemption must remove the owned runtime directory"
+    );
 }
 
 #[test]

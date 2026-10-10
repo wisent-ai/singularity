@@ -1,6 +1,6 @@
 //! Owner-only files, the runtime root, and the hex keys and digests read from disk.
-use std::fs::{self, DirBuilder, File, OpenOptions};
-use std::io::{Read, Write};
+use std::fs::{self, DirBuilder, File};
+use std::io::Read;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -163,24 +163,35 @@ impl RuntimeCleanup {
     pub(super) fn path(&self) -> &Path {
         &self.directory
     }
+
+    pub(super) fn remove(&self) -> Result<(), AppError> {
+        // Materialization unlinks before writing secrets. Any remaining pathname
+        // is empty; unlink it without opening or following a replacement symlink.
+        for name in ["brama.hmac", "brama.token", "most.token"] {
+            let path = self.directory.join(name);
+            match fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(AppError::Secret(format!(
+                    "remove empty bootstrap credential path {}: {error}", path.display()
+                ))),
+            }
+        }
+        match fs::remove_dir(&self.directory) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(AppError::Secret(format!(
+                "remove bootstrap runtime directory {}: {error}", self.directory.display()
+            ))),
+        }
+    }
 }
 
 impl Drop for RuntimeCleanup {
     fn drop(&mut self) {
-        secure_remove(&self.directory.join("brama.hmac"));
-        secure_remove(&self.directory.join("brama.token"));
-        secure_remove(&self.directory.join("most.token"));
-        let _ = fs::remove_dir(&self.directory);
+        if let Err(error) = self.remove() {
+            eprintln!("bootstrap cleanup failed: {error}");
+        }
     }
 }
 
-pub(super) fn secure_remove(path: &Path) {
-    if let Ok(metadata) = fs::metadata(path) {
-        if let Ok(mut file) = OpenOptions::new().write(true).open(path) {
-            let zeros = vec![0_u8; metadata.len() as usize];
-            let _ = file.write_all(&zeros);
-            let _ = file.sync_all();
-        }
-    }
-    let _ = fs::remove_file(path);
-}

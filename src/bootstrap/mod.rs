@@ -179,6 +179,7 @@ pub fn run_bootstrap(
     validate_manifest(&manifest)?;
     // Each credential is already unlinked but held by its open descriptor.
     // Remove the empty directory before exec; no guardian process is needed.
+    cleanup.remove()?;
     drop(cleanup);
     launch(&manifest, &[brama, bearer, most])
 }

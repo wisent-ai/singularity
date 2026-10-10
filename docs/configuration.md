@@ -234,4 +234,9 @@ runs. `singularity` refuses a descriptor that is not an unlinked, owner-only,
 non-empty regular file, keeps them close-on-exec, and hands them on only to a
 child agent it spawns itself. A `*_FILE` variable set explicitly still takes
 precedence over the handoff.
+Bootstrap cleanup unlinks remaining credential pathnames without opening them
+or following symlinks; it no longer allocates a file-sized overwrite buffer.
+Failure to remove the runtime directory refuses execution and names the path
+and cause. Cleanup during an earlier failure reports its own cause on stderr
+without hiding the original failure.
 
