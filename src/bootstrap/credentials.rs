@@ -88,8 +88,21 @@ pub fn adopt_credentials() -> Result<(), AppError> {
         close_on_exec(file.as_raw_fd(), true)?;
     }
     let credential = |index: usize| -> Result<SecretString, AppError> {
-        let mut bytes = Zeroizing::new(vec![0u8; files[index].metadata()?.len() as usize]);
-        files[index].read_exact_at(&mut bytes, 0)?;
+        let name = DESCRIPTORS[index];
+        let observed_length = files[index].metadata().map_err(|error| {
+            AppError::Secret(format!("{name}: inspecting inherited credential failed: {error}"))
+        })?.len();
+        let length = usize::try_from(observed_length).map_err(|error| {
+            AppError::Secret(format!("{name}: credential length {observed_length} cannot be represented: {error}"))
+        })?;
+        let mut bytes = Zeroizing::new(Vec::new());
+        bytes.try_reserve_exact(length).map_err(|error| {
+            AppError::Secret(format!("{name}: reserving {length} credential bytes failed: {error}"))
+        })?;
+        bytes.resize(length, 0u8);
+        files[index].read_exact_at(&mut bytes, 0).map_err(|error| {
+            AppError::Secret(format!("{name}: reading {length} inherited credential bytes failed: {error}"))
+        })?;
         let text = std::str::from_utf8(&bytes).map_err(|error| {
             AppError::Secret(format!("{} is not UTF-8: {error}", DESCRIPTORS[index]))
         })?;

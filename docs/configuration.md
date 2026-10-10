@@ -178,6 +178,15 @@ by clap with its flag and variable named. None of them reaches the being: the
 bootstrap clears the environment before it starts `singularity`, so the being
 sees only its arguments and the identity the ticket binds.
 
+Bootstrap credentials reach the being through anonymous owner-only file
+descriptors, named by `SINGULARITY_BRAMA_HMAC_FD`,
+`SINGULARITY_BRAMA_BEARER_FD` and `SINGULARITY_MOST_TOKEN_FD`. Adoption
+checks the observed length against the process's addressable representation
+and reserves memory fallibly before reading. Inspection, allocation and read
+failures name the affected descriptor declaration and operation, with the
+observed length and underlying cause where available; credential bytes are
+not included. Ordinary child processes cannot inherit these descriptors.
+
 A being served the trading platform (Las surface `trading`) takes three more
 arguments, all or none: `--trading-proxy-url` (the agent proxy route of its
 trading deployment), `--trading-instance-id` (the agent instance that proxy
