@@ -12,7 +12,13 @@ impl Store {
         start_paused: bool,
     ) -> Result<Self> {
         let legacy = directory.join("ecosystem.sqlite3");
-        if legacy.exists() {
+        let legacy_exists = legacy.try_exists().map_err(|error| {
+            AppError::State(format!(
+                "cannot inspect legacy ecosystem store {}: {error}; refusing to open fleet state while legacy history is unknown",
+                legacy.display()
+            ))
+        })?;
+        if legacy_exists {
             return Err(AppError::State(format!(
                 "{} is a private ecosystem store from before the fleet database; this being's state now lives in the fleet database singularity, and a private file beside it would split its history",
                 legacy.display()
