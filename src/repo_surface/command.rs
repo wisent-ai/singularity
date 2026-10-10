@@ -32,6 +32,39 @@ async fn drain<R: AsyncRead + Unpin>(mut reader: R) -> std::io::Result<Vec<u8>> 
 
 type DrainTask = tokio::task::JoinHandle<std::io::Result<Vec<u8>>>;
 
+struct CommandWait {
+    operation: String,
+    started: std::time::Instant,
+}
+
+impl CommandWait {
+    fn start(program: &Path, cwd: &Path, process_id: Option<u32>) -> Self {
+        let operation = format!(
+            "approved command {} in {} (process {process_id:?})",
+            program.display(),
+            cwd.display()
+        );
+        eprintln!(
+            "waiting: {operation}; command exit and output EOF; since {:?}",
+            std::time::SystemTime::now()
+        );
+        Self {
+            operation,
+            started: std::time::Instant::now(),
+        }
+    }
+}
+
+impl Drop for CommandWait {
+    fn drop(&mut self) {
+        eprintln!(
+            "wait ended: {}; elapsed {:?}; completion is reported separately",
+            self.operation,
+            self.started.elapsed()
+        );
+    }
+}
+
 /// End the command's whole process group, then let both readers finish: the
 /// pipes close with the group, so nothing is left to wait for.
 async fn terminate_child(
@@ -99,6 +132,7 @@ async fn run_fixed(
         .spawn()
         .map_err(|e| SurfaceError::command(format!("cannot start approved command: {e}")))?;
     let process_id = child.id();
+    let _wait = CommandWait::start(program, cwd, process_id);
     let mut stdin_pipe = child.stdin.take();
     let stdout = child
         .stdout
