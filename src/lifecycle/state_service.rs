@@ -45,10 +45,23 @@ impl StateImportService {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
         let (sender, receiver) = mpsc::channel(32);
         let task = tokio::spawn(async move {
-            while let Ok((stream, _)) = listener.accept().await {
+            // An accept that fails ends the service; it is said, so a later
+            // import that cannot connect is not the first anyone hears of it.
+            loop {
+                let stream = match listener.accept().await {
+                    Ok((stream, _)) => stream,
+                    Err(error) => {
+                        eprintln!(
+                            "singularity: the local state import service stopped accepting: {error}"
+                        );
+                        break;
+                    }
+                };
                 let sender = sender.clone();
                 tokio::spawn(async move {
-                    let _ = serve(stream, sender).await;
+                    if let Err(error) = serve(stream, sender).await {
+                        eprintln!("singularity: a state import connection failed: {error}");
+                    }
                 });
             }
         });

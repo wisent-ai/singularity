@@ -117,7 +117,12 @@ impl Agent {
         let catalog = match ToolCatalog::build(las.tools(), config.most.is_some()) {
             Ok(value) => value,
             Err(error) => {
-                let _ = las.shutdown().await;
+                // The catalog failure is the answer; a Las left running is said.
+                if let Err(shutdown) = las.shutdown().await {
+                    eprintln!(
+                        "singularity: Las could not be shut down after the tool catalog failed: {shutdown}"
+                    );
+                }
                 return Err(error);
             }
         };

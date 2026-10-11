@@ -146,9 +146,20 @@ pub(super) fn reject_symlink_components(root: &Path, relative: &Path) -> Surface
     let mut p = root.to_owned();
     for c in relative.components() {
         p.push(c);
-        if let Ok(m) = fs::symlink_metadata(&p) {
-            if m.file_type().is_symlink() {
+        // Only a component that is gone passes (a deleted path is a change
+        // too); one that cannot be inspected is refused rather than let
+        // through the check that keeps symlinks out of commits.
+        match fs::symlink_metadata(&p) {
+            Ok(m) if m.file_type().is_symlink() => {
                 return Err(SurfaceError::policy("changed path contains a symlink"));
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(SurfaceError::policy(format!(
+                    "cannot inspect changed path {} for symlinks: {e}",
+                    p.display()
+                )));
             }
         }
     }
