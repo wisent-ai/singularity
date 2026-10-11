@@ -180,9 +180,26 @@ approval. The policy's two-second timelock is real, so the command prints its
 directory and stops; run it again with that directory once `timelock_until`
 has passed to sign, dispatch, reconcile, submit, confirm and exercise the
 enable lease (kill switch, fresh lease, rollback refused).
-`docs/examples/sandbox-being.sh` bootstraps a being with no Brama, no Las
-checkout and no credentials, against the zero-tool Las stand-in
-`docs/examples/stub-las.sh`.
+Managed resume qualification lives in `tests/bootstrap/resume.rs`, registered
+as `managed-resume`. It uses the actual CLI configuration parser and public
+runtime bootstrap/shutdown with a real signed Las release and dedicated
+credentials, not a stub tool server or a failed model connection.
+
+Build with `WISENT_SOURCE_COMMIT` and declare matching
+`SINGULARITY_TEST_SOURCE_REVISION`, `SINGULARITY_TEST_DEPENDENCY_PURPOSE=isolated-qualification`
+and `SINGULARITY_TEST_RESUME_LAUNCHES`. That JSON file contains complete `once`
+argument arrays under `initial`, `renewed`, `rollback` and `changed_identity`.
+The renewed launch supplies a different real workload key/executable digest
+and a higher declared policy sequence; rollback preserves the being's stable
+identity, while changed_identity names a different agent without rolling policy
+back. The fixture supplies actual credential paths and signed Las release files.
+
+Run `cargo test --test managed-resume -- --ignored --nocapture`.
+The journey owns state, workspace and Las watermark beneath `.build/bootstrap-resume/`.
+It verifies saved identity, unchanged persistent life across resume, and exact
+state preservation on both refusals. Reports and before/after state remain there.
+This proves runtime initialization only; capability issuance, an autonomous
+model cycle and Desktop observation require their own real qualification.
 
 ## Child beings
 

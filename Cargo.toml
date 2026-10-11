@@ -43,6 +43,10 @@ path = "tests/configuration/launch.rs"
 name = "launch-ticket"
 path = "tests/bootstrap/ticket.rs"
 
+[[test]]
+name = "managed-resume"
+path = "tests/bootstrap/resume.rs"
+
 [dependencies]
 async-trait = "0.1"
 base64 = "0.22"
