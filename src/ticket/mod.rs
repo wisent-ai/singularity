@@ -73,11 +73,7 @@ pub fn key(args: &KeyArgs) -> Result<KeyReport, AppError> {
         .and_then(|mut source| source.read_exact(&mut seed))
         .map_err(|error| AppError::Config(format!("{RANDOM_SOURCE} gave no key seed: {error}")))?;
     let signing = SigningKey::from_bytes(&seed);
-    let mut private_hex = hex::encode(seed);
     seed.zeroize();
-    let written = write_owner_only(&args.out, private_hex.as_bytes());
-    private_hex.zeroize();
-    written?;
     let verifying = signing.verifying_key();
     let public_key_hex = hex::encode(verifying.as_bytes());
     let public_half = match args.holder {
@@ -86,7 +82,13 @@ pub fn key(args: &KeyArgs) -> Result<KeyReport, AppError> {
             AppError::Config(format!("the workload public key could not be encoded as PEM: {error}"))
         })?,
     };
-    write_owner_only(&args.public_out, public_half.as_bytes())?;
+    let mut private_hex = hex::encode(signing.as_bytes());
+    let written = write_owner_only(&args.out, private_hex.as_bytes());
+    private_hex.zeroize();
+    written?;
+    if let Err(error) = write_owner_only(&args.public_out, public_half.as_bytes()) {
+        return Err(discard_created(&[&args.out], error));
+    }
     Ok(KeyReport { private_key: args.out.clone(), public_key: args.public_out.clone(), public_key_hex })
 }
 
@@ -133,15 +135,13 @@ pub fn sign(args: &SignArgs) -> Result<TicketReport, AppError> {
     supervisor_seed.zeroize();
     write_owner_only(&args.manifest_out, &bytes)?;
     if let Err(error) = write_owner_only(&args.signature_out, hex::encode(signature.to_bytes()).as_bytes()) {
-        fs::remove_file(&args.manifest_out)?;
-        return Err(error);
+        return Err(discard_created(&[&args.manifest_out], error));
     }
     if let Err(refusal) = check_ticket(&args.manifest_out, &args.signature_out, &args.trust_root) {
-        fs::remove_file(&args.manifest_out)?;
-        fs::remove_file(&args.signature_out)?;
-        return Err(AppError::Config(format!(
-            "singularity-bootstrap would refuse the ticket written, so it was removed: {refusal}"
-        )));
+        return Err(discard_created(
+            &[&args.manifest_out, &args.signature_out],
+            AppError::Config(format!("singularity-bootstrap refused the ticket written: {refusal}")),
+        ));
     }
     Ok(TicketReport {
         manifest: args.manifest_out.clone(),
@@ -193,7 +193,28 @@ fn write_owner_only(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
         .map_err(|error| {
             AppError::Config(format!("{} could not be created as a new owner-only file: {error}", path.display()))
         })?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
+    let persisted = file.write_all(bytes)
+        .map_err(|error| AppError::Config(format!("{} could not be written: {error}", path.display())))
+        .and_then(|()| file.sync_all()
+            .map_err(|error| AppError::Config(format!("{} could not be synced: {error}", path.display()))));
+    if let Err(error) = persisted {
+        drop(file);
+        return Err(discard_created(&[path], error));
+    }
     Ok(())
+}
+
+/// Attempt every owned cleanup without losing the operation that first failed.
+fn discard_created(paths: &[&Path], cause: AppError) -> AppError {
+    let mut failures = Vec::new();
+    for path in paths {
+        if let Err(error) = fs::remove_file(path) {
+            failures.push(format!("{} could not be removed: {error}", path.display()));
+        }
+    }
+    if failures.is_empty() {
+        cause
+    } else {
+        AppError::Config(format!("{cause}; cleanup failed: {}", failures.join("; ")))
+    }
 }

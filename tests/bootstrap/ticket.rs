@@ -154,6 +154,33 @@ fn a_key_is_never_written_over_an_existing_file() {
 }
 
 #[test]
+fn a_refused_public_destination_removes_only_the_new_private_key() {
+    let case = Case::start("public-refusal");
+    let private = case.path("workload.key");
+    let public = case.path("occupied.pub");
+    let retained = b"existing public destination";
+    fs::write(&public, retained).unwrap();
+    let answer = run(
+        SINGULARITY,
+        &["ticket", "key", "--holder", "workload", "--out", text(&private), "--public-out", text(&public)],
+    );
+    let stderr = String::from_utf8_lossy(&answer.stderr);
+    assert!(!answer.status.success(), "{stderr}");
+    assert!(stderr.contains(text(&public)), "{stderr}");
+    assert!(!private.exists(), "refused public write left its new private key");
+    assert_eq!(fs::read(&public).unwrap(), retained, "existing destination changed");
+    fs::remove_file(&public).unwrap();
+    let recovered = run(
+        SINGULARITY,
+        &["ticket", "key", "--holder", "workload", "--out", text(&private), "--public-out", text(&public)],
+    );
+    assert!(recovered.status.success(), "{}", String::from_utf8_lossy(&recovered.stderr));
+    assert!(owner_only(&private) && owner_only(&public));
+    let parsed = run("openssl", &["pkey", "-pubin", "-in", text(&public), "-noout"]);
+    assert!(parsed.status.success(), "{}", String::from_utf8_lossy(&parsed.stderr));
+}
+
+#[test]
 fn a_workload_public_key_is_the_pem_skarbiec_verifies_proofs_with() {
     let case = Case::start("workload-pem");
     let (_, public) = key(&case, "workload");
