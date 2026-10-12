@@ -19,7 +19,8 @@
             "--all",
             "--",
             "--check"
-          ]
+          ],
+          "kind": "format"
         }
       ],
       "build": {
@@ -44,7 +45,8 @@
             "--all",
             "--",
             "--check"
-          ]
+          ],
+          "kind": "format"
         }
       ],
       "build": {
