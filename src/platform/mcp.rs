@@ -1,15 +1,20 @@
+// lib.rs loads this file with #[path = "platform/mcp.rs"], so its child names
+// its own file, as the Brama client's children do.
+#[path = "mcp/rpc.rs"]
+mod rpc;
+
 use std::path::Path;
 use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::BufReader;
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
 use crate::error::{AppError, ErrorClass};
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
-const SKARBIEC_PATH_ENV: [&str; 9] = [
+const SKARBIEC_PATH_ENV: &[&str] = &[
     "SKARBIEC_CAP_POLICY",
     "SKARBIEC_CAP_POLICY_SIG",
     "SKARBIEC_CAP_TRUST_ROOT",
@@ -50,7 +55,6 @@ pub struct LasSupervisor {
     child: Child,
     stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
-    next_id: u64,
     tools: Vec<McpTool>,
 }
 
@@ -79,12 +83,16 @@ impl LasSupervisor {
         }
         let skarbiec_active = (only.trim().is_empty() || selected(only, "skarbiec"))
             && !skip.is_some_and(|surfaces| selected(surfaces, "skarbiec"));
-        if skarbiec_active && agent_id.is_none() {
-            return Err(mcp(
-                ErrorClass::Permanent,
-                "Skarbiec requires an explicit immutable Las agent identity",
-            ));
-        }
+        let skarbiec_agent = match (skarbiec_active, agent_id) {
+            (false, _) => None,
+            (true, Some(agent)) => Some(agent),
+            (true, None) => {
+                return Err(mcp(
+                    ErrorClass::Permanent,
+                    "Skarbiec requires an explicit immutable Las agent identity",
+                ));
+            }
+        };
 
         let (home, path) = crate::config::environment::runtime_paths()?;
         let mut process = Command::new(command);
@@ -110,16 +118,13 @@ impl LasSupervisor {
         if let Some(value) = skip {
             process.env("LAS_SKIP", value);
         }
-        if skarbiec_active {
-            for name in SKARBIEC_PATH_ENV.into_iter().chain([SKARBIEC_COMMAND_ENV]) {
+        if let Some(agent) = skarbiec_agent {
+            for name in SKARBIEC_PATH_ENV.iter().copied().chain([SKARBIEC_COMMAND_ENV]) {
                 if let Some(value) = std::env::var_os(name) {
                     process.env(name, value);
                 }
             }
-            process.env(
-                "SKARBIEC_MCP_AGENT_ID",
-                agent_id.expect("Skarbiec identity checked above"),
-            );
+            process.env("SKARBIEC_MCP_AGENT_ID", agent);
         }
         if (only.trim().is_empty() || selected(only, "warsztat"))
             && !skip.is_some_and(|surfaces| selected(surfaces, "warsztat"))
@@ -152,7 +157,6 @@ impl LasSupervisor {
             child,
             stdin: Some(stdin),
             stdout: BufReader::new(stdout),
-            next_id: u64::default(),
             tools: vec![],
         };
         let mut initialize_params = json!({"protocolVersion":PROTOCOL_VERSION,"capabilities":{},"clientInfo":{"name":"singularity","version":env!("CARGO_PKG_VERSION")}});
@@ -198,105 +202,6 @@ impl LasSupervisor {
         }
         self.request("tools/call", json!({"name":name,"arguments":arguments}))
             .await
-    }
-
-    async fn request(&mut self, method: &str, params: Value) -> Result<Value, AppError> {
-        self.next_id = self.next_id.saturating_add(u64::from(true));
-        let id = self.next_id;
-        let payload =
-            serde_json::to_vec(&json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}))?;
-        let stdin = self
-            .stdin
-            .as_mut()
-            .ok_or_else(|| mcp(ErrorClass::Permanent, "Las is shutting down"))?;
-        stdin
-            .write_all(&payload)
-            .await
-            .map_err(|error| mcp(ErrorClass::Indeterminate, error.to_string()))?;
-        stdin
-            .write_all(b"\n")
-            .await
-            .map_err(|error| mcp(ErrorClass::Indeterminate, error.to_string()))?;
-        stdin
-            .flush()
-            .await
-            .map_err(|error| mcp(ErrorClass::Indeterminate, error.to_string()))?;
-        let wait = async {
-            loop {
-                let mut line = String::new();
-                let bytes = self
-                    .stdout
-                    .read_line(&mut line)
-                    .await
-                    .map_err(|error| mcp(ErrorClass::Indeterminate, error.to_string()))?;
-                if bytes == usize::default() {
-                    return Err(mcp(ErrorClass::Indeterminate, "Las closed stdout"));
-                }
-                if line.trim().is_empty() {
-                    continue;
-                }
-                let value: Value = serde_json::from_str(line.trim()).map_err(|error| {
-                    mcp(
-                        ErrorClass::Permanent,
-                        format!("non-JSON Las stdout: {error}"),
-                    )
-                })?;
-                if value.get("id").and_then(Value::as_u64) != Some(id) {
-                    if value.get("id").is_none() {
-                        continue;
-                    }
-                    return Err(mcp(
-                        ErrorClass::Permanent,
-                        "Las returned an unexpected response id",
-                    ));
-                }
-                if let Some(error) = value.get("error") {
-                    let described = match (error.get("code"), error.get("message")) {
-                        (Some(code), Some(message)) => format!("JSON-RPC {code}: {message}"),
-                        _ => format!("JSON-RPC error object without a code and a message: {error}"),
-                    };
-                    return Err(mcp(ErrorClass::Indeterminate, described));
-                }
-                return value
-                    .get("result")
-                    .cloned()
-                    .ok_or_else(|| mcp(ErrorClass::Permanent, "Las response has no result"));
-            }
-        };
-        wait.await
-    }
-
-    /// Stop Las the way MCP's stdio transport describes: close its input, then
-    /// ask it to exit with SIGTERM, and wait for it to do so. No grace period
-    /// is guessed before a SIGKILL: SIGTERM is the request to stop, and a
-    /// server that ignores it is a defect of that server, which this wait
-    /// then makes visible instead of cutting short.
-    pub async fn shutdown(&mut self) -> Result<(), AppError> {
-        self.stdin.take();
-        if let Some(pid) = self.child.id() {
-            let pid = libc::pid_t::try_from(pid).map_err(|_| {
-                mcp(
-                    ErrorClass::Permanent,
-                    format!("Las pid {pid} is not a valid process id"),
-                )
-            })?;
-            // SAFETY: kill sends a signal to our own child by its pid.
-            if unsafe { libc::kill(pid, libc::SIGTERM) } != 0 {
-                let error = std::io::Error::last_os_error();
-                // The child has already exited and been reaped; wait() reports its status.
-                if error.raw_os_error() != Some(libc::ESRCH) {
-                    return Err(mcp(
-                        ErrorClass::Transient,
-                        format!("cannot ask Las (pid {pid}) to stop: {error}"),
-                    ));
-                }
-            }
-        }
-        self.child
-            .wait()
-            .await
-            .map_err(|error| mcp(ErrorClass::Transient, error.to_string()))?;
-        Ok(())
     }
 }
 
