@@ -82,8 +82,18 @@ pub(super) fn file_write(workspace: &Path, arguments: Map<String, Value>) -> Too
     let result =
         std::fs::write(&temporary, content).and_then(|_| std::fs::rename(&temporary, &destination));
     if let Err(error) = result {
-        let _ = std::fs::remove_file(&temporary);
-        return failed("file_write", &error.to_string());
+        // The write's failure is the answer; a temporary file it left in the
+        // workspace that cannot be removed is named beside it.
+        return match std::fs::remove_file(&temporary) {
+            Err(cleanup) if cleanup.kind() != std::io::ErrorKind::NotFound => failed(
+                "file_write",
+                &format!(
+                    "{error}; {} was left behind and cannot be removed: {cleanup}",
+                    temporary.display()
+                ),
+            ),
+            _ => failed("file_write", &error.to_string()),
+        };
     }
     success(json!({"path":relative,"bytes":content.len()}), None, None)
 }
