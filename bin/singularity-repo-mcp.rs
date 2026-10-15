@@ -1,93 +1,50 @@
 #[path = "../src/repo_surface/mod.rs"]
 mod repo_surface;
+#[path = "../src/platform/mcp/stdio_server.rs"]
+mod stdio_server;
 
-use serde_json::{Value, json};
-use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
+use serde_json::Value;
+use std::process::ExitCode;
+
+struct RepoHost(repo_surface::RepoService);
+
+impl stdio_server::ToolHost for RepoHost {
+    fn server_name(&self) -> &'static str {
+        "singularity-repo-mcp"
+    }
+
+    fn tools(&self) -> Value {
+        repo_surface::tools()
+    }
+
+    async fn call(&self, name: &str, arguments: Value) -> Value {
+        match self.0.call(name, arguments).await {
+            Ok(value) => match stdio_server::tool_answer(&value) {
+                Ok(answer) => answer,
+                Err(error) => repo_surface::SurfaceError::invalid(format!(
+                    "tool result is not serializable: {error}"
+                ))
+                .tool_result(),
+            },
+            Err(error) => error.tool_result(),
+        }
+    }
+}
 
 #[tokio::main]
-async fn main() {
-    if let Err(error) = serve().await {
-        eprintln!("singularity-repo-mcp: {error}");
-        std::process::exit(1);
+async fn main() -> ExitCode {
+    let service = match repo_surface::load_from_environment() {
+        Ok(service) => service,
+        Err(error) => {
+            eprintln!("singularity-repo-mcp: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match stdio_server::serve(&RepoHost(service)).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("singularity-repo-mcp: {error}");
+            ExitCode::FAILURE
+        }
     }
-}
-
-async fn serve() -> Result<(), Box<dyn std::error::Error>> {
-    let service = repo_surface::load_from_environment()?;
-    let mut lines = BufReader::new(io::stdin()).lines();
-    let mut stdout = io::stdout();
-    while let Some(line) = lines.next_line().await? {
-        let request: Value = match serde_json::from_str(&line) {
-            Ok(value) => value,
-            Err(_) => {
-                write_response(&mut stdout, &rpc_error(Value::Null, -32700, "parse error")).await?;
-                continue;
-            }
-        };
-        let Some(id) = request.get("id").cloned() else {
-            continue;
-        };
-        let method = request.get("method").and_then(Value::as_str);
-        let response = match method {
-            Some("initialize") => {
-                json!({"jsonrpc":"2.0","id":id,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"singularity-repo-mcp","version":env!("CARGO_PKG_VERSION")}}})
-            }
-            Some("ping") => json!({"jsonrpc":"2.0","id":id,"result":{}}),
-            Some("tools/list") => {
-                json!({"jsonrpc":"2.0","id":id,"result":{"tools":repo_surface::tools()}})
-            }
-            Some("tools/call") => {
-                let Some(params) = request.get("params") else {
-                    write_response(
-                        &mut stdout,
-                        &rpc_error(id, -32602, "tools/call requires params"),
-                    )
-                    .await?;
-                    continue;
-                };
-                let name = params.get("name").and_then(Value::as_str);
-                let Some(arguments) = params.get("arguments").cloned() else {
-                    write_response(
-                        &mut stdout,
-                        &rpc_error(id, -32602, "tools/call requires an arguments object"),
-                    )
-                    .await?;
-                    continue;
-                };
-                let result = match name {
-                    Some(name) => match service.call(name, arguments).await {
-                        Ok(value) => match serde_json::to_string(&value) {
-                            Ok(text) => {
-                                json!({"content":[{"type":"text","text":text}],"structuredContent":value,"isError":false})
-                            }
-                            Err(error) => repo_surface::SurfaceError::invalid(format!(
-                                "tool result is not serializable: {error}"
-                            ))
-                            .tool_result(),
-                        },
-                        Err(error) => error.tool_result(),
-                    },
-                    None => {
-                        repo_surface::SurfaceError::invalid("tools/call requires a string name")
-                            .tool_result()
-                    }
-                };
-                json!({"jsonrpc":"2.0","id":id,"result":result})
-            }
-            Some(_) => rpc_error(id, -32601, "method not found"),
-            None => rpc_error(id, -32600, "invalid request"),
-        };
-        write_response(&mut stdout, &response).await?;
-    }
-    Ok(())
-}
-
-async fn write_response(stdout: &mut io::Stdout, response: &Value) -> io::Result<()> {
-    let mut bytes = serde_json::to_vec(response).map_err(io::Error::other)?;
-    bytes.push(b'\n');
-    stdout.write_all(&bytes).await?;
-    stdout.flush().await
-}
-fn rpc_error(id: Value, code: i64, message: &str) -> Value {
-    json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
 }
