@@ -132,14 +132,9 @@ impl Shared {
             AppError::State("ecosystem state owner failed while holding its lock".into())
         })
     }
-    /// Whether the signed Las catalogue has been recorded ready; a catalogue
-    /// never recorded ready is not ready.
+    /// Whether the signed Las catalogue is ready, as the store records it.
     fn catalog_ready(&self) -> Result<bool, AppError> {
-        let state = self.lock()?;
-        Ok(matches!(
-            state.store.meta::<bool>("las_catalog_ready")?,
-            Some(true)
-        ))
+        self.lock()?.store.catalog_ready()
     }
     /// Admission is open while the ecosystem is not paused and the catalogue
     /// is ready.

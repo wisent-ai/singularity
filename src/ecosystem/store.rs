@@ -200,6 +200,14 @@ impl Store {
         self.meta("paused")?
             .ok_or_else(|| AppError::State("missing pause state".into()))
     }
+    /// Whether the signed Las catalogue has been recorded ready; a catalogue
+    /// never recorded ready is not ready.
+    pub fn catalog_ready(&self) -> Result<bool> {
+        Ok(matches!(
+            self.meta::<bool>("las_catalog_ready")?,
+            Some(true)
+        ))
+    }
     fn count(&self, kind: &str) -> Result<u64> {
         let (being, kind) = (self.being.clone(), kind.to_owned());
         self.db
@@ -208,7 +216,7 @@ impl Store {
     pub fn status(&self, policy: &Policy) -> Result<Value> {
         let (spent, reserved) = self.balance()?;
         Ok(json!({"paused":self.paused()?,"updated_at":Utc::now(),
-            "las_catalog_ready":self.meta::<bool>("las_catalog_ready")?.unwrap_or(false),
+            "las_catalog_ready":self.catalog_ready()?,
             "owner":self.meta::<Value>("owner")?,
             "runtime":{"version":env!("CARGO_PKG_VERSION"),"source_revision":option_env!("WISENT_SOURCE_COMMIT")},
             "last_progress_at":self.meta::<String>("last_progress_at")?,

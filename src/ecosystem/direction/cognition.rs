@@ -59,15 +59,16 @@ pub(crate) fn finish(
     if !matches!(call.state, Phase::Settled) {
         return Ok(());
     }
+    let disposition = match error {
+        Some(error) => format!("Rejected recorded model answer: {error}"),
+        None => "Consumed recorded model answer".into(),
+    };
     state.store.put(
         "cognition_disposition",
         &id,
         &json!({"id":id,"purpose":purpose,"error":error.map(ToString::to_string)}),
         None,
-        &error.map_or_else(
-            || "Consumed recorded model answer".into(),
-            |error| format!("Rejected recorded model answer: {error}"),
-        ),
+        &disposition,
     )?;
     state.store.clear_meta(&key)
 }
@@ -198,10 +199,13 @@ pub async fn ask<T: DeserializeOwned>(
     };
     let mut call = if let Some(call) = previous {
         if matches!(call.state, Phase::Dispatching | Phase::Indeterminate) {
+            let last = match call.error.as_deref() {
+                Some(error) => format!("last failure: {error}"),
+                None => "no failure or response was retained".to_string(),
+            };
             return Err(AppError::State(format!(
-                "model request {} has an unresolved provider outcome and will not be replayed; last failure: {}",
-                call.id,
-                call.error.as_deref().unwrap_or("no response was retained")
+                "model request {} has an unresolved provider outcome and will not be replayed; {last}",
+                call.id
             )));
         }
         call
@@ -217,12 +221,7 @@ pub async fn ask<T: DeserializeOwned>(
         };
         {
             let state = shared.lock()?;
-            if state.store.paused()?
-                || !state
-                    .store
-                    .meta::<bool>("las_catalog_ready")?
-                    .unwrap_or(false)
-            {
+            if state.store.paused()? || !state.store.catalog_ready()? {
                 return Err(AppError::State(
                     "model dispatch requires an unpaused portfolio and the signed Las catalog"
                         .into(),
