@@ -3,6 +3,7 @@
 //! Singularity child handoff may inherit them; ordinary tools receive none.
 
 use std::fs::File;
+use std::num::{NonZeroU32, NonZeroU64};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::fs::{FileExt, MetadataExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
@@ -14,11 +15,16 @@ use zeroize::Zeroizing;
 
 use crate::AppError;
 
-const DESCRIPTORS: [&str; 3] = [
+/// The variables that name the inherited descriptors, in the order the
+/// credentials are read: Brama's HMAC key, Brama's bearer, Most's token.
+const DESCRIPTORS: &[&str] = &[
     "SINGULARITY_BRAMA_HMAC_FD",
     "SINGULARITY_BRAMA_BEARER_FD",
     "SINGULARITY_MOST_TOKEN_FD",
 ];
+
+/// What fcntl answers when it refuses; errno then says why.
+const FCNTL_REFUSED: libc::c_int = -1; // https://pubs.opengroup.org/onlinepubs/9799919799/functions/fcntl.html "Otherwise, -1 shall be returned and errno set"
 
 pub(crate) struct InheritedCredentials {
     files: [File; DESCRIPTORS.len()],
@@ -29,11 +35,72 @@ pub(crate) struct InheritedCredentials {
 
 static INHERITED: OnceLock<InheritedCredentials> = OnceLock::new();
 
+/// The descriptor one variable names: set, UTF-8, a number, and not one of
+/// the standard streams.
+fn named_descriptor(name: &str, value: Option<&std::ffi::OsStr>) -> Result<RawFd, AppError> {
+    let written = match value.map(|value| value.to_str()) {
+        Some(Some(written)) => written,
+        Some(None) => return Err(AppError::Secret(format!("{name} is not valid UTF-8"))),
+        None => {
+            return Err(AppError::Secret(format!(
+                "{name} is unset while the other bootstrap descriptors are set"
+            )));
+        }
+    };
+    let descriptor = written.parse::<RawFd>().map_err(|error| {
+        AppError::Secret(format!(
+            "{name} {written:?} is not a descriptor number: {error}"
+        ))
+    })?;
+    if descriptor <= libc::STDERR_FILENO {
+        return Err(AppError::Secret(format!(
+            "{name} names descriptor {descriptor}, a standard stream rather than an inherited credential"
+        )));
+    }
+    Ok(descriptor)
+}
+
+/// The credential one inherited file holds, read whole from its first byte.
+fn read_credential(name: &str, file: &File) -> Result<SecretString, AppError> {
+    let observed_length = file
+        .metadata()
+        .map_err(|error| {
+            AppError::Secret(format!(
+                "{name}: inspecting inherited credential failed: {error}"
+            ))
+        })?
+        .len();
+    let length = usize::try_from(observed_length).map_err(|error| {
+        AppError::Secret(format!(
+            "{name}: credential length {observed_length} cannot be represented: {error}"
+        ))
+    })?;
+    let mut bytes = Zeroizing::new(Vec::new());
+    bytes.try_reserve_exact(length).map_err(|error| {
+        AppError::Secret(format!(
+            "{name}: reserving {length} credential bytes failed: {error}"
+        ))
+    })?;
+    bytes.resize_with(length, Default::default);
+    let start = 0; // https://pubs.opengroup.org/onlinepubs/9799919799/functions/pread.html "read from a given position in the file": the file's first byte
+    file.read_exact_at(&mut bytes, start).map_err(|error| {
+        AppError::Secret(format!(
+            "{name}: reading {length} inherited credential bytes failed: {error}"
+        ))
+    })?;
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|error| AppError::Secret(format!("{name} is not UTF-8: {error}")))?;
+    crate::config::secret_value(text, name)
+}
+
 /// Adopt the bootstrap handoff before starting threads or tool processes.
 /// The files were unlinked before exec, so a signal or crash cannot leave
 /// their secrets behind in a runtime directory.
 pub fn adopt_credentials() -> Result<(), AppError> {
-    let values = DESCRIPTORS.map(std::env::var_os);
+    let values: Vec<_> = DESCRIPTORS
+        .iter()
+        .map(|name| std::env::var_os(name))
+        .collect();
     if values.iter().all(Option::is_none) {
         return Ok(());
     }
@@ -43,24 +110,16 @@ pub fn adopt_credentials() -> Result<(), AppError> {
         ));
     }
     let mut descriptors = [RawFd::default(); DESCRIPTORS.len()];
-    for (index, (name, value)) in DESCRIPTORS.iter().zip(values).enumerate() {
-        let descriptor = value
-            .as_deref()
-            .and_then(|value| value.to_str())
-            .and_then(|value| value.parse::<RawFd>().ok())
-            .filter(|descriptor| *descriptor > libc::STDERR_FILENO)
-            .ok_or_else(|| {
-                AppError::Secret(format!(
-                    "{name} must name an inherited credential descriptor"
-                ))
-            })?;
+    for (index, (name, value)) in DESCRIPTORS.iter().zip(&values).enumerate() {
+        let descriptor = named_descriptor(name, value.as_deref())?;
         if descriptors[..index].contains(&descriptor) {
             return Err(AppError::Secret(
                 "bootstrap credential descriptors must be distinct".into(),
             ));
         }
         // SAFETY: fcntl validates the borrowed descriptor without dereferencing memory.
-        if unsafe { libc::fcntl(descriptor, libc::F_GETFD) } < 0 {
+        let flags = unsafe { libc::fcntl(descriptor, libc::F_GETFD) };
+        if flags == FCNTL_REFUSED {
             return Err(AppError::Secret(format!(
                 "{name}: {}",
                 std::io::Error::last_os_error()
@@ -73,50 +132,49 @@ pub fn adopt_credentials() -> Result<(), AppError> {
     let files = descriptors.map(|descriptor| unsafe { File::from_raw_fd(descriptor) });
     for (name, file) in DESCRIPTORS.iter().zip(&files) {
         let metadata = file.metadata().map_err(|error| {
-            AppError::Secret(format!("{name}: inspecting inherited descriptor {} failed: {error}", file.as_raw_fd()))
+            AppError::Secret(format!(
+                "{name}: inspecting inherited descriptor {} failed: {error}",
+                file.as_raw_fd()
+            ))
         })?;
         // SAFETY: geteuid has no arguments or memory preconditions.
         let owner = unsafe { libc::geteuid() };
-        if !metadata.is_file()
-            || metadata.nlink() != 0
-            || metadata.uid() != owner
-            || metadata.permissions().mode() & crate::config::GROUP_OR_OTHER_ACCESS != 0
-            || metadata.len() == 0
-        {
+        let linked = NonZeroU64::new(metadata.nlink()).is_some();
+        let shared =
+            NonZeroU32::new(metadata.permissions().mode() & crate::config::GROUP_OR_OTHER_ACCESS)
+                .is_some();
+        let empty = NonZeroU64::new(metadata.len()).is_none();
+        if !metadata.is_file() || linked || metadata.uid() != owner || shared || empty {
             return Err(AppError::Secret(format!(
                 "{name}: inherited descriptor {} must be an anonymous, nonempty, owner-only regular file; observed regular={}, links={}, uid={}, effective_uid={owner}, mode={:o}, bytes={}",
-                file.as_raw_fd(), metadata.is_file(), metadata.nlink(), metadata.uid(),
-                metadata.permissions().mode(), metadata.len()
+                file.as_raw_fd(),
+                metadata.is_file(),
+                metadata.nlink(),
+                metadata.uid(),
+                metadata.permissions().mode(),
+                metadata.len()
             )));
         }
         close_on_exec(file.as_raw_fd(), true).map_err(|error| {
-            AppError::Secret(format!("{name}: protecting inherited descriptor {} from child inheritance failed: {error}", file.as_raw_fd()))
+            AppError::Secret(format!(
+                "{name}: protecting inherited descriptor {} from child inheritance failed: {error}",
+                file.as_raw_fd()
+            ))
         })?;
     }
-    let credential = |index: usize| -> Result<SecretString, AppError> {
-        let name = DESCRIPTORS[index];
-        let observed_length = files[index].metadata().map_err(|error| {
-            AppError::Secret(format!("{name}: inspecting inherited credential failed: {error}"))
-        })?.len();
-        let length = usize::try_from(observed_length).map_err(|error| {
-            AppError::Secret(format!("{name}: credential length {observed_length} cannot be represented: {error}"))
+    let secrets = DESCRIPTORS
+        .iter()
+        .zip(&files)
+        .map(|(name, file)| read_credential(name, file))
+        .collect::<Result<Vec<_>, _>>()?;
+    let [brama, bearer, most]: [SecretString; DESCRIPTORS.len()] =
+        secrets.try_into().map_err(|read: Vec<SecretString>| {
+            AppError::Secret(format!(
+                "{} bootstrap credentials were read for {} descriptors",
+                read.len(),
+                DESCRIPTORS.len()
+            ))
         })?;
-        let mut bytes = Zeroizing::new(Vec::new());
-        bytes.try_reserve_exact(length).map_err(|error| {
-            AppError::Secret(format!("{name}: reserving {length} credential bytes failed: {error}"))
-        })?;
-        bytes.resize(length, 0u8);
-        files[index].read_exact_at(&mut bytes, 0).map_err(|error| {
-            AppError::Secret(format!("{name}: reading {length} inherited credential bytes failed: {error}"))
-        })?;
-        let text = std::str::from_utf8(&bytes).map_err(|error| {
-            AppError::Secret(format!("{} is not UTF-8: {error}", DESCRIPTORS[index]))
-        })?;
-        crate::config::secret_value(text, DESCRIPTORS[index])
-    };
-    let brama = credential(0)?;
-    let bearer = credential(1)?;
-    let most = credential(2)?;
     INHERITED
         .set(InheritedCredentials {
             files,
@@ -169,7 +227,7 @@ pub(super) fn pass_files(command: &mut Command, files: &[File; DESCRIPTORS.len()
 fn close_on_exec(descriptor: RawFd, enabled: bool) -> std::io::Result<()> {
     // SAFETY: these fcntl operations access no Rust memory.
     let flags = unsafe { libc::fcntl(descriptor, libc::F_GETFD) };
-    if flags < 0 {
+    if flags == FCNTL_REFUSED {
         return Err(std::io::Error::last_os_error());
     }
     let flags = if enabled {
@@ -178,7 +236,7 @@ fn close_on_exec(descriptor: RawFd, enabled: bool) -> std::io::Result<()> {
         flags & !libc::FD_CLOEXEC
     };
     // SAFETY: the descriptor and flag word were checked above.
-    if unsafe { libc::fcntl(descriptor, libc::F_SETFD, flags) } < 0 {
+    if unsafe { libc::fcntl(descriptor, libc::F_SETFD, flags) } == FCNTL_REFUSED {
         return Err(std::io::Error::last_os_error());
     }
     Ok(())
