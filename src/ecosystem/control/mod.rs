@@ -6,7 +6,7 @@ use super::{
 };
 use crate::AppError;
 pub(super) use dependencies::monitor as monitor_tools;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -19,11 +19,33 @@ use tokio::{
     task::JoinHandle,
 };
 
+/// The operations the ecosystem owner answers on its control socket; any
+/// other method is refused by the request parser with its name.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Method {
+    Status,
+    Opportunities,
+    Initiatives,
+    Records,
+    Record,
+    Explain,
+    Pause,
+    Resume,
+}
+
+impl Method {
+    /// The method as the wire names it.
+    fn name(self) -> String {
+        format!("{self:?}").to_lowercase()
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Request {
     schema_version: u32,
-    method: String,
+    method: Method,
     #[serde(default)]
     params: Params,
 }
@@ -49,19 +71,19 @@ fn dispatch(shared: &Shared, request: Request) -> Result<Value, AppError> {
     }
     let state = shared.lock()?;
     let params = &request.params;
-    match request.method.as_str() {
-        "status" => state.store.status(&state.policy),
-        "opportunities" => state
+    match request.method {
+        Method::Status => state.store.status(&state.policy),
+        Method::Opportunities => state
             .store
             .items("opportunity", params.before, params.limit),
-        "initiatives" => state.store.items("initiative", params.before, params.limit),
-        "records" => state.store.records(
+        Method::Initiatives => state.store.items("initiative", params.before, params.limit),
+        Method::Records => state.store.records(
             params.kind.as_deref(),
             params.initiative_id.as_deref(),
             params.before,
             params.limit,
         ),
-        "record" => state.store.record(
+        Method::Record => state.store.record(
             params
                 .kind
                 .as_deref()
@@ -70,34 +92,31 @@ fn dispatch(shared: &Shared, request: Request) -> Result<Value, AppError> {
                 .id
                 .as_deref()
                 .ok_or_else(|| AppError::Config("record requires id".into()))?,
-            params.offset.unwrap_or(0),
+            params
+                .offset
+                .ok_or_else(|| AppError::Config("record requires offset".into()))?,
             params.bytes,
             params.revision.as_deref(),
         ),
-        "explain" => state.store.explain(
-            request
-                .params
+        Method::Explain => state.store.explain(
+            params
                 .id
                 .as_deref()
                 .ok_or_else(|| AppError::Config("explain requires id".into()))?,
         ),
-        "pause" | "resume" => {
-            state
-                .store
-                .set_meta("paused", &(request.method == "pause"))?;
+        Method::Pause | Method::Resume => {
+            let paused = matches!(request.method, Method::Pause);
+            let name = request.method.name();
+            state.store.set_meta("paused", &paused)?;
             state.store.put(
                 "control",
                 &uuid::Uuid::new_v4().to_string(),
                 &json!({"method":request.method}),
                 None,
-                &request.method,
+                &name,
             )?;
             state.store.status(&state.policy)
         }
-        _ => Err(AppError::Config(format!(
-            "unknown ecosystem method {}",
-            request.method
-        ))),
     }
 }
 
@@ -119,7 +138,7 @@ async fn serve(mut stream: UnixStream, shared: Shared) -> Result<(), AppError> {
     } else {
         match serde_json::from_slice::<Request>(&bytes) {
             Ok(request) => {
-                operation = format!("ecosystem.{}", request.method);
+                operation = format!("ecosystem.{}", request.method.name());
                 dispatch(&shared, request)
             }
             Err(error) => Err(AppError::from(error)),
@@ -163,7 +182,9 @@ impl Service {
                 path.display()
             ))
         })?;
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+        // Only the owner may read or write the control socket.
+        let owner_only = u32::from(libc::S_IRUSR | libc::S_IWUSR);
+        fs::set_permissions(&path, fs::Permissions::from_mode(owner_only))?;
         let task = tokio::spawn(async move {
             let mut connections = tokio::task::JoinSet::new();
             loop {
@@ -188,7 +209,12 @@ impl Service {
 impl Drop for Service {
     fn drop(&mut self) {
         self.task.abort();
-        let _ = fs::remove_file(&self.path);
+        if let Err(error) = fs::remove_file(&self.path) {
+            tracing::warn!(
+                "ecosystem control socket {} could not be removed: {error}",
+                self.path.display()
+            );
+        }
     }
 }
 
