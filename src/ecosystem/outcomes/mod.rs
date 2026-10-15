@@ -66,11 +66,18 @@ async fn review_one(
     if outcome.decision != OutcomeDecision::Unknown {
         direction::evidence_valid(shared, &outcome.evidence_refs)?;
         let state = shared.lock()?;
-        let released_at: chrono::DateTime<Utc> = state
+        let release = state
             .store
             .get::<Value>("release", &initiative.id)?
-            .and_then(|v| v["observed_at"].as_str().and_then(|s| s.parse().ok()))
-            .ok_or_else(|| AppError::State("outcome has no observed release timestamp".into()))?;
+            .ok_or_else(|| AppError::State("outcome has no recorded release".into()))?;
+        let observed = release["observed_at"].as_str().ok_or_else(|| {
+            AppError::State(format!("recorded release has no observed_at: {release}"))
+        })?;
+        let released_at: chrono::DateTime<Utc> = observed.parse().map_err(|error| {
+            AppError::State(format!(
+                "recorded release observed_at {observed:?} is not an RFC 3339 instant: {error}"
+            ))
+        })?;
         for reference in &outcome.evidence_refs {
             let observation: Observation =
                 state.store.get("observation", reference)?.ok_or_else(|| {
