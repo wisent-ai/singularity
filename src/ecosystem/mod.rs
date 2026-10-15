@@ -105,7 +105,8 @@ pub struct RecordArgs {
     /// The record id.
     pub id: String,
     /// Byte offset the fragment starts at; next_offset of the previous fragment.
-    #[arg(long, default_value_t = 0)]
+    /// Omitted, the record is read from its first byte.
+    #[arg(long, default_value_t)]
     pub offset: u64,
     /// Bytes per fragment; omit to read the record whole from the offset.
     #[arg(long)]
@@ -131,13 +132,20 @@ impl Shared {
             AppError::State("ecosystem state owner failed while holding its lock".into())
         })
     }
-    fn admission_open(&self) -> Result<bool, AppError> {
+    /// Whether the signed Las catalogue has been recorded ready; a catalogue
+    /// never recorded ready is not ready.
+    fn catalog_ready(&self) -> Result<bool, AppError> {
         let state = self.lock()?;
-        Ok(!state.store.paused()?
-            && state
-                .store
-                .meta::<bool>("las_catalog_ready")?
-                .unwrap_or(false))
+        Ok(matches!(
+            state.store.meta::<bool>("las_catalog_ready")?,
+            Some(true)
+        ))
+    }
+    /// Admission is open while the ecosystem is not paused and the catalogue
+    /// is ready.
+    fn admission_open(&self) -> Result<bool, AppError> {
+        let paused = self.lock()?.store.paused()?;
+        Ok(!paused && self.catalog_ready()?)
     }
     fn failure(&self, operation: &str, error: &AppError) -> Result<(), AppError> {
         let retryable = !matches!(
@@ -207,12 +215,14 @@ pub async fn execute(args: EcosystemArgs, cancellation: CancellationToken) -> Re
         })?
     );
     if response["ok"] != true {
-        return Err(AppError::State(
-            response["error"]["message"]
-                .as_str()
-                .unwrap_or("ecosystem refused the operation")
-                .into(),
-        ));
+        let refusal = match response["error"]["message"].as_str() {
+            Some(message) => message.to_string(),
+            None => format!(
+                "ecosystem refused the operation without a message: {}",
+                response["error"]
+            ),
+        };
+        return Err(AppError::State(refusal));
     }
     Ok(())
 }

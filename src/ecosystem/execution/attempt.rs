@@ -5,7 +5,19 @@ use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-const JEDEN_SCHEMA_VERSION: u32 = 1;
+/// The pursuit request and response schema Jeden declares and refuses any other of.
+const JEDEN_SCHEMA_VERSION: u32 = 1; // https://github.com/wisent-ai/jeden/blob/main/rust/autonomy/requests/mod.rs const SCHEMA_VERSION: u32 = 1
+
+/// The states a Jeden pursuit response reports, as its schema names them.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Outcome {
+    Running,
+    Succeeded,
+    Failed,
+    Blocked,
+    Indeterminate,
+}
 
 pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Result<(), AppError> {
     let policy = shared.lock()?.policy.clone();
@@ -50,13 +62,7 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
     if shared.lock()?.store.paused()? && previous.is_none() {
         return Ok(());
     }
-    if previous.is_none()
-        && !shared
-            .lock()?
-            .store
-            .meta::<bool>("las_catalog_ready")?
-            .unwrap_or(false)
-    {
+    if previous.is_none() && !shared.catalog_ready()? {
         return Err(AppError::State(
             "signed Las catalogue is unavailable; no new execution was dispatched".into(),
         ));
@@ -82,19 +88,24 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
         "budget_usd":initiative.budget_usd.to_string(),"repositories":repositories,
         "allow_write":policy.allow_write,"allow_command":policy.allow_command});
     let now = Utc::now();
-    let mut execution = previous.unwrap_or(Execution {
-        id: request_id.clone(),
-        initiative_id: initiative.id.clone(),
-        request_id: request_id.clone(),
-        kind: "pursuit".into(),
-        state: "prepared".into(),
-        external_id: None,
-        source_revision: None,
-        evidence_refs: Vec::new(),
-        error: None,
-        created_at: now,
-        updated_at: now,
-    });
+    // A request already recorded resumes as it stands; only a first attempt
+    // starts from a freshly prepared record.
+    let mut execution = match previous {
+        Some(recorded) => recorded,
+        None => Execution {
+            id: request_id.clone(),
+            initiative_id: initiative.id.clone(),
+            request_id: request_id.clone(),
+            kind: "pursuit".into(),
+            state: "prepared".into(),
+            external_id: None,
+            source_revision: None,
+            evidence_refs: Vec::new(),
+            error: None,
+            created_at: now,
+            updated_at: now,
+        },
+    };
     let path = {
         let state = shared.lock()?;
         let path = source::immutable_request(&state.directory, &request_id, &request)?;
@@ -124,14 +135,7 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
     let path = path
         .to_str()
         .ok_or_else(|| AppError::Config("execution request path is not UTF-8".into()))?;
-    let paused = {
-        let state = shared.lock()?;
-        state.store.paused()?
-            || !state
-                .store
-                .meta::<bool>("las_catalog_ready")?
-                .unwrap_or(false)
-    };
+    let paused = !shared.admission_open()?;
     let response = if paused {
         observe::jeden(shared, &["pursue", "--status", &request_id, "--json"]).await?
     } else if execution.state == "blocked" {
@@ -195,33 +199,38 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
             "Read back durable execution state",
         )?;
     }
-    match execution.state.as_str() {
-        "running" => {
+    let outcome: Outcome = serde_json::from_value(response["state"].clone()).map_err(|error| {
+        AppError::State(format!(
+            "Jeden returned an execution state this runtime does not know: {error}"
+        ))
+    })?;
+    match outcome {
+        Outcome::Running => {
             initiative.state = InitiativeState::Executing;
             initiative.blocked_reason = None;
         }
-        "succeeded" => {
+        Outcome::Succeeded => {
             settle(shared, initiative, &request_id, &response)?;
             source::accepted_receipt(&response)?;
             initiative.state = InitiativeState::Verifying;
             initiative.blocked_reason = None;
         }
-        "failed" => {
+        Outcome::Failed => {
             if !response["spent_usd"].is_null() {
                 settle(shared, initiative, &request_id, &response)?;
             }
             initiative.state = InitiativeState::Failed;
             initiative.blocked_reason = execution.error;
         }
-        "blocked" | "indeterminate" => {
-            return Err(AppError::State(execution.error.unwrap_or_else(|| {
-                "Jeden could not establish the execution outcome".into()
-            })));
-        }
-        _ => {
-            return Err(AppError::State(
-                "Jeden returned an unknown execution state".into(),
-            ));
+        Outcome::Blocked | Outcome::Indeterminate => {
+            let reason = match execution.error {
+                Some(reason) => reason,
+                None => format!(
+                    "Jeden reported request {request_id} {} without saying why",
+                    execution.state
+                ),
+            };
+            return Err(AppError::State(reason));
         }
     }
     initiative.next_review_at =
