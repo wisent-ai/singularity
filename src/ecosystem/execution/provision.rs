@@ -8,7 +8,8 @@ use crate::AppError;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-const PRODUCTS_CREATION_SCHEMA_VERSION: u32 = 1;
+/// The product creation request and response schema `stado product create` declares.
+const PRODUCTS_CREATION_SCHEMA_VERSION: u32 = 1; // https://github.com/wisent-ai/stado/blob/main/stado-rs/product/src/creation/protocol.rs pub const SCHEMA_VERSION: u32 = 1
 
 pub async fn ensure(
     shared: &Shared,
@@ -56,12 +57,7 @@ pub async fn ensure(
     if paused {
         return Err(AppError::State("new product provisioning is paused".into()));
     }
-    if !shared
-        .lock()?
-        .store
-        .meta::<bool>("las_catalog_ready")?
-        .unwrap_or(false)
-    {
+    if !shared.catalog_ready()? {
         return Err(AppError::State(
             "signed Las catalogue is unavailable; product provisioning was not dispatched".into(),
         ));
