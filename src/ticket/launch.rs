@@ -119,9 +119,7 @@ fn capability(args: &LaunchArgs, purpose: &str, resource: &str) -> Result<String
 /// Run one skarbiec command and return its stdout; a refusal carries
 /// Skarbiec's own sentence, which names the remedy.
 fn skarbiec(args: &LaunchArgs, label: &str, words: &[&str]) -> Result<Vec<u8>, AppError> {
-    let output = Command::new(&args.skarbiec)
-        .args(words)
-        .output()
+    let output = stado_wait::output(Command::new(&args.skarbiec).args(words))
         .map_err(|error| AppError::Config(format!("{} could not be started: {error}", args.skarbiec.display())))?;
     if !output.status.success() {
         return Err(AppError::Config(format!(

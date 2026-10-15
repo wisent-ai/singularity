@@ -44,10 +44,7 @@ impl MostClient {
     }
 
     pub async fn health(&self) -> Result<MostHealth, AppError> {
-        let response = self
-            .http
-            .get(self.endpoint("healthz")?)
-            .send()
+        let response = stado_wait::request(self.http.get(self.endpoint("healthz")?))
             .await
             .map_err(map_network)?;
         parse_response(response).await
@@ -72,11 +69,12 @@ impl MostClient {
         }
         let body = json!({"from":from,"to":to,"message":message});
         let value: Value = parse_response(
-            self.authorized(self.http.post(self.endpoint("v3/chats")?))
-                .json(&body)
-                .send()
-                .await
-                .map_err(map_indeterminate)?,
+            stado_wait::request(
+                self.authorized(self.http.post(self.endpoint("v3/chats")?))
+                    .json(&body),
+            )
+            .await
+            .map_err(map_indeterminate)?,
         )
         .await?;
         let chat_id = parse_uuid(&value, "/id")?;
@@ -104,11 +102,12 @@ impl MostClient {
         let body = json!({"message":message});
         let path = format!("v3/chats/{chat_id}/messages");
         let value: Value = parse_response(
-            self.authorized(self.http.post(self.endpoint(&path)?))
-                .json(&body)
-                .send()
-                .await
-                .map_err(map_indeterminate)?,
+            stado_wait::request(
+                self.authorized(self.http.post(self.endpoint(&path)?))
+                    .json(&body),
+            )
+            .await
+            .map_err(map_indeterminate)?,
         )
         .await?;
         let message_id = parse_uuid(&value, "/id")?;
