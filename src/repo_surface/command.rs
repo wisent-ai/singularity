@@ -1,12 +1,9 @@
-use std::num::NonZeroU64;
 use std::path::Path;
 use std::process::Stdio;
-use std::time::Duration;
 
+use stado_wait as wait;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
-use tokio::time::timeout;
-use stado_wait as wait;
 
 use super::{SurfaceError, SurfaceResult};
 
@@ -33,9 +30,9 @@ async fn drain<R: AsyncRead + Unpin>(mut reader: R) -> std::io::Result<Vec<u8>> 
 
 type DrainTask = tokio::task::JoinHandle<std::io::Result<Vec<u8>>>;
 
-
-/// Stop readers before terminating the group: descendants may retain inherited
-/// pipe descriptors after the direct child exits.
+/// Ends a command whose input or output failed. Stop readers before
+/// terminating the group: descendants may retain inherited pipe descriptors
+/// after the direct child exits.
 async fn terminate_child(
     child: &mut tokio::process::Child,
     process_id: Option<u32>,
@@ -46,24 +43,45 @@ async fn terminate_child(
     stderr_task.abort();
     #[cfg(unix)]
     if let Some(process_id) = process_id {
-        if unsafe { kill(-(process_id as i32), SIGKILL) } != 0 {
-            eprintln!("command cleanup: killing process group {process_id} failed: {}", std::io::Error::last_os_error());
+        // A negative pid names the process group the child leads.
+        let killed = unsafe { libc::kill(-(process_id as libc::pid_t), libc::SIGKILL) };
+        let refused = killed == -1; // https://pubs.opengroup.org/onlinepubs/9799919799/functions/kill.html "Otherwise, -1 shall be returned and errno set"
+        if refused {
+            eprintln!(
+                "command cleanup: killing process group {process_id} failed: {}",
+                std::io::Error::last_os_error()
+            );
         }
     }
-    if let Err(error) = wait::until(wait::Kind::Process, "terminate approved command", format!("process {process_id:?}"), child.kill()).await {
+    if let Err(error) = wait::until(
+        wait::Kind::Process,
+        "terminate approved command",
+        format!("process {process_id:?}"),
+        child.kill(),
+    )
+    .await
+    {
         eprintln!("command cleanup failed: {error}");
     }
-    if let Err(error) = wait::until(wait::Kind::Process, "reap approved command", format!("process {process_id:?}"), child.wait()).await {
+    if let Err(error) = wait::until(
+        wait::Kind::Process,
+        "reap approved command",
+        format!("process {process_id:?}"),
+        child.wait(),
+    )
+    .await
+    {
         eprintln!("command cleanup failed: {error}");
     }
 }
 
+/// Runs `program` and answers when it has exited and closed both outputs.
+/// A command runs as long as it runs: no clock ends it.
 async fn run_fixed(
     program: &Path,
     args: &[String],
     cwd: &Path,
     stdin: Option<&[u8]>,
-    deadline: Option<NonZeroU64>,
     environment: EnvironmentProfile,
 ) -> SurfaceResult<CommandOutput> {
     let mut command = Command::new(program);
@@ -100,7 +118,7 @@ async fn run_fixed(
         }
     }
     #[cfg(unix)]
-    command.process_group(0);
+    command.process_group(0); // https://doc.rust-lang.org/std/os/unix/process/trait.CommandExt.html#tymethod.process_group "If it is 0 then a new process group will be created"
     let mut child = command
         .spawn()
         .map_err(|e| SurfaceError::command(format!("cannot start approved command: {e}")))?;
@@ -131,34 +149,31 @@ async fn run_fixed(
             format!("approved command {}", program.display()),
             cwd.display(),
             child.wait(),
-        ).await.map_err(|error| SurfaceError::command(format!("cannot wait for command: {error}")))?;
-        let stdout = (&mut stdout_task).await
+        )
+        .await
+        .map_err(|error| SurfaceError::command(format!("cannot wait for command: {error}")))?;
+        let stdout = (&mut stdout_task)
+            .await
             .map_err(|e| SurfaceError::internal(format!("stdout reader failed: {e}")))?
             .map_err(|e| SurfaceError::command(format!("cannot read stdout: {e}")))?;
-        let stderr = (&mut stderr_task).await
+        let stderr = (&mut stderr_task)
+            .await
             .map_err(|e| SurfaceError::internal(format!("stderr reader failed: {e}")))?
             .map_err(|e| SurfaceError::command(format!("cannot read stderr: {e}")))?;
         Ok((status, stdout, stderr))
     };
-    // The policy duration includes stdin, child exit and both output EOFs.
-    let execution = wait::until(wait::Kind::Process, "command input, exit and output EOF", cwd.display(), execution);
-    let finished = match deadline {
-        None => Ok(execution.await),
-        Some(seconds) => timeout(Duration::from_secs(seconds.get()), execution)
-            .await
-            .map_err(|_| seconds),
-    };
+    let finished = wait::until(
+        wait::Kind::Process,
+        "command input, exit and output EOF",
+        cwd.display(),
+        execution,
+    )
+    .await;
     let (status, stdout, stderr) = match finished {
-        Ok(Ok(output)) => output,
-        Ok(Err(error)) => {
+        Ok(output) => output,
+        Err(error) => {
             terminate_child(&mut child, process_id, &mut stdout_task, &mut stderr_task).await;
             return Err(error);
-        }
-        Err(seconds) => {
-            terminate_child(&mut child, process_id, &mut stdout_task, &mut stderr_task).await;
-            return Err(SurfaceError::command(format!(
-                "command exceeded the {seconds} s its policy gives input, execution and output; termination requested"
-            )));
         }
     };
     Ok(CommandOutput {
@@ -191,25 +206,6 @@ pub async fn git(
         &git_arguments(args_input),
         cwd,
         stdin,
-        None,
-        EnvironmentProfile::Local,
-    )
-    .await
-}
-
-/// A local git command a policy check runs, ended after the check's own
-/// `timeout_secs`.
-pub async fn git_within(
-    cwd: &Path,
-    args_input: &[&str],
-    seconds: NonZeroU64,
-) -> SurfaceResult<CommandOutput> {
-    run_fixed(
-        Path::new("/usr/bin/git"),
-        &git_arguments(args_input),
-        cwd,
-        None,
-        Some(seconds),
         EnvironmentProfile::Local,
     )
     .await
@@ -222,16 +218,7 @@ pub async fn git_network(cwd: &Path, args_input: &[&str]) -> SurfaceResult<Comma
         &git_arguments(args_input),
         cwd,
         None,
-        None,
         EnvironmentProfile::GitNetwork,
     )
     .await
-}
-
-#[cfg(unix)]
-const SIGKILL: i32 = 9;
-
-#[cfg(unix)]
-unsafe extern "C" {
-    fn kill(process_group: i32, signal: i32) -> i32;
 }

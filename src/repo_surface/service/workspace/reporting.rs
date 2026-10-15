@@ -3,7 +3,7 @@ use chrono::Utc;
 use serde_json::{Value, json};
 
 use super::*;
-use crate::repo_surface::command::git_within;
+use crate::repo_surface::command::git;
 use crate::repo_surface::state::CheckEvidence;
 use crate::repo_surface::{SurfaceError, SurfaceResult};
 impl RepoService {
@@ -40,11 +40,10 @@ impl RepoService {
         let repo = self.repo(&state)?;
         ensure_mutable(&state)?;
         let sealed = fresh_seal(&state).await?;
-        let check = repo
-            .checks
-            .get(&input.check)
-            .ok_or_else(|| SurfaceError::policy("check is not allowlisted"))?;
-        let output = git_within(
+        if !repo.checks.contains_key(&input.check) {
+            return Err(SurfaceError::policy("check is not allowlisted"));
+        }
+        let output = git(
             &state.worktree,
             &[
                 "diff",
@@ -53,7 +52,7 @@ impl RepoService {
                 "--no-ext-diff",
                 "--no-textconv",
             ],
-            check.timeout_secs,
+            None,
         )
         .await?;
         let after = fresh_seal(&state).await?;

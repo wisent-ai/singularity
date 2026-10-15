@@ -5,11 +5,10 @@ use std::path::{Component, Path, PathBuf};
 
 use super::{SurfaceError, SurfaceResult};
 
-/// A protected file may grant the group and others no mode bits. How long a
-/// check may run is the policy's own `timeout_secs`, which cannot be zero; how
-/// long a name, id or token may be is what GitHub and git accept, and they
-/// refuse with their own answer.
-pub(super) const GROUP_OR_OTHER_ACCESS: u32 = 0o077;
+/// A protected file may grant the group and others no mode bits. A check runs
+/// until git answers; how long a name, id or token may be is what GitHub and
+/// git accept, and they refuse with their own answer.
+pub(super) const GROUP_OR_OTHER_ACCESS: u32 = (libc::S_IRWXG | libc::S_IRWXO) as u32;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -29,12 +28,12 @@ pub struct RepoPolicy {
     pub required_checks: Vec<String>,
 }
 
+/// An allowlisted check. A policy that still names a `timeout_secs` is refused
+/// when it is read: no check is ended by a clock.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckPolicy {
     pub kind: CheckKind,
-    /// A zero is refused when the policy is read, with serde's sentence.
-    pub timeout_secs: std::num::NonZeroU64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -229,21 +228,13 @@ pub fn require_owner_only_file(path: &Path) -> SurfaceResult<()> {
             "policy must be a regular, non-symlink file",
         ));
     }
-    if metadata.uid() != unsafe { libc_geteuid() } || metadata.mode() & GROUP_OR_OTHER_ACCESS != 0 {
+    let shared = metadata.mode() & GROUP_OR_OTHER_ACCESS != 0; // https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html no group or other permission bit may be set
+    if metadata.uid() != unsafe { libc::geteuid() } || shared {
         return Err(SurfaceError::policy(
             "policy must be owned by the current user and mode 0600 (or stricter)",
         ));
     }
     Ok(())
-}
-
-#[cfg(unix)]
-unsafe extern "C" {
-    fn geteuid() -> u32;
-}
-#[cfg(unix)]
-unsafe fn libc_geteuid() -> u32 {
-    unsafe { geteuid() }
 }
 
 #[cfg(not(unix))]
