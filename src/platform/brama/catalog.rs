@@ -2,6 +2,7 @@ use super::constants::TOKENS_PER_MILLION;
 use super::{BramaClient, BramaCompletion, ModelsResponse, brama, map_network};
 use crate::{AppError, ErrorClass};
 use rust_decimal::Decimal;
+use std::num::NonZeroU64;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -65,10 +66,7 @@ impl Quote {
 }
 impl BramaClient {
     pub async fn health(&self) -> Result<(), AppError> {
-        let value: Value = self
-            .http
-            .get(self.endpoint("health")?)
-            .send()
+        let value: Value = stado_wait::request(self.http.get(self.endpoint("health")?))
             .await
             .map_err(map_network)?
             .error_for_status()
@@ -83,29 +81,29 @@ impl BramaClient {
     }
 
     pub async fn models(&self) -> Result<Vec<String>, AppError> {
-        let response: ModelsResponse = self
-            .authenticate(self.http.get(self.endpoint("v1/models")?), &[])?
-            .send()
-            .await
-            .map_err(map_network)?
-            .error_for_status()
-            .map_err(map_network)?
-            .json()
-            .await
-            .map_err(map_network)?;
+        let response: ModelsResponse = stado_wait::request(
+            self.authenticate(self.http.get(self.endpoint("v1/models")?), &[])?,
+        )
+        .await
+        .map_err(map_network)?
+        .error_for_status()
+        .map_err(map_network)?
+        .json()
+        .await
+        .map_err(map_network)?;
         Ok(response.data.into_iter().map(|entry| entry.id).collect())
     }
     /// Fetch fresh caller-scoped capacity and prices for `model`, a concrete
     /// route: the configured one before a reserved call, or the one that served
     /// a call when its cost is settled. Unknown capacity is not an affordable call.
     pub async fn quote(&self, model: &str) -> Result<Quote, AppError> {
-        let response = self
-            .authenticate(self.http.get(self.endpoint("v1/models")?), &[])?
-            .header("x-jeden-schema-min", "1")
-            .header("x-jeden-schema-max", "1")
-            .send()
-            .await
-            .map_err(map_network)?;
+        let response = stado_wait::request(
+            self.authenticate(self.http.get(self.endpoint("v1/models")?), &[])?
+                .header("x-jeden-schema-min", "1")
+                .header("x-jeden-schema-max", "1"),
+        )
+        .await
+        .map_err(map_network)?;
         let status = response.status();
         let bytes = response.bytes().await.map_err(map_network)?;
         if !status.is_success() {
@@ -121,7 +119,12 @@ impl BramaClient {
                 ),
             ));
         }
-        let catalog: Catalog = serde_json::from_slice(&bytes)?;
+        let catalog: Catalog = serde_json::from_slice(&bytes).map_err(|error| {
+            brama(
+                ErrorClass::Permanent,
+                format!("GET /v1/models answered a catalog this client cannot read: {error}"),
+            )
+        })?;
         if catalog.version != "v1" || catalog.catalog_revision.is_empty() || catalog.degraded {
             return Err(brama(
                 ErrorClass::Transient,
@@ -138,13 +141,21 @@ impl BramaClient {
                     format!("model {model} is absent from the caller-scoped catalog; its price is unknown"),
                 )
             })?;
+        // A route with no context or output room cannot carry a call.
+        let (Some(context_window), Some(max_output_tokens)) = (
+            NonZeroU64::new(entry.context_window),
+            NonZeroU64::new(entry.max_output_tokens),
+        ) else {
+            return Err(brama(
+                ErrorClass::Permanent,
+                format!("model {model} has no context or output room in the catalog; no cost was authorized"),
+            ));
+        };
         if !entry.available
             || !entry.id.contains('/')
-            || entry.context_window == 0
-            || entry.max_output_tokens == 0
             || self
                 .max_tokens
-                .is_some_and(|limit| u64::from(limit) > entry.max_output_tokens)
+                .is_some_and(|limit| u64::from(limit) > max_output_tokens.get())
             || entry.price.input <= Decimal::ZERO
             || entry.price.output <= Decimal::ZERO
             || entry.price.cache_read < Decimal::ZERO
@@ -155,10 +166,14 @@ impl BramaClient {
                 "cost admission requires an available concrete route with positive prices and sufficient token ceilings",
             ));
         }
-        // Without a stated limit the completion may use the model's whole output limit.
-        let output_ceiling = self.max_tokens.map_or(entry.max_output_tokens, u64::from);
+        let output_ceiling = match self.max_tokens {
+            Some(limit) => u64::from(limit),
+            // Without a stated limit the completion may use the model's whole
+            // output limit, so that is the most it can cost.
+            None => max_output_tokens.get(),
+        };
         let input = entry.price.input + entry.price.cache_read + entry.price.cache_write;
-        let upper_usd = (Decimal::from(entry.context_window) * input
+        let upper_usd = (Decimal::from(context_window.get()) * input
             + Decimal::from(output_ceiling) * entry.price.output)
             / Decimal::from(TOKENS_PER_MILLION);
         Ok(Quote {

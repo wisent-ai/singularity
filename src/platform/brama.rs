@@ -182,13 +182,13 @@ impl BramaClient {
             tools,
         };
         let body = serde_json::to_vec(&request)?;
-        let response = self
-            .authenticate(self.http.post(self.endpoint("v1/chat/completions")?), &body)?
-            .header("content-type", "application/json")
-            .body(body)
-            .send()
-            .await
-            .map_err(map_indeterminate)?;
+        let response = stado_wait::request(
+            self.authenticate(self.http.post(self.endpoint("v1/chat/completions")?), &body)?
+                .header("content-type", "application/json")
+                .body(body),
+        )
+        .await
+        .map_err(map_indeterminate)?;
         let status = response.status();
         let bytes = response.bytes().await.map_err(map_indeterminate)?;
         if !status.is_success() {
@@ -207,17 +207,13 @@ impl BramaClient {
             return Err(brama(class, format!("HTTP {}: {message}", status.as_str())));
         }
         let parsed: CompletionResponse = serde_json::from_slice(&bytes)?;
-        if parsed.choices.len() != usize::from(true) {
+        let mut choices = parsed.choices.into_iter();
+        let (Some(choice), None) = (choices.next(), choices.next()) else {
             return Err(brama(
                 ErrorClass::Permanent,
                 "response must contain exactly one choice",
             ));
-        }
-        let choice = parsed
-            .choices
-            .into_iter()
-            .next()
-            .expect("choice length checked");
+        };
         let calls = choice.message.tool_calls.filter(|calls| !calls.is_empty());
         let tool_calls = match (choice.finish_reason.as_str(), calls) {
             ("tool_calls", None) => {
@@ -245,9 +241,8 @@ impl BramaClient {
             .usage
             .prompt_tokens
             .saturating_add(parsed.usage.completion_tokens);
-        if parsed.usage.total_tokens != u64::default()
-            && parsed.usage.total_tokens != computed_total
-        {
+        // Brama states the total as prompt plus completion on every answer.
+        if parsed.usage.total_tokens != computed_total {
             return Err(brama(
                 ErrorClass::Permanent,
                 "usage total does not match prompt plus completion",
