@@ -4,8 +4,8 @@
 //! `singularity-bootstrap` starts a managed being only from a
 //! `singularity.bootstrap.v2` manifest signed by the supervisor whose public
 //! key is the trust root, naming a workload key, the executable's and the
-//! policy's digests and three Skarbiec capabilities. Nothing wrote one, so no
-//! host could start a managed Singularity. `key` writes a fresh Ed25519 key
+//! policy's digests and three Skarbiec capabilities; this module writes it.
+//! `key` writes a fresh Edwards-curve (EdDSA) signing key pair
 //! for its holder: a supervisor's public half is the hex trust root
 //! `singularity-bootstrap` reads, a workload's is the PEM public key
 //! `skarbiec grant issue --workload-public-key-file` requires (Skarbiec
@@ -21,7 +21,8 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Duration, Utc};
-use ed25519_dalek::pkcs8::{EncodePublicKey, LineEnding};
+use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
+use ed25519_dalek::pkcs8::EncodePublicKey;
 use ed25519_dalek::{Signer, SigningKey};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -64,7 +65,7 @@ pub struct TicketReport {
     pub checked_by: &'static str,
 }
 
-/// Write a fresh Ed25519 key pair.
+/// Write a fresh Edwards-curve (EdDSA) signing key pair.
 pub fn key(args: &KeyArgs) -> Result<KeyReport, AppError> {
     absolute(&args.out, "--out")?;
     absolute(&args.public_out, "--public-out")?;
