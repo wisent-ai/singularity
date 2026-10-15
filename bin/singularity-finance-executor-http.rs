@@ -1,21 +1,14 @@
 use std::path::PathBuf;
-use std::time::Duration;
+use std::process::ExitCode;
 
+use ed25519_dalek::SIGNATURE_LENGTH;
 use reqwest::redirect::Policy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use url::Url;
 use zeroize::Zeroize;
-
-const MAX_DOCUMENT_BYTES: u64 = 64 * 1024;
-/// The custody service gets two minutes to answer.
-const CUSTODY_TIMEOUT: Duration = Duration::from_secs(120);
-/// Mode bits that would let the group or others read a secret file.
-const GROUP_OR_OTHER_ACCESS: u32 = 0o077;
-/// A SHA-256 digest is 64 hex characters; an Ed25519 signature is 128.
-const SHA256_HEX_CHARS: usize = 64;
-const ED25519_SIGNATURE_HEX_CHARS: usize = 128;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -27,85 +20,83 @@ struct ExecutionResponse {
 }
 
 #[tokio::main]
-async fn main() {
-    if let Err(error) = run().await {
-        eprintln!("singularity-finance-executor-http: {error}");
-        std::process::exit(1);
+async fn main() -> ExitCode {
+    match run().await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("singularity-finance-executor-http: {error}");
+            ExitCode::FAILURE
+        }
     }
 }
 
+/// Forward one execution request to the custody service and pass its signed
+/// answer back. The request waits for the custody service's answer, and
+/// stderr says what it waits on while it does: an indeterminate submission
+/// is the finance service's to reconcile, never this adapter's to cut short.
 async fn run() -> Result<(), String> {
     let endpoint = required_https_url("SINGULARITY_FINANCE_CUSTODY_URL")?;
     let token_file = required_owner_file("SINGULARITY_FINANCE_CUSTODY_TOKEN_FILE")?;
-    let mut token = std::fs::read_to_string(&token_file)
-        .map_err(|error| format!("cannot read custody token: {error}"))?;
+    let mut token = std::fs::read_to_string(&token_file).map_err(|error| {
+        format!(
+            "cannot read custody token {}: {error}",
+            token_file.display()
+        )
+    })?;
     while token.ends_with(['\r', '\n']) {
         token.pop();
     }
     if token.is_empty() {
-        return Err("custody token is empty".into());
+        return Err(format!("custody token {} is empty", token_file.display()));
     }
 
     let mut bytes = Vec::new();
-    tokio::io::stdin()
-        .take(MAX_DOCUMENT_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .await
-        .map_err(|error| format!("cannot read execution request: {error}"))?;
-    if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
-        token.zeroize();
-        return Err("execution request exceeds size limit".into());
-    }
-    let request: Value = serde_json::from_slice(&bytes)
-        .map_err(|error| format!("execution request is invalid JSON: {error}"))?;
-    if !request.is_object() {
-        token.zeroize();
-        return Err("execution request must be a JSON object".into());
-    }
+    let read = tokio::io::stdin().read_to_end(&mut bytes).await;
+    let request = read
+        .map_err(|error| format!("cannot read execution request: {error}"))
+        .and_then(|_| {
+            serde_json::from_slice::<Value>(&bytes)
+                .map_err(|error| format!("execution request is invalid JSON: {error}"))
+        })
+        .and_then(|request| match request.is_object() {
+            true => Ok(request),
+            false => Err("execution request must be a JSON object".to_string()),
+        });
+    let request = match request {
+        Ok(request) => request,
+        Err(error) => {
+            token.zeroize();
+            return Err(error);
+        }
+    };
 
     let client = reqwest::Client::builder()
         .no_proxy()
         .redirect(Policy::none())
-        .timeout(CUSTODY_TIMEOUT)
         .build()
-        .map_err(|error| format!("cannot build custody client: {error}"))?;
-    let response = client
-        .post(endpoint)
-        .bearer_auth(&token)
-        .json(&request)
-        .send()
-        .await
-        .map_err(|error| format!("custody request failed: {error}"));
+        .map_err(|error| format!("cannot build custody client: {error}"));
+    let response = match client {
+        Ok(client) => stado_wait::request(client.post(endpoint).bearer_auth(&token).json(&request))
+            .await
+            .map_err(|error| format!("custody request failed: {error}")),
+        Err(error) => Err(error),
+    };
     token.zeroize();
     let response = response?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "custody service refused with HTTP {}",
-            response.status().as_u16()
-        ));
-    }
-    if response
-        .content_length()
-        .is_some_and(|length| length > MAX_DOCUMENT_BYTES)
-    {
-        return Err("custody response exceeds size limit".into());
-    }
+    let status = response.status();
     let bytes = response
         .bytes()
         .await
-        .map_err(|error| format!("cannot read custody response: {error}"))?;
-    if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
-        return Err("custody response exceeds size limit".into());
+        .map_err(|error| format!("cannot read custody response (HTTP {status}): {error}"))?;
+    if !status.is_success() {
+        return Err(format!(
+            "custody service refused with HTTP {status}: {}",
+            String::from_utf8_lossy(&bytes)
+        ));
     }
     let response: ExecutionResponse = serde_json::from_slice(&bytes)
         .map_err(|error| format!("custody response is invalid: {error}"))?;
-    if response.executor_id.is_empty()
-        || !is_hash(&response.executor_reference_hash)
-        || !is_signature(&response.executor_signature_hex)
-        || !response.worm_receipt_file.is_absolute()
-    {
-        return Err("custody response failed validation".into());
-    }
+    validate(&response)?;
     let output = serde_json::to_vec(&response)
         .map_err(|error| format!("cannot encode executor response: {error}"))?;
     tokio::io::stdout()
@@ -115,12 +106,44 @@ async fn run() -> Result<(), String> {
     Ok(())
 }
 
+/// The custody answer's fields, each refused by name when it is not what
+/// the finance service records.
+fn validate(response: &ExecutionResponse) -> Result<(), String> {
+    if response.executor_id.is_empty() {
+        return Err("custody response names no executor_id".into());
+    }
+    if !hex_of_length(&response.executor_reference_hash, Sha256::output_size()) {
+        return Err(format!(
+            "custody response executor_reference_hash is not a hex SHA-256 digest: {:?}",
+            response.executor_reference_hash
+        ));
+    }
+    if !hex_of_length(&response.executor_signature_hex, SIGNATURE_LENGTH) {
+        return Err(format!(
+            "custody response executor_signature_hex is not a hex Ed25519 signature: {:?}",
+            response.executor_signature_hex
+        ));
+    }
+    if !response.worm_receipt_file.is_absolute() {
+        return Err(format!(
+            "custody response worm_receipt_file is not an absolute path: {}",
+            response.worm_receipt_file.display()
+        ));
+    }
+    Ok(())
+}
+
+/// Whether `value` is hex that decodes to exactly `bytes` bytes.
+fn hex_of_length(value: &str, bytes: usize) -> bool {
+    hex::decode(value).is_ok_and(|decoded| decoded.len() == bytes)
+}
+
 fn required_https_url(name: &str) -> Result<Url, String> {
-    let raw = std::env::var(name).map_err(|_| format!("{name} is required"))?;
+    let raw = std::env::var(name).map_err(|error| format!("{name} is required: {error}"))?;
     let url = Url::parse(&raw).map_err(|error| format!("{name}: {error}"))?;
     if url.scheme() != "https"
         || url.host_str().is_none()
-        || url.username() != ""
+        || !url.username().is_empty()
         || url.password().is_some()
     {
         return Err(format!("{name} must be a credential-free HTTPS URL"));
@@ -145,21 +168,16 @@ fn required_owner_file(name: &str) -> Result<PathBuf, String> {
     {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
         let metadata = std::fs::metadata(&path).map_err(|error| format!("{name}: {error}"))?;
-        if metadata.uid() != unsafe { libc::geteuid() }
-            || metadata.permissions().mode() & GROUP_OR_OTHER_ACCESS != 0
-        {
+        // The group's and others' read, write and search bits.
+        let shared = u32::from(libc::S_IRWXG | libc::S_IRWXO);
+        let mode = metadata.permissions().mode();
+        // A mode with none of those bits sets nothing outside their complement.
+        let owner_only = mode | !shared == !shared;
+        if metadata.uid() != unsafe { libc::geteuid() } || !owner_only {
             return Err(format!(
                 "{name} must be owner-only and owned by the current user"
             ));
         }
     }
     Ok(path)
-}
-
-fn is_hash(value: &str) -> bool {
-    value.len() == SHA256_HEX_CHARS && value.bytes().all(|byte| byte.is_ascii_hexdigit())
-}
-
-fn is_signature(value: &str) -> bool {
-    value.len() == ED25519_SIGNATURE_HEX_CHARS && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }

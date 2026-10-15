@@ -148,7 +148,7 @@ the exact canonical intent over stdin to the absolute executable named by
 `SINGULARITY_FINANCE_EXECUTOR`.
 
 Before starting the isolated executor, the finance service durably marks the
-transaction indeterminate so a timeout or crash cannot trigger a duplicate
+transaction indeterminate so an executor that dies or never answers cannot trigger a duplicate
 effect. The executor owns signing and network credentials, performs the real
 operation, and returns its signed reference plus WORM receipt. The finance
 service verifies the configured executor authority and receipt before recording
@@ -159,7 +159,12 @@ The release includes `singularity-finance-executor-http`, a concrete executor
 adapter. It forwards the canonical intent to a credential-free HTTPS custody
 URL using an owner-only bearer file, disables ambient proxies and redirects,
 and validates the executor ID, signed reference and WORM receipt path before
-returning them to `singularity-finance-mcp`.
+returning them to `singularity-finance-mcp`. It waits for the custody
+service's answer, saying on stderr what it waits on, and sets no time or size
+limit of its own: an answer that never comes leaves the submission
+indeterminate for the finance service to reconcile, never cut short into a
+duplicate. A refusal carries the custody service's status and body, and each
+invalid answer field is named.
 Required finance environment:
 
 ```text
