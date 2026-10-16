@@ -35,9 +35,15 @@ enum Method {
 }
 
 impl Method {
-    /// The method as the wire names it.
-    fn name(self) -> String {
-        format!("{self:?}").to_lowercase()
+    /// The method as the wire names it: the same serde rename the request
+    /// parser reads it by, so the two can never disagree.
+    fn name(self) -> Result<String, AppError> {
+        match serde_json::to_value(self)? {
+            Value::String(name) => Ok(name),
+            other => Err(AppError::Config(format!(
+                "ecosystem method {self:?} serializes as {other}, not as a name"
+            ))),
+        }
     }
 }
 
@@ -106,7 +112,7 @@ fn dispatch(shared: &Shared, request: Request) -> Result<Value, AppError> {
         ),
         Method::Pause | Method::Resume => {
             let paused = matches!(request.method, Method::Pause);
-            let name = request.method.name();
+            let name = request.method.name()?;
             state.store.set_meta("paused", &paused)?;
             state.store.put(
                 "control",
@@ -137,10 +143,13 @@ async fn serve(mut stream: UnixStream, shared: Shared) -> Result<(), AppError> {
         ))
     } else {
         match serde_json::from_slice::<Request>(&bytes) {
-            Ok(request) => {
-                operation = format!("ecosystem.{}", request.method.name());
-                dispatch(&shared, request)
-            }
+            Ok(request) => match request.method.name() {
+                Ok(name) => {
+                    operation = format!("ecosystem.{name}");
+                    dispatch(&shared, request)
+                }
+                Err(error) => Err(error),
+            },
             Err(error) => Err(AppError::from(error)),
         }
     };
