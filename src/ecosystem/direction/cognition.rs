@@ -141,12 +141,15 @@ pub(crate) fn recover(store: &Store) -> Result<(), AppError> {
     Ok(())
 }
 
+/// The judgement `instruction` asks of `evidence`, answered as one call of a
+/// declared function whose parameters are `schema` (`answer`), read as `T`.
 pub async fn ask<T: DeserializeOwned>(
     shared: &Shared,
     client: &BramaClient,
     purpose: &str,
     instruction: &str,
     evidence: Value,
+    schema: Value,
 ) -> Result<T, AppError> {
     let (input, previous) = {
         let state = shared.lock()?;
@@ -250,7 +253,10 @@ pub async fn ask<T: DeserializeOwned>(
             ChatMessage::text(Role::System, input.instruction),
             ChatMessage::text(Role::User, serde_json::to_string(&input.evidence)?),
         ];
-        let completion = match client.complete(&messages, &[]).await {
+        let completion = match client
+            .complete(&messages, &[super::answer::tool(schema)])
+            .await
+        {
             Ok(completion) => completion,
             Err(error) => {
                 call.state = Phase::Indeterminate;
@@ -280,17 +286,5 @@ pub async fn ask<T: DeserializeOwned>(
     let completion = call
         .completion
         .ok_or_else(|| AppError::State("settled model request has no response".into()))?;
-    if !completion.tool_calls.is_empty() {
-        return Err(AppError::State(
-            "portfolio reasoning cannot execute model tool calls".into(),
-        ));
-    }
-    let text = completion
-        .content
-        .ok_or_else(|| AppError::State("portfolio reasoning returned no JSON".into()))?;
-    serde_json::from_str(&text).map_err(|error| {
-        AppError::State(format!(
-            "{purpose}: model response is not the required JSON document: {error}"
-        ))
-    })
+    super::answer::read(purpose, &completion)
 }

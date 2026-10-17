@@ -1,7 +1,7 @@
 mod attempt;
 mod delivery;
 mod provision;
-mod source;
+pub(super) mod source;
 use super::{
     Shared,
     model::{Initiative, InitiativeState},
