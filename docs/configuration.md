@@ -240,3 +240,14 @@ Failure to remove the runtime directory refuses execution and names the path
 and cause. Cleanup during an earlier failure reports its own cause on stderr
 without hiding the original failure.
 
+The `cargo test --test launch-ticket` journey exercises the real key issuer.
+Its `tests/bootstrap/key_cases.rs` module checks that refusal preserves both
+existing key files, that an occupied public destination removes only the newly
+created private key, and that a subsequent invocation can write the pair.
+It signs a message using the persisted private half, verifies the signature
+against the persisted PEM public half with `openssl pkeyutl -verify -pubin
+-rawin`, and requires rejection of a modified message. A readable PEM alone
+does not establish key correspondence. These cases require OpenSSL with
+Ed25519 raw-message verification and do not replace real Skarbiec grant,
+redemption and managed-consumer qualification.
+
