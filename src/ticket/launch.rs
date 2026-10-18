@@ -18,8 +18,10 @@ use std::process::Command;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::{absolute, file_digest, key, sign, KeyArgs, KeyHolder, LaunchArgs, SignArgs};
-use crate::bootstrap::{run_bootstrap, BRAMA_BEARER_PURPOSE, BRAMA_PURPOSE, CAPABILITY_TARGET, MOST_PURPOSE};
+use super::{KeyArgs, KeyHolder, LaunchArgs, SignArgs, absolute, file_digest, key, sign};
+use crate::bootstrap::{
+    BRAMA_BEARER_PURPOSE, BRAMA_PURPOSE, CAPABILITY_TARGET, MOST_PURPOSE, run_bootstrap,
+};
 use crate::error::AppError;
 
 /// Make the workload key, its grant and capabilities and the ticket, then
@@ -34,7 +36,11 @@ pub fn launch(args: &LaunchArgs) -> Result<std::convert::Infallible, AppError> {
         .create(&ticket_dir)?;
     let workload_key = ticket_dir.join("workload.key");
     let workload_public = ticket_dir.join("workload.pub");
-    key(&KeyArgs { holder: KeyHolder::Workload, out: workload_key.clone(), public_out: workload_public.clone() })?;
+    key(&KeyArgs {
+        holder: KeyHolder::Workload,
+        out: workload_key.clone(),
+        public_out: workload_public.clone(),
+    })?;
     skarbiec(
         args,
         "grant issue",
@@ -51,7 +57,8 @@ pub fn launch(args: &LaunchArgs) -> Result<std::convert::Infallible, AppError> {
         ],
     )?;
     let brama_capability = capability(args, BRAMA_PURPOSE, &args.brama_resource)?;
-    let brama_bearer_capability = capability(args, BRAMA_BEARER_PURPOSE, &args.brama_bearer_resource)?;
+    let brama_bearer_capability =
+        capability(args, BRAMA_BEARER_PURPOSE, &args.brama_bearer_resource)?;
     let most_capability = capability(args, MOST_PURPOSE, &args.most_resource)?;
     let manifest = ticket_dir.join("manifest.json");
     let signature = ticket_dir.join("manifest.sig");
@@ -107,20 +114,30 @@ fn capability(args: &LaunchArgs, purpose: &str, resource: &str) -> Result<String
         ],
     )?;
     let document: Value = serde_json::from_slice(&answer).map_err(|error| {
-        AppError::Config(format!("skarbiec grant capability for {purpose} did not answer JSON: {error}"))
+        AppError::Config(format!(
+            "skarbiec grant capability for {purpose} did not answer JSON: {error}"
+        ))
     })?;
     document
         .get("capability_id")
         .and_then(Value::as_str)
         .map(str::to_owned)
-        .ok_or_else(|| AppError::Config(format!("skarbiec grant capability for {purpose} answered no capability_id: {document}")))
+        .ok_or_else(|| {
+            AppError::Config(format!(
+                "skarbiec grant capability for {purpose} answered no capability_id: {document}"
+            ))
+        })
 }
 
 /// Run one skarbiec command and return its stdout; a refusal carries
 /// Skarbiec's own sentence, which names the remedy.
 fn skarbiec(args: &LaunchArgs, label: &str, words: &[&str]) -> Result<Vec<u8>, AppError> {
-    let output = stado_wait::output(Command::new(&args.skarbiec).args(words))
-        .map_err(|error| AppError::Config(format!("{} could not be started: {error}", args.skarbiec.display())))?;
+    let output = stado_wait::output(Command::new(&args.skarbiec).args(words)).map_err(|error| {
+        AppError::Config(format!(
+            "{} could not be started: {error}",
+            args.skarbiec.display()
+        ))
+    })?;
     if !output.status.success() {
         return Err(AppError::Config(format!(
             "skarbiec {label} refused: {}",
@@ -149,10 +166,18 @@ fn being_args(args: &LaunchArgs) -> Result<Vec<String>, AppError> {
                 .to_owned(),
         )),
         (None, false) => Ok(args.singularity_args.clone()),
-        (Some(json), true) => serde_json::from_str::<Vec<String>>(json).map_err(|error| {
-            AppError::Config(format!(
-                "--being-args (SINGULARITY_LAUNCH_BEING_ARGS) is not a JSON array of strings: {error}"
-            ))
-        }),
+        (Some(json), true) => {
+            let arguments = serde_json::from_str::<Vec<String>>(json).map_err(|error| {
+                AppError::Config(format!(
+                    "--being-args (SINGULARITY_LAUNCH_BEING_ARGS) is not a JSON array of strings: {error}"
+                ))
+            })?;
+            if arguments.is_empty() {
+                return Err(AppError::Config(
+                    "--being-args (SINGULARITY_LAUNCH_BEING_ARGS) must name the being command; an empty array cannot start a being".to_owned(),
+                ));
+            }
+            Ok(arguments)
+        }
     }
 }

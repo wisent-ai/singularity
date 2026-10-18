@@ -177,6 +177,9 @@ follows `--`; both at once, or neither, is refused. A missing input is refused
 by clap with its flag and variable named. None of them reaches the being: the
 bootstrap clears the environment before it starts `singularity`, so the being
 sees only its arguments and the identity the ticket binds.
+An empty JSON argument array is also refused, naming
+`SINGULARITY_LAUNCH_BEING_ARGS`, before a ticket directory, workload key or
+grant is created. A declared array must contain the being command.
 
 Bootstrap credentials reach the being through anonymous owner-only file
 descriptors, named by `SINGULARITY_BRAMA_HMAC_FD`,
