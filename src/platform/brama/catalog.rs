@@ -96,33 +96,26 @@ impl BramaClient {
     /// Fetch fresh caller-scoped capacity and prices for `model`, a concrete
     /// route: the configured one before a reserved call, or the one that served
     /// a call when its cost is settled. Unknown capacity is not an affordable call.
+    /// A being whose model service is not Brama reads the same catalog shape
+    /// from the file `SINGULARITY_MODEL_CATALOG_FILE` names, so its prices and
+    /// limits are the operator's declaration rather than Brama's answer.
     pub async fn quote(&self, model: &str) -> Result<Quote, AppError> {
-        let response = stado_wait::request(
-            self.authenticate(self.http.get(self.endpoint("v1/models")?), &[])?
-                .header("x-jeden-schema-min", "1")
-                .header("x-jeden-schema-max", "1"),
-        )
-        .await
-        .map_err(map_network)?;
-        let status = response.status();
-        let bytes = response.bytes().await.map_err(map_network)?;
-        if !status.is_success() {
-            return Err(brama(
-                if status.is_server_error() {
-                    ErrorClass::Transient
-                } else {
-                    ErrorClass::Permanent
-                },
-                format!(
-                    "GET /v1/models: HTTP {status}: {}",
-                    String::from_utf8_lossy(&bytes)
-                ),
-            ));
-        }
+        let (bytes, source) = match declared_catalog() {
+            Some(path) => (
+                std::fs::read(&path).map_err(|error| {
+                    brama(
+                        ErrorClass::Permanent,
+                        format!("{CATALOG_FILE} {} cannot be read: {error}", path.display()),
+                    )
+                })?,
+                format!("{CATALOG_FILE} {}", path.display()),
+            ),
+            None => (self.served_catalog().await?, "GET /v1/models".to_string()),
+        };
         let catalog: Catalog = serde_json::from_slice(&bytes).map_err(|error| {
             brama(
                 ErrorClass::Permanent,
-                format!("GET /v1/models answered a catalog this client cannot read: {error}"),
+                format!("{source} holds a catalog this client cannot read: {error}"),
             )
         })?;
         if catalog.version != "v1" || catalog.catalog_revision.is_empty() || catalog.degraded {
@@ -182,5 +175,44 @@ impl BramaClient {
             price: entry.price,
             upper_usd,
         })
+    }
+
+    /// Brama's caller-scoped catalog, as `GET /v1/models` answers it.
+    async fn served_catalog(&self) -> Result<Vec<u8>, AppError> {
+        let response = stado_wait::request(
+            self.authenticate(self.http.get(self.endpoint("v1/models")?), &[])?
+                .header("x-jeden-schema-min", "1")
+                .header("x-jeden-schema-max", "1"),
+        )
+        .await
+        .map_err(map_network)?;
+        let status = response.status();
+        let bytes = response.bytes().await.map_err(map_network)?;
+        if !status.is_success() {
+            return Err(brama(
+                if status.is_server_error() {
+                    ErrorClass::Transient
+                } else {
+                    ErrorClass::Permanent
+                },
+                format!(
+                    "GET /v1/models: HTTP {status}: {}",
+                    String::from_utf8_lossy(&bytes)
+                ),
+            ));
+        }
+        Ok(bytes.to_vec())
+    }
+}
+
+/// The variable that names a declared model catalog.
+const CATALOG_FILE: &str = "SINGULARITY_MODEL_CATALOG_FILE";
+
+/// The catalog file the operator declared for a model service that is not
+/// Brama; `None` when the variable is unset or empty, which asks Brama.
+fn declared_catalog() -> Option<std::path::PathBuf> {
+    match std::env::var_os(CATALOG_FILE) {
+        Some(path) if !path.is_empty() => Some(std::path::PathBuf::from(path)),
+        Some(_) | None => None,
     }
 }

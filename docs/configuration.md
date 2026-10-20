@@ -64,14 +64,29 @@ BRAMA_TEMPERATURE
 
 Every model round is charged at the price Brama's caller-scoped catalog
 (`GET /v1/models`) states for the model that served it, cache reads and writes
-included; there is no configured token price. A served model the catalog does
-not list, or lists without positive prices, ends the cycle with `model <id> is
-absent from the caller-scoped catalog; its price is unknown` or the cost
-admission refusal, instead of being charged as free. A cycle runs until the
-model answers without calling a tool; no round count is configured, and the
-solvency gate ends a cycle the budget can no longer pay for.
+included. A served model the catalog does not list, or lists without positive
+prices, ends the cycle with `model <id> is absent from the caller-scoped
+catalog; its price is unknown` or the cost admission refusal, instead of being
+charged as free. A cycle runs until the model answers without calling a tool;
+no round count is configured, and the solvency gate ends a cycle the budget
+can no longer pay for.
+
+A being whose model service is not Brama (an OpenAI-compatible provider named
+by `BRAMA_BASE_URL`, with its key in the bearer file) takes its prices and
+limits from the catalog file `SINGULARITY_MODEL_CATALOG_FILE` names instead of
+`GET /v1/models`. The file has the catalog's own shape: `version` `v1`, a
+non-empty `catalogRevision`, `degraded` false, and `models`, each with `id`
+(the model id the provider reports back, provider-prefixed), `available`,
+`contextWindow`, `maxOutputTokens` and `price` (`input`, `output`,
+`cacheRead`, `cacheWrite` per million tokens). An unreadable file is refused
+with `SINGULARITY_MODEL_CATALOG_FILE <path> cannot be read: …`, and a file
+that is not that shape with `… holds a catalog this client cannot read: …`;
+every admission check above applies to its entries as it does to Brama's.
+`BRAMA_HMAC_SECRET_FILE` is still read and each request still carries Brama's
+signature headers, which another provider does not read.
 
 ```text
+SINGULARITY_MODEL_CATALOG_FILE
 ```
 
 Las and Most:
