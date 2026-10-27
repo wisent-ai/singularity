@@ -21,17 +21,17 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Duration, Utc};
-use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
 use ed25519_dalek::pkcs8::EncodePublicKey;
+use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
 use ed25519_dalek::{Signer, SigningKey};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroize;
 
 use crate::bootstrap::{
-    check_ticket, read_hex_32, signed_manifest_bytes, validate_manifest, BootstrapCapabilities, BootstrapCapability,
-    BootstrapManifest, BRAMA_BEARER_PURPOSE, BRAMA_PURPOSE, CAPABILITY_TARGET, KEY_BYTES, MANIFEST_VERSION,
-    MOST_PURPOSE,
+    BRAMA_BEARER_PURPOSE, BRAMA_PURPOSE, BootstrapCapabilities, BootstrapCapability,
+    BootstrapManifest, CAPABILITY_TARGET, KEY_BYTES, MANIFEST_VERSION, MOST_PURPOSE, check_ticket,
+    read_hex_32, signed_manifest_bytes, validate_manifest,
 };
 use crate::error::AppError;
 
@@ -79,9 +79,13 @@ pub fn key(args: &KeyArgs) -> Result<KeyReport, AppError> {
     let public_key_hex = hex::encode(verifying.as_bytes());
     let public_half = match args.holder {
         KeyHolder::Supervisor => public_key_hex.clone(),
-        KeyHolder::Workload => verifying.to_public_key_pem(LineEnding::LF).map_err(|error| {
-            AppError::Config(format!("the workload public key could not be encoded as PEM: {error}"))
-        })?,
+        KeyHolder::Workload => verifying
+            .to_public_key_pem(LineEnding::LF)
+            .map_err(|error| {
+                AppError::Config(format!(
+                    "the workload public key could not be encoded as PEM: {error}"
+                ))
+            })?,
     };
     let mut private_hex = hex::encode(signing.as_bytes());
     let written = write_owner_only(&args.out, private_hex.as_bytes());
@@ -90,7 +94,11 @@ pub fn key(args: &KeyArgs) -> Result<KeyReport, AppError> {
     if let Err(error) = write_owner_only(&args.public_out, public_half.as_bytes()) {
         return Err(discard_created(&[&args.out], error));
     }
-    Ok(KeyReport { private_key: args.out.clone(), public_key: args.public_out.clone(), public_key_hex })
+    Ok(KeyReport {
+        private_key: args.out.clone(),
+        public_key: args.public_out.clone(),
+        public_key_hex,
+    })
 }
 
 /// Write, sign and check one launch ticket.
@@ -98,7 +106,11 @@ pub fn sign(args: &SignArgs) -> Result<TicketReport, AppError> {
     absolute(&args.manifest_out, "--manifest-out")?;
     absolute(&args.signature_out, "--signature-out")?;
     let mut workload_seed = read_hex_32(&args.workload_key, "workload key")?;
-    let workload_public_key = hex::encode(SigningKey::from_bytes(&workload_seed).verifying_key().as_bytes());
+    let workload_public_key = hex::encode(
+        SigningKey::from_bytes(&workload_seed)
+            .verifying_key()
+            .as_bytes(),
+    );
     workload_seed.zeroize();
     let executable_digest = file_digest(&args.executable, "--executable")?;
     let policy_digest = file_digest(&args.policy_file, "--policy-file")?;
@@ -124,7 +136,11 @@ pub fn sign(args: &SignArgs) -> Result<TicketReport, AppError> {
         singularity_args: args.singularity_args.clone(),
         capabilities: BootstrapCapabilities {
             brama: capability(&args.brama_capability, BRAMA_PURPOSE, &args.brama_resource),
-            brama_bearer: capability(&args.brama_bearer_capability, BRAMA_BEARER_PURPOSE, &args.brama_bearer_resource),
+            brama_bearer: capability(
+                &args.brama_bearer_capability,
+                BRAMA_BEARER_PURPOSE,
+                &args.brama_bearer_resource,
+            ),
             most: capability(&args.most_capability, MOST_PURPOSE, &args.most_resource),
         },
     };
@@ -135,13 +151,18 @@ pub fn sign(args: &SignArgs) -> Result<TicketReport, AppError> {
     let signature = SigningKey::from_bytes(&supervisor_seed).sign(&signed_manifest_bytes(&bytes));
     supervisor_seed.zeroize();
     write_owner_only(&args.manifest_out, &bytes)?;
-    if let Err(error) = write_owner_only(&args.signature_out, hex::encode(signature.to_bytes()).as_bytes()) {
+    if let Err(error) = write_owner_only(
+        &args.signature_out,
+        hex::encode(signature.to_bytes()).as_bytes(),
+    ) {
         return Err(discard_created(&[&args.manifest_out], error));
     }
     if let Err(refusal) = check_ticket(&args.manifest_out, &args.signature_out, &args.trust_root) {
         return Err(discard_created(
             &[&args.manifest_out, &args.signature_out],
-            AppError::Config(format!("singularity-bootstrap refused the ticket written: {refusal}")),
+            AppError::Config(format!(
+                "singularity-bootstrap refused the ticket written: {refusal}"
+            )),
         ));
     }
     Ok(TicketReport {
@@ -177,8 +198,9 @@ fn absolute(path: &Path, flag: &str) -> Result<(), AppError> {
 
 /// Lowercase SHA-256 hex of a file's bytes.
 fn file_digest(path: &Path, flag: &str) -> Result<String, AppError> {
-    let mut file = File::open(path)
-        .map_err(|error| AppError::Config(format!("{flag} {} cannot be read: {error}", path.display())))?;
+    let mut file = File::open(path).map_err(|error| {
+        AppError::Config(format!("{flag} {} cannot be read: {error}", path.display()))
+    })?;
     let mut hasher = Sha256::new();
     std::io::copy(&mut file, &mut hasher)?;
     Ok(hex::encode(hasher.finalize()))
@@ -192,12 +214,21 @@ fn write_owner_only(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
         .mode(u32::from(libc::S_IRUSR | libc::S_IWUSR))
         .open(path)
         .map_err(|error| {
-            AppError::Config(format!("{} could not be created as a new owner-only file: {error}", path.display()))
+            AppError::Config(format!(
+                "{} could not be created as a new owner-only file: {error}",
+                path.display()
+            ))
         })?;
-    let persisted = file.write_all(bytes)
-        .map_err(|error| AppError::Config(format!("{} could not be written: {error}", path.display())))
-        .and_then(|()| file.sync_all()
-            .map_err(|error| AppError::Config(format!("{} could not be synced: {error}", path.display()))));
+    let persisted = file
+        .write_all(bytes)
+        .map_err(|error| {
+            AppError::Config(format!("{} could not be written: {error}", path.display()))
+        })
+        .and_then(|()| {
+            file.sync_all().map_err(|error| {
+                AppError::Config(format!("{} could not be synced: {error}", path.display()))
+            })
+        });
     if let Err(error) = persisted {
         drop(file);
         return Err(discard_created(&[path], error));

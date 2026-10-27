@@ -3,7 +3,6 @@
 //! Singularity child handoff may inherit them; ordinary tools receive none.
 
 use std::fs::File;
-use std::num::{NonZeroU32, NonZeroU64};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::fs::{FileExt, MetadataExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
@@ -25,6 +24,14 @@ const DESCRIPTORS: &[&str] = &[
 
 /// What fcntl answers when it refuses; errno then says why.
 const FCNTL_REFUSED: libc::c_int = -1; // https://pubs.opengroup.org/onlinepubs/9799919799/functions/fcntl.html "Otherwise, -1 shall be returned and errno set"
+
+/// The link count of a file no directory names: an anonymous credential file
+/// has none. https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html "st_nlink Number of hard links to the file."
+const NO_LINKS: u64 = 0;
+
+/// The size of a file that holds no byte, which no credential is.
+/// https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html "st_size For regular files, the file size in bytes."
+const NO_BYTES: u64 = 0;
 
 pub(crate) struct InheritedCredentials {
     files: [File; DESCRIPTORS.len()],
@@ -139,11 +146,11 @@ pub fn adopt_credentials() -> Result<(), AppError> {
         })?;
         // SAFETY: geteuid has no arguments or memory preconditions.
         let owner = unsafe { libc::geteuid() };
-        let linked = NonZeroU64::new(metadata.nlink()).is_some();
-        let shared =
-            NonZeroU32::new(metadata.permissions().mode() & crate::config::GROUP_OR_OTHER_ACCESS)
-                .is_some();
-        let empty = NonZeroU64::new(metadata.len()).is_none();
+        let linked = metadata.nlink() != NO_LINKS;
+        // Shared when clearing the group and other bits changes the mode.
+        let mode = metadata.permissions().mode();
+        let shared = mode & !crate::config::GROUP_OR_OTHER_ACCESS != mode;
+        let empty = metadata.len() == NO_BYTES;
         if !metadata.is_file() || linked || metadata.uid() != owner || shared || empty {
             return Err(AppError::Secret(format!(
                 "{name}: inherited descriptor {} must be an anonymous, nonempty, owner-only regular file; observed regular={}, links={}, uid={}, effective_uid={owner}, mode={:o}, bytes={}",

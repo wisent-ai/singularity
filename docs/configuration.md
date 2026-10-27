@@ -82,8 +82,9 @@ non-empty `catalogRevision`, `degraded` false, and `models`, each with `id`
 with `SINGULARITY_MODEL_CATALOG_FILE <path> cannot be read: …`, and a file
 that is not that shape with `… holds a catalog this client cannot read: …`;
 every admission check above applies to its entries as it does to Brama's.
-`BRAMA_HMAC_SECRET_FILE` is still read and each request still carries Brama's
-signature headers, which another provider does not read.
+A variable set to nothing is refused with `SINGULARITY_MODEL_CATALOG_FILE is set
+but empty; …`. `BRAMA_HMAC_SECRET_FILE` is required either way, and each request
+carries Brama's signature headers, which another provider does not read.
 
 ```text
 SINGULARITY_MODEL_CATALOG_FILE
@@ -253,7 +254,7 @@ non-empty regular file, keeps them close-on-exec, and hands them on only to a
 child agent it spawns itself. A `*_FILE` variable set explicitly still takes
 precedence over the handoff.
 Bootstrap cleanup unlinks remaining credential pathnames without opening them
-or following symlinks; it no longer allocates a file-sized overwrite buffer.
+or following symlinks, and reads none of their content.
 Failure to remove the runtime directory refuses execution and names the path
 and cause. Cleanup during an earlier failure reports its own cause on stderr
 without hiding the original failure.
@@ -264,8 +265,6 @@ existing key files, that an occupied public destination removes only the newly
 created private key, and that a subsequent invocation can write the pair.
 It signs a message using the persisted private half, verifies the signature
 against the persisted PEM public half with `openssl pkeyutl -verify -pubin
--rawin`, and requires rejection of a modified message. A readable PEM alone
-does not establish key correspondence. These cases require OpenSSL with
-Ed25519 raw-message verification and do not replace real Skarbiec grant,
-redemption and managed-consumer qualification.
+-rawin`, and requires rejection of a modified message. The journey needs an
+`openssl` that verifies raw Ed25519 messages.
 

@@ -8,13 +8,18 @@ use super::*;
 use crate::domain::{ActivityEvent, AgentStatus, ChatMessage, Role};
 use crate::error::AppError;
 use crate::tools::ToolStatus;
+
+/// Cycles are counted from the first, one at a time: the first cycle is
+/// number one and each cycle adds one (`NonZeroU64::MIN`).
+const FIRST_CYCLE: u64 = std::num::NonZeroU64::MIN.get();
+
 impl Agent {
     pub async fn run_once(&mut self) -> Result<CycleReport, AppError> {
         if !self.state.budget.can_call() {
             self.state.status = AgentStatus::Exhausted;
             return Ok(self.report("budget_exhausted", None, vec![]));
         }
-        self.state.cycle = self.state.cycle.saturating_add(u64::from(true));
+        self.state.cycle = self.state.cycle.saturating_add(FIRST_CYCLE);
         self.state.updated_at = Utc::now();
         self.store.append(&ActivityEvent::CycleStarted {
             at: Utc::now(),
@@ -23,7 +28,7 @@ impl Agent {
         self.state
             .conversation
             .push(ChatMessage::text(Role::User, cycle_message(&self.state)));
-        if self.state.cycle == 1 {
+        if self.state.cycle == FIRST_CYCLE {
             if let Some(stimulus) = self.config.stimulus.as_deref() {
                 self.state.conversation.push(ChatMessage::text(
                     Role::User,
@@ -119,15 +124,6 @@ impl Agent {
                     tool: tool_name.clone(),
                     status: status.into(),
                 })?;
-                if let Some(revenue) = trusted_revenue(&tool_name, &outcome.content) {
-                    self.state.budget.credit(revenue)?;
-                    self.store.append(&ActivityEvent::RevenueCredited {
-                        at: Utc::now(),
-                        cycle: self.state.cycle,
-                        amount: revenue,
-                        source: tool_name,
-                    })?;
-                }
                 self.store.save(&self.state)?;
             }
         }

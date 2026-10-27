@@ -188,4 +188,4 @@ mod prompts;
 mod run;
 
 pub use command::execute;
-use prompts::{cognition_messages, cycle_message, system_prompt, trusted_revenue};
+use prompts::{cognition_messages, cycle_message, system_prompt};

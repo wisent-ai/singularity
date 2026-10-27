@@ -40,7 +40,10 @@ impl TradingSurface {
     pub fn environment(&self) -> Vec<(&'static str, OsString)> {
         vec![
             ("TRADING_AUTONOMY_PROXY_URL", self.proxy_url.clone().into()),
-            ("TRADING_AUTONOMY_INSTANCE_ID", self.instance_id.clone().into()),
+            (
+                "TRADING_AUTONOMY_INSTANCE_ID",
+                self.instance_id.clone().into(),
+            ),
             (
                 "TRADING_AUTONOMY_AUTH_SECRET_FILE",
                 self.auth_secret_file.clone().into_os_string(),

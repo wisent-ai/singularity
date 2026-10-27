@@ -40,8 +40,9 @@ Every cycle:
 3. Executes native model tool calls through Las or the built-in persistent
    memory, self-modification, model-switching and child-creation tools.
 4. Records model and instance cost exactly once.
-5. Credits revenue only when a trusted `finance__*` or `trading__*` tool reports
-   realized revenue.
+5. Credits no revenue from tool output: no finance surface issues a typed
+   settlement record yet, so earnings change only through such a record once
+   one exists, never by reading amounts out of a tool's answer.
 6. Atomically saves state and begins another cycle while the being is solvent.
 
 A normal assistant response ends only the current cycle. `run` continues until
@@ -203,8 +204,6 @@ Run `cargo test --test managed-resume -- --ignored --nocapture`.
 The journey owns state, workspace and Las watermark beneath `.build/bootstrap-resume/`.
 It verifies saved identity, unchanged persistent life across resume, and exact
 state preservation on both refusals. Reports and before/after state remain there.
-This proves runtime initialization only; capability issuance, an autonomous
-model cycle and Desktop observation require their own real qualification.
 
 ## Child beings
 
@@ -251,8 +250,8 @@ The owner-only state directory contains:
 - `state.json`: identity, persistent mind, model choice, budget, earnings,
   conversation, memories with optional import provenance, children and created
   resources;
-- `activity.jsonl`: starts, cycles, model usage, tool outcomes, costs, credited
-  revenue, mind imports, warnings and shutdowns;
+- `activity.jsonl`: starts, cycles, model usage, tool outcomes, costs, mind
+  imports, warnings and shutdowns (older logs may also hold credited revenue);
 - `state-import.sock`: owner-only local import boundary while `run` is active;
 - `children/<id>/`: independent state for child beings.
 
@@ -288,7 +287,7 @@ The package builds `singularity`, `singularity-bootstrap`,
 Release workers run `stado product cargo` with the immutable
 `private-cargo-sources` input, not GitHub credentials. From a committed source,
 publish and pin it with
-`stado release catalog pin-input . --name private-cargo-sources --source . --revision HEAD --cargo --json`,
+`stado release catalog input pin . --name private-cargo-sources --source . --revision HEAD --cargo --json`,
 then commit the updated release manifest. Repeat when locked private packages
 change. The shared [Cargo input contract](https://stado.wisent.com/docs/builds#private-cargo-build-inputs)
 covers publication, checksums, desktop controls and missing or stale input

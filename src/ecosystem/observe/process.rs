@@ -31,15 +31,16 @@ pub(super) async fn text(mut command: Command, operation: &str) -> Result<String
         Some(pid) => format!("pid {pid}"),
         None => "a command that has already ended".to_string(),
     };
-    let (stdout, stderr, status) = stado_wait::until(stado_wait::Kind::Process, operation, place, async {
-        tokio::try_join!(capture(stdout), capture(stderr), child.wait())
-    })
-    .await
-    .map_err(|error| {
-        AppError::Runtime(format!(
-            "{operation}: could not observe completion: {error}"
-        ))
-    })?;
+    let (stdout, stderr, status) =
+        stado_wait::until(stado_wait::Kind::Process, operation, place, async {
+            tokio::try_join!(capture(stdout), capture(stderr), child.wait())
+        })
+        .await
+        .map_err(|error| {
+            AppError::Runtime(format!(
+                "{operation}: could not observe completion: {error}"
+            ))
+        })?;
     if !status.success() {
         return Err(AppError::Runtime(format!(
             "{operation}: exit {:?}; stderr: {}; stdout: {}",

@@ -27,8 +27,10 @@ pub(crate) trait ToolHost {
 }
 
 /// Answers every request on stdin until stdin ends. A line that is not JSON
-/// is answered with the parser's own reason; a notification (no `id`) gets no
-/// answer, as JSON-RPC requires.
+/// is answered with the parser's own reason, and JSON that is not a request
+/// object (a batch included, which this MCP revision does not define) as an
+/// invalid request; a notification (no `id`) gets no answer, as JSON-RPC
+/// requires.
 pub(crate) async fn serve<H: ToolHost>(host: &H) -> io::Result<()> {
     let mut lines = BufReader::new(io::stdin()).lines();
     let mut stdout = io::stdout();
@@ -42,6 +44,16 @@ pub(crate) async fn serve<H: ToolHost>(host: &H) -> io::Result<()> {
                 continue;
             }
         };
+        if !request.is_object() {
+            let response = rpc_error(
+                Value::Null,
+                INVALID_REQUEST,
+                "invalid request",
+                &format!("a request is a JSON object, not {line}"),
+            );
+            write_response(&mut stdout, &response).await?;
+            continue;
+        }
         let Some(id) = request.get("id").cloned() else {
             continue;
         };

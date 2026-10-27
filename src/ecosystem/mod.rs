@@ -84,9 +84,9 @@ pub struct PageArgs {
     /// Continuation returned in next_cursor; omit to start a fresh listing.
     #[arg(long)]
     pub before: Option<i64>,
-    /// Records per page; omit to list every record.
+    /// Records per page, at least one; omit to list every record.
     #[arg(long)]
-    pub limit: Option<u32>,
+    pub limit: Option<std::num::NonZeroU32>,
 }
 #[derive(Debug, Args)]
 pub struct RecordsArgs {
@@ -104,14 +104,14 @@ pub struct RecordArgs {
     pub kind: String,
     /// The record id.
     pub id: String,
-    /// Byte offset the fragment starts at; next_offset of the previous fragment.
-    /// Omitted, the record is read from its first byte.
-    #[arg(long, default_value_t)]
-    pub offset: u64,
-    /// Bytes per fragment; omit to read the record whole from the offset.
+    /// Byte offset the fragment starts at: next_offset of the previous
+    /// fragment. Omitted, the record is read from its first byte.
     #[arg(long)]
-    pub bytes: Option<u32>,
-    /// The first fragment's content_sha256; required after offset zero.
+    pub offset: Option<std::num::NonZeroU64>,
+    /// Bytes per fragment, at least one; omit to read the record whole from the offset.
+    #[arg(long)]
+    pub bytes: Option<std::num::NonZeroU32>,
+    /// The first fragment's content_sha256; required with --offset.
     #[arg(long)]
     pub revision: Option<String>,
     #[command(flatten)]

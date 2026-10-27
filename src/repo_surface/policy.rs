@@ -28,8 +28,8 @@ pub struct RepoPolicy {
     pub required_checks: Vec<String>,
 }
 
-/// An allowlisted check. A policy that still names a `timeout_secs` is refused
-/// when it is read: no check is ended by a clock.
+/// An allowlisted check, named by its kind alone; any other field is refused
+/// when the policy is read. A check runs until git answers.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckPolicy {

@@ -41,10 +41,18 @@ pub(super) fn parse_csv(value: &str) -> Vec<String> {
         .map(str::to_owned)
         .collect()
 }
+/// A URL whose scheme is one of HTTP's own (`http::uri::Scheme`), the only
+/// ones the HTTP client sends to.
 pub fn parse_http_url(value: &str, name: &str) -> Result<Url, AppError> {
     let url = Url::parse(value).map_err(|error| AppError::Config(format!("{name}: {error}")))?;
-    if !matches!(url.scheme(), "http" | "https") {
-        return Err(AppError::Config(format!("{name} must use http or https")));
+    let schemes = [http::uri::Scheme::HTTP, http::uri::Scheme::HTTPS];
+    if !schemes.iter().any(|scheme| scheme.as_str() == url.scheme()) {
+        return Err(AppError::Config(format!(
+            "{name} must use {} or {}, not {}",
+            http::uri::Scheme::HTTP,
+            http::uri::Scheme::HTTPS,
+            url.scheme()
+        )));
     }
     Ok(url)
 }
@@ -59,7 +67,9 @@ pub fn read_secret(path: &PathBuf) -> Result<SecretString, AppError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if fs::metadata(path)?.permissions().mode() & GROUP_OR_OTHER_ACCESS != u32::default() {
+        let mode = fs::metadata(path)?.permissions().mode();
+        // Clearing the group and other bits changes the mode only when one is set.
+        if mode & !GROUP_OR_OTHER_ACCESS != mode {
             return Err(AppError::Secret(format!(
                 "{} must not be group/world accessible",
                 path.display()

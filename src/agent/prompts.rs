@@ -1,7 +1,4 @@
-//! The prompts a cycle is run under, and the revenue a trusted tool reported.
-
-use rust_decimal::Decimal;
-use serde_json::Value;
+//! The prompts a cycle is run under.
 
 use crate::config::RuntimeConfig;
 use crate::domain::{AgentState, ChatMessage, Role};
@@ -65,31 +62,4 @@ pub(super) fn cognition_messages(state: &AgentState) -> Vec<ChatMessage> {
     let mut messages = vec![ChatMessage::text(Role::System, system)];
     messages.extend(state.conversation.clone());
     messages
-}
-
-pub(super) fn trusted_revenue(tool: &str, content: &Value) -> Option<Decimal> {
-    if !(tool.starts_with("finance__") || tool.starts_with("trading__")) {
-        return None;
-    }
-    ["revenue_usd", "realized_profit_usd"]
-        .into_iter()
-        .filter_map(|key| find_decimal(content, key))
-        .find(|amount| *amount > Decimal::ZERO)
-}
-
-pub(super) fn find_decimal(value: &Value, key: &str) -> Option<Decimal> {
-    match value {
-        Value::Object(map) => map.iter().find_map(|(name, value)| {
-            if name == key {
-                value
-                    .as_str()
-                    .and_then(|text| text.parse().ok())
-                    .or_else(|| value.as_f64().and_then(Decimal::from_f64_retain))
-            } else {
-                find_decimal(value, key)
-            }
-        }),
-        Value::Array(values) => values.iter().find_map(|value| find_decimal(value, key)),
-        _ => None,
-    }
 }

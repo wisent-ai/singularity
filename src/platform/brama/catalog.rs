@@ -2,9 +2,9 @@ use super::constants::TOKENS_PER_MILLION;
 use super::{BramaClient, BramaCompletion, ModelsResponse, brama, map_network};
 use crate::{AppError, ErrorClass};
 use rust_decimal::Decimal;
-use std::num::NonZeroU64;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::num::NonZeroU64;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,7 +100,7 @@ impl BramaClient {
     /// from the file `SINGULARITY_MODEL_CATALOG_FILE` names, so its prices and
     /// limits are the operator's declaration rather than Brama's answer.
     pub async fn quote(&self, model: &str) -> Result<Quote, AppError> {
-        let (bytes, source) = match declared_catalog() {
+        let (bytes, source) = match declared_catalog()? {
             Some(path) => (
                 std::fs::read(&path).map_err(|error| {
                     brama(
@@ -141,7 +141,9 @@ impl BramaClient {
         ) else {
             return Err(brama(
                 ErrorClass::Permanent,
-                format!("model {model} has no context or output room in the catalog; no cost was authorized"),
+                format!(
+                    "model {model} has no context or output room in the catalog; no cost was authorized"
+                ),
             ));
         };
         if !entry.available
@@ -209,10 +211,15 @@ impl BramaClient {
 const CATALOG_FILE: &str = "SINGULARITY_MODEL_CATALOG_FILE";
 
 /// The catalog file the operator declared for a model service that is not
-/// Brama; `None` when the variable is unset or empty, which asks Brama.
-fn declared_catalog() -> Option<std::path::PathBuf> {
+/// Brama; `None` when the variable is unset, which asks Brama. A variable set
+/// to nothing names no file and is refused rather than read as unset.
+fn declared_catalog() -> Result<Option<std::path::PathBuf>, AppError> {
     match std::env::var_os(CATALOG_FILE) {
-        Some(path) if !path.is_empty() => Some(std::path::PathBuf::from(path)),
-        Some(_) | None => None,
+        None => Ok(None),
+        Some(path) if path.is_empty() => Err(brama(
+            ErrorClass::Permanent,
+            format!("{CATALOG_FILE} is set but empty; name the catalog file, or unset it to read Brama's catalog"),
+        )),
+        Some(path) => Ok(Some(std::path::PathBuf::from(path))),
     }
 }

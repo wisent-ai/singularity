@@ -1,10 +1,8 @@
-//! The one declared function a portfolio judgement answers through. The
-//! model used to be told to "return only JSON" in its text and the text was
-//! parsed, so prose around the object, or a field the prompt named
-//! differently, failed the judgement after its cost was spent. Each caller
-//! now states its answer as a JSON Schema; the request declares one function
-//! with that schema as its parameters, and the answer is the arguments of
-//! that one call.
+//! The one declared function a portfolio judgement answers through. Each
+//! caller states its answer as a JSON Schema; the request declares one
+//! function with that schema as its parameters, and the answer is the
+//! arguments of that one call, so prose around an answer or a field named
+//! outside the schema is refused by name instead of parsed out of text.
 
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};

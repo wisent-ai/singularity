@@ -11,7 +11,14 @@ impl BramaClient {
         body: &[u8],
     ) -> Result<reqwest::RequestBuilder, AppError> {
         let timestamp = chrono::Utc::now().timestamp().to_string();
-        let body_hash = hex::encode(Sha256::digest(body));
+        // Brama signs an empty body (a GET) with an empty body hash, not the
+        // hash of no bytes (crypto::hmac_auth::verify_agent_hmac); hashing it
+        // here left every signed catalogue read unverifiable.
+        let body_hash = if body.is_empty() {
+            String::new()
+        } else {
+            hex::encode(Sha256::digest(body))
+        };
         let signed = format!("{}:{}:{}", self.agent_id, timestamp, body_hash);
         let mut mac = Hmac::<Sha256>::new_from_slice(self.secret.expose_secret().as_bytes())
             .map_err(|error| {

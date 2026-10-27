@@ -22,10 +22,12 @@ pub(super) fn redeem(
     workload_id: &str,
     signing_key: &SigningKey,
 ) -> Result<Vec<u8>, AppError> {
-    let socket_metadata = fs::symlink_metadata(socket)
-        .map_err(|error| AppError::Secret(format!(
-            "inspect capability broker socket {}: {error}", socket.display()
-        )))?;
+    let socket_metadata = fs::symlink_metadata(socket).map_err(|error| {
+        AppError::Secret(format!(
+            "inspect capability broker socket {}: {error}",
+            socket.display()
+        ))
+    })?;
     if socket_metadata.file_type().is_symlink() || !socket_metadata.file_type().is_socket() {
         return Err(AppError::Secret(format!(
             "capability broker path {} must be a Unix socket, not a symlink or another file type",
@@ -38,11 +40,12 @@ pub(super) fn redeem(
     // the authorization id, which a bootstrap capability does not carry.
     let mut proof_input = Vec::from(PROOF_DOMAIN);
     for part in [capability_id, nonce.as_str(), workload_id, REDEEM_OPERATION] {
-        let part = std::ffi::CString::new(part)
-            .map_err(|error| AppError::Secret(format!(
+        let part = std::ffi::CString::new(part).map_err(|error| {
+            AppError::Secret(format!(
                 "capability redemption proof field contains NUL at byte {}",
                 error.nul_position()
-            )))?;
+            ))
+        })?;
         proof_input.extend_from_slice(part.as_bytes_with_nul());
     }
     proof_input.extend_from_slice(NO_AUTHORIZATION.as_bytes());
@@ -60,46 +63,64 @@ pub(super) fn redeem(
     };
     let mut encoded = zeroize::Zeroizing::new(serde_json::to_vec(&request)?);
     encoded.push(b'\n');
-    let mut stream = UnixStream::connect(socket)
-        .map_err(|error| AppError::Secret(format!(
-            "connect to capability broker {}: {error}", socket.display()
-        )))?;
+    let mut stream = UnixStream::connect(socket).map_err(|error| {
+        AppError::Secret(format!(
+            "connect to capability broker {}: {error}",
+            socket.display()
+        ))
+    })?;
     let write_result = stream.write_all(&encoded);
     encoded.zeroize();
-    write_result.map_err(|error| AppError::Secret(format!(
-        "write capability redemption request to {}: {error}", socket.display()
-    )))?;
+    write_result.map_err(|error| {
+        AppError::Secret(format!(
+            "write capability redemption request to {}: {error}",
+            socket.display()
+        ))
+    })?;
 
-    let line = read_control_line(&mut stream).map_err(|error| AppError::Secret(format!(
-        "read capability broker {} control response: {error}", socket.display()
-    )))?;
-    let control: RedeemControl = serde_json::from_slice(&line)
-        .map_err(|error| AppError::Secret(format!(
+    let line = read_control_line(&mut stream).map_err(|error| {
+        AppError::Secret(format!(
+            "read capability broker {} control response: {error}",
+            socket.display()
+        ))
+    })?;
+    let control: RedeemControl = serde_json::from_slice(&line).map_err(|error| {
+        AppError::Secret(format!(
             "decode capability broker {} control response ({} bytes): {error}",
-            socket.display(), line.len()
-        )))?;
+            socket.display(),
+            line.len()
+        ))
+    })?;
     if control.version != WIRE_VERSION || control.status != "ok" {
         return Err(AppError::Secret(format!(
             "capability redemption denied by {}: version {:?}, status {:?}",
-            socket.display(), control.version, control.status
+            socket.display(),
+            control.version,
+            control.status
         )));
     }
     let length = control
         .secret_len
         .filter(|length| *length > 0)
-        .ok_or_else(|| AppError::Secret(format!(
-            "capability broker {} accepted redemption without a positive secret_len",
-            socket.display()
-        )))?;
+        .ok_or_else(|| {
+            AppError::Secret(format!(
+                "capability broker {} accepted redemption without a positive secret_len",
+                socket.display()
+            ))
+        })?;
     let mut secret = Vec::new();
-    secret.try_reserve_exact(length).map_err(|error| AppError::Secret(format!(
-        "allocate declared {length}-byte credential from {}: {error}", socket.display()
-    )))?;
+    secret.try_reserve_exact(length).map_err(|error| {
+        AppError::Secret(format!(
+            "allocate declared {length}-byte credential from {}: {error}",
+            socket.display()
+        ))
+    })?;
     secret.resize(length, 0_u8);
     if let Err(error) = stream.read_exact(&mut secret) {
         secret.zeroize();
         return Err(AppError::Secret(format!(
-            "read declared {length}-byte credential from {}: {error}", socket.display()
+            "read declared {length}-byte credential from {}: {error}",
+            socket.display()
         )));
     }
     let mut extra = [0_u8; 1];
@@ -138,29 +159,42 @@ pub(super) fn materialize(
             .write(true)
             .mode(0o600)
             .open(destination)
-            .map_err(|error| AppError::Secret(format!(
-                "create credential descriptor at {}: {error}", destination.display()
-            )))?;
-        fs::remove_file(destination).map_err(|error| AppError::Secret(format!(
-            "unlink empty credential file {} before writing secret bytes: {error}",
-            destination.display()
-        )))?;
-        file.write_all(&secret).map_err(|error| AppError::Secret(format!(
-            "write credential to anonymous descriptor created at {}: {error}",
-            destination.display()
-        )))?;
-        file.sync_all().map_err(|error| AppError::Secret(format!(
-            "sync anonymous credential descriptor created at {}: {error}",
-            destination.display()
-        )))?;
-        let metadata = file.metadata().map_err(|error| AppError::Secret(format!(
-            "inspect anonymous credential descriptor created at {}: {error}",
-            destination.display()
-        )))?;
+            .map_err(|error| {
+                AppError::Secret(format!(
+                    "create credential descriptor at {}: {error}",
+                    destination.display()
+                ))
+            })?;
+        fs::remove_file(destination).map_err(|error| {
+            AppError::Secret(format!(
+                "unlink empty credential file {} before writing secret bytes: {error}",
+                destination.display()
+            ))
+        })?;
+        file.write_all(&secret).map_err(|error| {
+            AppError::Secret(format!(
+                "write credential to anonymous descriptor created at {}: {error}",
+                destination.display()
+            ))
+        })?;
+        file.sync_all().map_err(|error| {
+            AppError::Secret(format!(
+                "sync anonymous credential descriptor created at {}: {error}",
+                destination.display()
+            ))
+        })?;
+        let metadata = file.metadata().map_err(|error| {
+            AppError::Secret(format!(
+                "inspect anonymous credential descriptor created at {}: {error}",
+                destination.display()
+            ))
+        })?;
         if !metadata.is_file() || metadata.permissions().mode() & GROUP_OR_OTHER_ACCESS != 0 {
             return Err(AppError::Config(format!(
                 "bootstrap credential descriptor created at {} is not an owner-only regular file: regular={}, mode={:o}",
-                destination.display(), metadata.is_file(), metadata.permissions().mode()
+                destination.display(),
+                metadata.is_file(),
+                metadata.permissions().mode()
             )));
         }
         Ok(file)

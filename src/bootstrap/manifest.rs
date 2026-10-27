@@ -51,21 +51,13 @@ pub(crate) fn validate_manifest(manifest: &BootstrapManifest) -> Result<(), AppE
     if manifest.capabilities.brama.id == manifest.capabilities.most.id
         || manifest.capabilities.brama_bearer.id == manifest.capabilities.brama.id
         || manifest.capabilities.brama_bearer.id == manifest.capabilities.most.id
-        || !valid_capability_binding(
-            &manifest.capabilities.brama,
-            BRAMA_PURPOSE,
-            "brama:",
-        )
+        || !valid_capability_binding(&manifest.capabilities.brama, BRAMA_PURPOSE, "brama:")
         || !valid_capability_binding(
             &manifest.capabilities.brama_bearer,
             BRAMA_BEARER_PURPOSE,
             "brama:",
         )
-        || !valid_capability_binding(
-            &manifest.capabilities.most,
-            MOST_PURPOSE,
-            "most:",
-        )
+        || !valid_capability_binding(&manifest.capabilities.most, MOST_PURPOSE, "most:")
         || !manifest.broker_socket.is_absolute()
         || !manifest.workload_private_key_file.is_absolute()
         || !manifest.singularity_executable.is_absolute()

@@ -6,14 +6,11 @@ use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Select};
 use serde_json::{Value, json};
 
-/// A page holds `limit` records when the caller names one, and every record otherwise.
-fn page_bounds(before: Option<i64>, limit: Option<u32>) -> Result<()> {
-    let empty_page = limit.is_some_and(|limit| NonZeroU32::new(limit).is_none());
-    let unusable_cursor = before.is_some_and(|value| !value.is_positive());
-    if empty_page || unusable_cursor {
-        return Err(AppError::Config(
-            "records takes a limit of at least 1 when given and a positive before cursor".into(),
-        ));
+/// A page's cursor, when named, is a record's sequence number, which is
+/// positive; a page's limit is non-zero by its type.
+fn page_bounds(before: Option<i64>) -> Result<()> {
+    if before.is_some_and(|value| !value.is_positive()) {
+        return Err(AppError::Config("records takes a positive before cursor".into()));
     }
     Ok(())
 }
@@ -36,8 +33,8 @@ fn listing(
 
 /// Whether a full page has an older record behind it: the next page exists
 /// exactly when the listing holds a record older than this page's last.
-fn page_is_full(limit: Option<u32>, read: usize) -> bool {
-    limit.is_some_and(|limit| read == limit as usize)
+fn page_is_full(limit: Option<NonZeroU32>, read: usize) -> bool {
+    limit.is_some_and(|limit| usize::try_from(limit.get()).is_ok_and(|limit| read == limit))
 }
 
 impl Store {
@@ -47,9 +44,9 @@ impl Store {
         kind: Option<&str>,
         initiative: Option<&str>,
         before: Option<i64>,
-        limit: Option<u32>,
+        limit: Option<NonZeroU32>,
     ) -> Result<Value> {
-        page_bounds(before, limit)?;
+        page_bounds(before)?;
         let being = self.being.clone();
         let kind = kind.map(str::to_owned);
         let initiative = initiative.map(str::to_owned);
@@ -89,7 +86,7 @@ impl Store {
                 page = page.filter(record::Column::Seq.lt(before));
             }
             if let Some(limit) = limit {
-                page = page.limit(u64::from(limit));
+                page = page.limit(u64::from(limit.get()));
             }
             let rows = page
                 .order_by_desc(record::Column::Seq)
@@ -134,8 +131,8 @@ impl Store {
         Ok(json!({"items":items,"next_cursor":next_cursor}))
     }
 
-    pub fn items(&self, kind: &str, before: Option<i64>, limit: Option<u32>) -> Result<Value> {
-        page_bounds(before, limit)?;
+    pub fn items(&self, kind: &str, before: Option<i64>, limit: Option<NonZeroU32>) -> Result<Value> {
+        page_bounds(before)?;
         let (being, kind_owned) = (self.being.clone(), kind.to_owned());
         let (rows, older) = self.db.run(move |db| async move {
             let base = listing(being, Some(kind_owned), None);
@@ -144,7 +141,7 @@ impl Store {
                 page = page.filter(record::Column::Seq.lt(before));
             }
             if let Some(limit) = limit {
-                page = page.limit(u64::from(limit));
+                page = page.limit(u64::from(limit.get()));
             }
             let rows = page
                 .order_by_desc(record::Column::Seq)
@@ -173,21 +170,18 @@ impl Store {
         Ok(json!({"items":items,"next_cursor":next_cursor}))
     }
 
+    /// One UTF-8 fragment of a record: from `offset` (the record's first
+    /// byte when none), `bytes` long (to its end when none). A continuation
+    /// names the first fragment's digest in `revision`.
     pub fn record(
         &self,
         kind: &str,
         id: &str,
-        offset: u64,
-        bytes: Option<u32>,
+        offset: Option<NonZeroU64>,
+        bytes: Option<NonZeroU32>,
         revision: Option<&str>,
     ) -> Result<Value> {
-        if bytes.is_some_and(|bytes| NonZeroU32::new(bytes).is_none()) {
-            return Err(AppError::Config(
-                "record bytes must be at least 1 when given; omit it to read the whole record"
-                    .into(),
-            ));
-        }
-        if NonZeroU64::new(offset).is_some() && revision.is_none() {
+        if offset.is_some() && revision.is_none() {
             return Err(AppError::Config(
                 "continuing a record requires its content_sha256 in revision".into(),
             ));
@@ -220,22 +214,36 @@ impl Store {
         if let Some(expected) = revision {
             if expected != digest {
                 return Err(AppError::State(format!(
-                    "record {kind}/{id} revision mismatch: requested {expected}, observed {digest}; restart at offset 0 without revision to read its current contents"
+                    "record {kind}/{id} revision mismatch: requested {expected}, observed {digest}; read it again from its first byte, with no offset and no revision, for its current contents"
                 )));
             }
         }
-        if offset > total {
-            return Err(AppError::Config(format!(
-                "record {kind}/{id} offset {offset} exceeds its {total} bytes"
-            )));
-        }
-        let start = offset as usize;
-        // Without a fragment size the record is read whole from the offset.
-        let end = match bytes {
-            Some(bytes) => (start + bytes as usize).min(data.len()),
-            None => data.len(),
+        let rest: &[u8] = match offset {
+            Some(offset) => {
+                let at = usize::try_from(offset.get()).map_err(|error| {
+                    AppError::Config(format!("record offset {offset} is not a position here: {error}"))
+                })?;
+                data.get(at..).ok_or_else(|| {
+                    AppError::Config(format!(
+                        "record {kind}/{id} offset {offset} exceeds its {total} bytes"
+                    ))
+                })?
+            }
+            None => &data,
         };
-        let text = match String::from_utf8(data[start..end].to_vec()) {
+        // Without a fragment size the record is read whole from the offset.
+        let fragment = match bytes {
+            Some(bytes) => {
+                let size = usize::try_from(bytes.get()).map_err(|error| {
+                    AppError::Config(format!("record bytes {bytes} is not a size here: {error}"))
+                })?;
+                &rest[..rest.len().min(size)]
+            }
+            None => rest,
+        };
+        // Where the fragment starts, measured back from the record's end.
+        let start = total - rest.len() as u64;
+        let text = match String::from_utf8(fragment.to_vec()) {
             Ok(text) => text,
             Err(error) if error.utf8_error().error_len().is_none() => {
                 let valid = error.utf8_error().valid_up_to();
@@ -245,19 +253,19 @@ impl Store {
             }
             Err(error) => {
                 return Err(AppError::Config(format!(
-                    "record {kind}/{id} offset {offset} is not a UTF-8 boundary, or its stored text is invalid: {error}"
+                    "record {kind}/{id} offset {start} is not a UTF-8 boundary, or its stored text is invalid: {error}"
                 )));
             }
         };
-        let end = offset + text.len() as u64;
-        if end == offset && offset < total {
+        let end = start + text.len() as u64;
+        if text.is_empty() && !rest.is_empty() {
             return Err(AppError::State(format!(
-                "record {kind}/{id} returned no complete character at offset {offset}"
+                "record {kind}/{id} returned no complete character at offset {start}"
             )));
         }
         debug_assert_eq!(digest, format!("{:x}", Sha256::digest(&data)));
         Ok(
-            json!({"kind":kind,"id":id,"offset":offset,"total_bytes":total,
+            json!({"kind":kind,"id":id,"offset":start,"total_bytes":total,
             "content_sha256":digest,"text":text,"next_offset":(end < total).then_some(end)}),
         )
     }

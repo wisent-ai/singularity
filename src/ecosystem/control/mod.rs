@@ -55,6 +55,9 @@ struct Request {
     #[serde(default)]
     params: Params,
 }
+/// A zero limit, size or offset is refused by the parse, naming the field:
+/// a page and a fragment hold something, and a fragment that continues a
+/// record starts after its first byte (omitted, it starts there).
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Params {
@@ -62,9 +65,9 @@ struct Params {
     kind: Option<String>,
     initiative_id: Option<String>,
     before: Option<i64>,
-    limit: Option<u32>,
-    offset: Option<u64>,
-    bytes: Option<u32>,
+    limit: Option<std::num::NonZeroU32>,
+    offset: Option<std::num::NonZeroU64>,
+    bytes: Option<std::num::NonZeroU32>,
     revision: Option<String>,
 }
 
@@ -98,9 +101,7 @@ fn dispatch(shared: &Shared, request: Request) -> Result<Value, AppError> {
                 .id
                 .as_deref()
                 .ok_or_else(|| AppError::Config("record requires id".into()))?,
-            params
-                .offset
-                .ok_or_else(|| AppError::Config("record requires offset".into()))?,
+            params.offset,
             params.bytes,
             params.revision.as_deref(),
         ),

@@ -119,7 +119,11 @@ impl LasSupervisor {
             process.env("LAS_SKIP", value);
         }
         if let Some(agent) = skarbiec_agent {
-            for name in SKARBIEC_PATH_ENV.iter().copied().chain([SKARBIEC_COMMAND_ENV]) {
+            for name in SKARBIEC_PATH_ENV
+                .iter()
+                .copied()
+                .chain([SKARBIEC_COMMAND_ENV])
+            {
                 if let Some(value) = std::env::var_os(name) {
                     process.env(name, value);
                 }

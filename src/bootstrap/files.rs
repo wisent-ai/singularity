@@ -15,12 +15,12 @@ pub(super) fn read_control_line(stream: &mut UnixStream) -> Result<Vec<u8>, AppE
     let mut line = Vec::new();
     loop {
         let mut byte = [0_u8; 1];
-        stream
-            .read_exact(&mut byte)
-            .map_err(|error| AppError::Secret(format!(
+        stream.read_exact(&mut byte).map_err(|error| {
+            AppError::Secret(format!(
                 "capability redemption control read failed after {} bytes before newline: {error}",
                 line.len()
-            )))?;
+            ))
+        })?;
         if byte[0] == b'\n' {
             return Ok(line);
         }
@@ -172,16 +172,20 @@ impl RuntimeCleanup {
             match fs::remove_file(&path) {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(AppError::Secret(format!(
-                    "remove empty bootstrap credential path {}: {error}", path.display()
-                ))),
+                Err(error) => {
+                    return Err(AppError::Secret(format!(
+                        "remove empty bootstrap credential path {}: {error}",
+                        path.display()
+                    )));
+                }
             }
         }
         match fs::remove_dir(&self.directory) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(AppError::Secret(format!(
-                "remove bootstrap runtime directory {}: {error}", self.directory.display()
+                "remove bootstrap runtime directory {}: {error}",
+                self.directory.display()
             ))),
         }
     }
@@ -194,4 +198,3 @@ impl Drop for RuntimeCleanup {
         }
     }
 }
-

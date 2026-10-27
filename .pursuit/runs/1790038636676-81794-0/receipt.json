@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "runId": "1790038636676-81794-0",
+  "state": "failed",
+  "roughObjective": "Read the Singularity README and Cargo.toml in this checkout. Without changing any file or external state, report the installed product purpose and whether its documented CLI already offers a durable ecosystem portfolio. Cite the two source files; do not implement anything.",
+  "startedAtMs": 1790038636676,
+  "completedAtMs": 1790038639449,
+  "runDirectory": "/Users/lukaszbartoszcze/Documents/CodingProjects/Wisent/singularity/.pursuit/runs/1790038636676-81794-0",
+  "contractPath": null,
+  "verdictPath": null,
+  "preferenceEvidencePath": "/Users/lukaszbartoszcze/Documents/CodingProjects/Wisent/singularity/.pursuit/runs/1790038636676-81794-0/preference-evidence.json",
+  "stageRecords": [],
+  "executionRounds": 0,
+  "error": "model router 403: {\"error\":{\"attempts\":0,\"code\":\"forbidden\",\"message\":\"forbidden\",\"retryable\":false,\"type\":\"authorization_error\"}}"
+}

@@ -192,8 +192,8 @@ mod redeem;
 pub use credentials::adopt_credentials;
 pub(crate) use credentials::{inherit_for_child, inherited_credentials};
 
-use files::*;
 pub(crate) use files::read_hex_32;
-use manifest::*;
+use files::*;
 pub(crate) use manifest::validate_manifest;
+use manifest::*;
 use redeem::*;

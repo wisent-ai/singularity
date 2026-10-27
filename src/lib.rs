@@ -17,9 +17,9 @@ pub mod most;
 pub mod onboarding;
 #[path = "lifecycle/state_service.rs"]
 pub mod state_service;
+pub mod ticket;
 #[path = "platform/tools/mod.rs"]
 pub mod tools;
-pub mod ticket;
 #[path = "platform/trading.rs"]
 pub mod trading;
 

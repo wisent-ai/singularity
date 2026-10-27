@@ -55,6 +55,7 @@ clap = { version = "4", features = ["derive", "env"] }
 hex = "0.4"
 ed25519-dalek = "2"
 hmac = "0.12"
+http = "1"
 libc = "0.2"
 pursuit = { git = "https://github.com/wisent-ai/pursuit", rev = "8955ef3db3a91a22cefa73bbd4f9fb36ec6f3e44" }
 regex = "1"
