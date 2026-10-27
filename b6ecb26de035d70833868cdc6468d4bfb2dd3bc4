@@ -14,6 +14,7 @@ This commit solves no problem of ours alone: it adds or repairs a general primit
 As a very strict, grumpy senior engineer who hates AI, I tried with everything I have to refuse this commit: what I attacked, what I checked, and why each attack failed.
 
 Repairs: "Clean up failed ticket outputs without hiding the cause" the recovery journey accepted a parseable public key without proving correspondence with its private half, and its fixture reused a process-derived directory.
+Repairs: "fix: retain bootstrap redemption operation and failure cause" the bootstrap refusal journey shared its process-derived fixture path across invocations; the shared case now exclusively creates a UUID directory and reports cleanup failures while retaining the missing-socket assertion.
 Harsh-Review-Attacked: false key compatibility; the case signs bytes with the persisted private output and verifies them with the persisted public output through openssl pkeyutl, then requires rejection of changed message bytes.
 Harsh-Review-Attacked: an occupied destination overwritten during refusal; both existing key files are read before the command and compared afterwards, and a refused public write leaves its existing destination unchanged and removes only the newly created private key.
 Harsh-Review-Attacked: fixture reuse deleting another run; each case exclusively creates a UUID directory and cleanup reports its own failure.
