@@ -9,20 +9,28 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// A product identifier names its repository, so it is held to GitHub's
+/// limit on repository names. https://docs.github.com/enterprise-cloud@latest/repositories/creating-and-managing-repositories/creating-a-new-repository
+/// "The repository name must not exceed 100 characters"
+const REPOSITORY_NAME_MAX_CHARS: usize = 100;
+
 pub fn identifier(value: &str) -> bool {
     !value.is_empty()
-        && value.len() <= 100
+        && value.len() <= REPOSITORY_NAME_MAX_CHARS
         && value
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
         && value.as_bytes()[0].is_ascii_alphanumeric()
 }
 
+/// What an identifier must be, for the refusal that names one which is not.
+pub const IDENTIFIER_RULE: &str = "lowercase ASCII letters, digits and '-', starting with a letter or digit, at most 100 characters (GitHub's repository-name limit)";
+
 pub fn immutable_request(directory: &Path, id: &str, request: &Value) -> Result<PathBuf, AppError> {
     if !identifier(id) {
-        return Err(AppError::Config(
-            "invalid execution request identifier".into(),
-        ));
+        return Err(AppError::Config(format!(
+            "execution request identifier {id:?} is invalid: it must be {IDENTIFIER_RULE}"
+        )));
     }
     let directory = directory.join("requests");
     fs::create_dir_all(&directory)?;

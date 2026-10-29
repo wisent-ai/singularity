@@ -28,9 +28,10 @@ pub async fn ensure(
         AppError::Config("new-product opportunity must name its product identifier".into())
     })?;
     if !source::identifier(id) {
-        return Err(AppError::Config(
-            "new-product identifier must be a lowercase product name".into(),
-        ));
+        return Err(AppError::Config(format!(
+            "new-product identifier {id:?} is invalid: it must be {}",
+            source::IDENTIFIER_RULE
+        )));
     }
     if !policy.allow_product_creation {
         return Err(AppError::Config("product creation is not delegated".into()));
