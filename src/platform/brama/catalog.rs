@@ -215,7 +215,9 @@ fn declared_catalog() -> Result<Option<std::path::PathBuf>, AppError> {
         None => Ok(None),
         Some(path) if path.is_empty() => Err(brama(
             ErrorClass::Permanent,
-            format!("{CATALOG_FILE} is set but empty; name the catalog file, or unset it to read Brama's catalog"),
+            format!(
+                "{CATALOG_FILE} is set but empty; name the catalog file, or unset it to read Brama's catalog"
+            ),
         )),
         Some(path) => Ok(Some(std::path::PathBuf::from(path))),
     }

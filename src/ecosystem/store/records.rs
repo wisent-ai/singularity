@@ -10,7 +10,9 @@ use serde_json::{Value, json};
 /// positive; a page's limit is non-zero by its type.
 fn page_bounds(before: Option<i64>) -> Result<()> {
     if before.is_some_and(|value| !value.is_positive()) {
-        return Err(AppError::Config("records takes a positive before cursor".into()));
+        return Err(AppError::Config(
+            "records takes a positive before cursor".into(),
+        ));
     }
     Ok(())
 }
@@ -131,7 +133,12 @@ impl Store {
         Ok(json!({"items":items,"next_cursor":next_cursor}))
     }
 
-    pub fn items(&self, kind: &str, before: Option<i64>, limit: Option<NonZeroU32>) -> Result<Value> {
+    pub fn items(
+        &self,
+        kind: &str,
+        before: Option<i64>,
+        limit: Option<NonZeroU32>,
+    ) -> Result<Value> {
         page_bounds(before)?;
         let (being, kind_owned) = (self.being.clone(), kind.to_owned());
         let (rows, older) = self.db.run(move |db| async move {
@@ -221,7 +228,9 @@ impl Store {
         let rest: &[u8] = match offset {
             Some(offset) => {
                 let at = usize::try_from(offset.get()).map_err(|error| {
-                    AppError::Config(format!("record offset {offset} is not a position here: {error}"))
+                    AppError::Config(format!(
+                        "record offset {offset} is not a position here: {error}"
+                    ))
                 })?;
                 data.get(at..).ok_or_else(|| {
                     AppError::Config(format!(
