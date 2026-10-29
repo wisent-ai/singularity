@@ -20,8 +20,9 @@ impl Store {
         })?;
         if legacy_exists {
             return Err(AppError::State(format!(
-                "{} is a private ecosystem store from before the fleet database; this being's state now lives in the fleet database singularity, and a private file beside it would split its history",
-                legacy.display()
+                "{} is a private ecosystem store from before the fleet database; this being's state now lives in the fleet database singularity, and a private file beside it would split its history. Singularity does not copy that file: carry its history into the fleet database or move the file out of {}, then start the being again",
+                legacy.display(),
+                directory.display()
             )));
         }
         let owner = json!({"agent_id":identity.agent_id,"role":identity.role,
