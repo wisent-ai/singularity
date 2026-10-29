@@ -25,14 +25,6 @@ const DESCRIPTORS: &[&str] = &[
 /// What fcntl answers when it refuses; errno then says why.
 const FCNTL_REFUSED: libc::c_int = -1; // https://pubs.opengroup.org/onlinepubs/9799919799/functions/fcntl.html "Otherwise, -1 shall be returned and errno set"
 
-/// The link count of a file no directory names: an anonymous credential file
-/// has none. https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html "st_nlink Number of hard links to the file."
-const NO_LINKS: u64 = 0;
-
-/// The size of a file that holds no byte, which no credential is.
-/// https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_stat.h.html "st_size For regular files, the file size in bytes."
-const NO_BYTES: u64 = 0;
-
 pub(crate) struct InheritedCredentials {
     files: [File; DESCRIPTORS.len()],
     pub(crate) brama: SecretString,
@@ -146,11 +138,11 @@ pub fn adopt_credentials() -> Result<(), AppError> {
         })?;
         // SAFETY: geteuid has no arguments or memory preconditions.
         let owner = unsafe { libc::geteuid() };
-        let linked = metadata.nlink() != NO_LINKS;
-        // Shared when clearing the group and other bits changes the mode.
+        // An anonymous credential file is named by no directory: no links.
+        let linked = metadata.nlink() != 0;
         let mode = metadata.permissions().mode();
-        let shared = mode & !crate::config::GROUP_OR_OTHER_ACCESS != mode;
-        let empty = metadata.len() == NO_BYTES;
+        let shared = mode & crate::config::GROUP_OR_OTHER_ACCESS != 0;
+        let empty = metadata.len() == 0;
         if !metadata.is_file() || linked || metadata.uid() != owner || shared || empty {
             return Err(AppError::Secret(format!(
                 "{name}: inherited descriptor {} must be an anonymous, nonempty, owner-only regular file; observed regular={}, links={}, uid={}, effective_uid={owner}, mode={:o}, bytes={}",

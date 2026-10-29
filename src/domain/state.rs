@@ -151,7 +151,7 @@ impl AgentState {
             identity,
             mind,
             status: AgentStatus::Starting,
-            cycle: u64::default(),
+            cycle: 0,
             budget,
             conversation: Vec::new(),
             recent_actions: vec![],

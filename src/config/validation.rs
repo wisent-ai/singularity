@@ -68,10 +68,9 @@ pub fn read_secret(path: &PathBuf) -> Result<SecretString, AppError> {
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = fs::metadata(path)?.permissions().mode();
-        // Clearing the group and other bits changes the mode only when one is set.
-        if mode & !GROUP_OR_OTHER_ACCESS != mode {
+        if mode & GROUP_OR_OTHER_ACCESS != 0 {
             return Err(AppError::Secret(format!(
-                "{} must not be group/world accessible",
+                "{} must not be group/world accessible; observed mode {mode:o}; chmod go-rwx it",
                 path.display()
             )));
         }

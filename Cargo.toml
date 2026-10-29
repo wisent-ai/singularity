@@ -83,3 +83,7 @@ zeroize = "1"
 # `singularity ticket key --holder workload` writes the PEM public key
 # Skarbiec's grant issue requires; ed25519-dalek encodes it.
 default = ["ed25519-dalek/pem"]
+
+[lints.clippy]
+# A condition is written as the condition it is: `if`, not a match on a bool.
+match_bool = "deny"

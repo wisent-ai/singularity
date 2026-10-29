@@ -29,7 +29,7 @@ impl Budget {
             api_spent: Decimal::ZERO,
             instance_spent: Decimal::ZERO,
             earned: Decimal::ZERO,
-            total_tokens: u64::default(),
+            total_tokens: 0,
         })
     }
 

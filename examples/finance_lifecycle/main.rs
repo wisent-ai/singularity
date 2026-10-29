@@ -99,7 +99,7 @@ fn before_timelock(dir: PathBuf, mcp: PathBuf) -> Outcome<()> {
         first_lease: Utc::now() - Duration::seconds(30),
         tx: String::new(),
         hash: String::new(),
-        events: u64::default(),
+        events: 0,
     };
     let first_lease = progress.first_lease;
     let mut walk = Walk::start(dir, mcp, progress)?;

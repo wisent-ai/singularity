@@ -9,26 +9,32 @@ use crate::domain::{ActivityEvent, AgentStatus, ChatMessage, Role};
 use crate::error::AppError;
 use crate::tools::ToolStatus;
 
-/// Cycles are counted from the first, one at a time: the first cycle is
-/// number one and each cycle adds one (`NonZeroU64::MIN`).
-const FIRST_CYCLE: u64 = std::num::NonZeroU64::MIN.get();
-
 impl Agent {
     pub async fn run_once(&mut self) -> Result<CycleReport, AppError> {
         if !self.state.budget.can_call() {
             self.state.status = AgentStatus::Exhausted;
             return Ok(self.report("budget_exhausted", None, vec![]));
         }
-        self.state.cycle = self.state.cycle.saturating_add(FIRST_CYCLE);
+        // A counter at its type's end is refused rather than left standing still.
+        let last = self.state.cycle;
+        self.state.cycle = last.checked_add(1).ok_or_else(|| {
+            AppError::State(format!(
+                "the cycle counter stands at {last}, the largest it can hold; start a new being to run further cycles"
+            ))
+        })?;
         self.state.updated_at = Utc::now();
         self.store.append(&ActivityEvent::CycleStarted {
             at: Utc::now(),
             cycle: self.state.cycle,
         })?;
+        // The conversation only grows and every cycle opens it with its own
+        // message, so an empty one means this is the agent's opening cycle:
+        // the configured stimulus is delivered there and nowhere else.
+        let opening_cycle = self.state.conversation.is_empty();
         self.state
             .conversation
             .push(ChatMessage::text(Role::User, cycle_message(&self.state)));
-        if self.state.cycle == FIRST_CYCLE {
+        if opening_cycle {
             if let Some(stimulus) = self.config.stimulus.as_deref() {
                 self.state.conversation.push(ChatMessage::text(
                     Role::User,

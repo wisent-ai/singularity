@@ -20,15 +20,9 @@ fn log_filter() -> Result<EnvFilter, singularity::AppError> {
 }
 
 fn main() {
-    let code = match run() {
-        Ok(()) => i32::default(),
-        Err(error) => {
-            eprintln!("singularity: {error}");
-            error.exit_code()
-        }
-    };
-    if code != i32::default() {
-        std::process::exit(code);
+    if let Err(error) = run() {
+        eprintln!("singularity: {error}");
+        std::process::exit(error.exit_code());
     }
 }
 

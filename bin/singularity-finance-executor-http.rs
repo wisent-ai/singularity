@@ -58,9 +58,15 @@ async fn run() -> Result<(), String> {
             serde_json::from_slice::<Value>(&bytes)
                 .map_err(|error| format!("execution request is invalid JSON: {error}"))
         })
-        .and_then(|request| match request.is_object() {
-            true => Ok(request),
-            false => Err("execution request must be a JSON object".to_string()),
+        .and_then(|request| {
+            if request.is_object() {
+                Ok(request)
+            } else {
+                Err(format!(
+                    "execution request must be a JSON object, not {}; send the finance service's execution request object on stdin",
+                    request_kind(&request)
+                ))
+            }
         });
     let request = match request {
         Ok(request) => request,
@@ -138,6 +144,18 @@ fn hex_of_length(value: &str, bytes: usize) -> bool {
     hex::decode(value).is_ok_and(|decoded| decoded.len() == bytes)
 }
 
+/// The JSON kind a request that is not an object turned out to be.
+fn request_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "a boolean",
+        Value::Number(_) => "a number",
+        Value::String(_) => "a string",
+        Value::Array(_) => "an array",
+        Value::Object(_) => "an object",
+    }
+}
+
 fn required_https_url(name: &str) -> Result<Url, String> {
     let raw = std::env::var(name).map_err(|error| format!("{name} is required: {error}"))?;
     let url = Url::parse(&raw).map_err(|error| format!("{name}: {error}"))?;
@@ -171,11 +189,14 @@ fn required_owner_file(name: &str) -> Result<PathBuf, String> {
         // The group's and others' read, write and search bits.
         let shared = u32::from(libc::S_IRWXG | libc::S_IRWXO);
         let mode = metadata.permissions().mode();
-        // A mode with none of those bits sets nothing outside their complement.
-        let owner_only = mode | !shared == !shared;
-        if metadata.uid() != unsafe { libc::geteuid() } || !owner_only {
+        let owner_only = mode & shared == 0;
+        let owner = unsafe { libc::geteuid() };
+        if metadata.uid() != owner || !owner_only {
             return Err(format!(
-                "{name} must be owner-only and owned by the current user"
+                "{name} must be owner-only and owned by the current user; observed {} owned by uid {} with mode {:o} (effective uid {owner}); chmod go-rwx and chown it to this user",
+                path.display(),
+                metadata.uid(),
+                mode
             ));
         }
     }

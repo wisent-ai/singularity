@@ -4,7 +4,6 @@ use crate::{AppError, ErrorClass};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::num::NonZeroU64;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -135,22 +134,20 @@ impl BramaClient {
                 )
             })?;
         // A route with no context or output room cannot carry a call.
-        let (Some(context_window), Some(max_output_tokens)) = (
-            NonZeroU64::new(entry.context_window),
-            NonZeroU64::new(entry.max_output_tokens),
-        ) else {
+        let (context_window, max_output_tokens) = (entry.context_window, entry.max_output_tokens);
+        if context_window == 0 || max_output_tokens == 0 {
             return Err(brama(
                 ErrorClass::Permanent,
                 format!(
-                    "model {model} has no context or output room in the catalog; no cost was authorized"
+                    "model {model} has no context or output room in the catalog (context_window={context_window}, max_output_tokens={max_output_tokens}); no cost was authorized"
                 ),
             ));
-        };
+        }
         if !entry.available
             || !entry.id.contains('/')
             || self
                 .max_tokens
-                .is_some_and(|limit| u64::from(limit) > max_output_tokens.get())
+                .is_some_and(|limit| u64::from(limit) > max_output_tokens)
             || entry.price.input <= Decimal::ZERO
             || entry.price.output <= Decimal::ZERO
             || entry.price.cache_read < Decimal::ZERO
@@ -165,10 +162,10 @@ impl BramaClient {
             Some(limit) => u64::from(limit),
             // Without a stated limit the completion may use the model's whole
             // output limit, so that is the most it can cost.
-            None => max_output_tokens.get(),
+            None => max_output_tokens,
         };
         let input = entry.price.input + entry.price.cache_read + entry.price.cache_write;
-        let upper_usd = (Decimal::from(context_window.get()) * input
+        let upper_usd = (Decimal::from(context_window) * input
             + Decimal::from(output_ceiling) * entry.price.output)
             / Decimal::from(TOKENS_PER_MILLION);
         Ok(Quote {

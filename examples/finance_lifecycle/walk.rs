@@ -47,7 +47,7 @@ impl Walk {
             .spawn()?;
         let stdin = child.stdin.take().ok_or("the MCP child has no stdin")?;
         let stdout = BufReader::new(child.stdout.take().ok_or("the MCP child has no stdout")?);
-        let next_id = u64::default();
+        let next_id = 0;
         let mut walk = Self {
             dir,
             keys,
