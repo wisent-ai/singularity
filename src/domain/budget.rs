@@ -1,4 +1,5 @@
-//! The budget a being spends from, and what a debit or credit does to it.
+//! The budget a being spends from, and what a debit does to it. Nothing
+//! credits it: no finance surface issues a typed settlement record yet.
 use std::str::FromStr;
 
 use rust_decimal::Decimal;
@@ -58,15 +59,6 @@ impl Budget {
         self.total_tokens = self.total_tokens.saturating_add(usage.total_tokens);
         self.remaining -= total;
         total
-    }
-
-    pub fn credit(&mut self, amount: Decimal) -> Result<(), AppError> {
-        if amount.is_sign_negative() {
-            return Err(AppError::State("revenue cannot be negative".into()));
-        }
-        self.earned += amount;
-        self.remaining += amount;
-        Ok(())
     }
 
     pub fn net_profit(&self) -> Decimal {

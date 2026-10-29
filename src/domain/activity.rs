@@ -36,12 +36,6 @@ pub enum ActivityEvent {
         cycle: u64,
         amount: Decimal,
     },
-    RevenueCredited {
-        at: DateTime<Utc>,
-        cycle: u64,
-        amount: Decimal,
-        source: String,
-    },
     MindImported {
         at: DateTime<Utc>,
         source_kind: String,
