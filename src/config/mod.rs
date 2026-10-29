@@ -43,6 +43,28 @@ pub enum Command {
     Ecosystem(crate::ecosystem::EcosystemArgs),
     /// Write the keys and the signed launch ticket singularity-bootstrap starts a managed being from
     Ticket(crate::ticket::TicketArgs),
+    /// Read a being's activity journal without changing its state
+    Activity(ActivityArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ActivityArgs {
+    #[command(subcommand)]
+    pub verb: ActivityVerb,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ActivityVerb {
+    /// List every journal event, oldest first; a damaged line is refused with its line number
+    List(ActivityListArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct ActivityListArgs {
+    /// State directory of the being whose journal is read; no directory is
+    /// assumed.
+    #[arg(long, env = "SINGULARITY_STATE_DIR")]
+    pub state_dir: PathBuf,
 }
 
 #[derive(Debug, Clone, Args)]

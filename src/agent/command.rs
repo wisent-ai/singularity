@@ -121,6 +121,15 @@ pub async fn execute(
         }
         Command::Doctor(args) => doctor(&args, text).await,
         Command::Tools(args) => list_tools(&args).await,
+        Command::Activity(args) => match args.verb {
+            crate::config::ActivityVerb::List(list) => answer(
+                &json!({
+                    "journal": crate::domain::journal_path(&list.state_dir),
+                    "events": crate::domain::read_journal(&list.state_dir)?,
+                }),
+                text,
+            ),
+        },
     }
 }
 

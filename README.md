@@ -222,6 +222,7 @@ singularity import      import attributed memory, knowledge, and profile JSON
 singularity onboarding  show first use; add --import-file or --reset
 singularity doctor      verify Brama, Las, Most and required surfaces
 singularity tools       print the dynamic and built-in tool catalogue
+singularity activity list --state-dir DIR  print every journal event, oldest first; refuses a damaged line by number
 singularity ecosystem run --policy FILE [--start-paused] [--ready-json]  run the delegated portfolio
 singularity ecosystem status --json     read the live portfolio owner
 singularity ecosystem opportunities     list hypotheses and decisions (every one; --limit N --before CURSOR pages)

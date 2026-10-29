@@ -69,7 +69,7 @@ impl ActivityStore {
         set_mode(&dir, "448")?;
         Ok(Self {
             state_path: dir.join("state.json"),
-            journal_path: dir.join("activity.jsonl"),
+            journal_path: journal_path(&dir),
             dir,
         })
     }
@@ -114,6 +114,65 @@ impl ActivityStore {
     pub fn state_path(&self) -> &Path {
         &self.state_path
     }
+}
+
+/// The journal file of the being whose state lives in `state_dir`.
+pub fn journal_path(state_dir: &Path) -> PathBuf {
+    state_dir.join("activity.jsonl")
+}
+
+/// Every event of a being's activity journal, oldest first, read without
+/// creating or changing anything. A journal that does not exist yet holds no
+/// event; any other read failure, and any line that is not a JSON object with
+/// a `type`, is refused naming the journal and the physical line, so a
+/// damaged history is never shown as a shorter complete one.
+pub fn read_journal(state_dir: &Path) -> Result<Vec<serde_json::Value>, AppError> {
+    let path = journal_path(state_dir);
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(AppError::State(format!(
+                "activity journal {} cannot be read: {error}",
+                path.display()
+            )));
+        }
+    };
+    let text = String::from_utf8(bytes).map_err(|error| {
+        AppError::State(format!(
+            "activity journal {} is not UTF-8: {error}",
+            path.display()
+        ))
+    })?;
+    // An empty file is a journal nothing was written to. Otherwise there is
+    // one record per physical line: the terminator after the last record ends
+    // it and is no record itself, but an empty line inside the journal is one.
+    if text.is_empty() {
+        return Ok(Vec::new());
+    }
+    let records = text.strip_suffix('\n').unwrap_or(&text);
+    records
+        .split('\n')
+        .enumerate()
+        .map(|(index, line)| {
+            let number = index + 1;
+            let damaged = |reason: String| {
+                AppError::State(format!(
+                    "activity journal {} line {number} {reason}; the journal is damaged and no line of it was shown",
+                    path.display()
+                ))
+            };
+            let value: serde_json::Value = serde_json::from_str(line)
+                .map_err(|error| damaged(format!("is not JSON: {error}")))?;
+            if !value.is_object() {
+                return Err(damaged("is not a JSON object".into()));
+            }
+            if !value.get("type").is_some_and(serde_json::Value::is_string) {
+                return Err(damaged("has no type".into()));
+            }
+            Ok(value)
+        })
+        .collect()
 }
 
 fn set_mode(path: &Path, decimal_mode: &str) -> Result<(), AppError> {
