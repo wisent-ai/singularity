@@ -151,7 +151,11 @@ pub(super) fn reject_symlink_components(root: &Path, relative: &Path) -> Surface
         // through the check that keeps symlinks out of commits.
         match fs::symlink_metadata(&p) {
             Ok(m) if m.file_type().is_symlink() => {
-                return Err(SurfaceError::policy("changed path contains a symlink"));
+                return Err(SurfaceError::policy(format!(
+                    "changed path {} contains a symlink at {}; replace the symlink with the file it points to or leave it out of the change",
+                    relative.display(),
+                    p.display()
+                )));
             }
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

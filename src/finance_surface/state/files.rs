@@ -124,8 +124,11 @@ pub(super) fn atomic_json<T: Serialize>(
     create_new_bytes(&tmp, &bytes)
         .map_err(|e| SurfaceError::state(format!("cannot persist temporary state: {e}")))?;
     fs::rename(&tmp, path).map_err(|e| {
-        let _ = fs::remove_file(&tmp);
-        SurfaceError::state(format!("cannot install state: {e}"))
+        let cleanup = match fs::remove_file(&tmp) {
+            Ok(()) => String::new(),
+            Err(removal) => format!("; its temporary file {} is left behind: {removal}", tmp.display()),
+        };
+        SurfaceError::state(format!("cannot install state {}: {e}{cleanup}", path.display()))
     })?;
     sync_parent(path).map_err(|e| SurfaceError::state(format!("cannot sync state directory: {e}")))
 }

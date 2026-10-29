@@ -127,10 +127,22 @@ pub(super) fn atomic_owner_json<T: Serialize>(path: &Path, value: &T) -> Surface
         .map_err(|error| SurfaceError::state(format!("cannot sync state directory: {error}")))?;
         Ok(())
     })();
-    if result.is_err() {
-        let _ = fs::remove_file(&tmp);
+    result.map_err(|error| left_behind(error, &tmp))
+}
+
+/// A failed write's error, extended with its temporary file when that file
+/// could not be removed either; a temporary file that never existed is no failure.
+#[cfg(unix)]
+fn left_behind(mut error: SurfaceError, tmp: &Path) -> SurfaceError {
+    match fs::remove_file(tmp) {
+        Ok(()) => {}
+        Err(removal) if removal.kind() == std::io::ErrorKind::NotFound => {}
+        Err(removal) => error.message.push_str(&format!(
+            "; its temporary file {} is left behind: {removal}",
+            tmp.display()
+        )),
     }
-    result
+    error
 }
 
 #[cfg(unix)]
@@ -172,10 +184,7 @@ pub(super) fn atomic_owner_json_new<T: Serialize>(path: &Path, value: &T) -> Sur
         .map_err(|error| SurfaceError::state(format!("cannot sync request directory: {error}")))?;
         Ok(())
     })();
-    if result.is_err() {
-        let _ = fs::remove_file(&tmp);
-    }
-    result
+    result.map_err(|error| left_behind(error, &tmp))
 }
 
 #[cfg(not(unix))]

@@ -22,9 +22,20 @@ pub struct StateImportRequest {
 
 impl StateImportRequest {
     pub fn respond(self, result: Result<ImportReport, AppError>) {
-        let _ = self
+        // The connection that asked waits on the other end; if it has gone,
+        // the import still happened (or failed) and is said here instead.
+        if let Err(unsent) = self
             .response
-            .send(result.map_err(|error| error.to_string()));
+            .send(result.map_err(|error| error.to_string()))
+        {
+            let outcome = match unsent {
+                Ok(report) => format!("accepted={}", report.accepted),
+                Err(error) => format!("refused: {error}"),
+            };
+            eprintln!(
+                "singularity: a state import finished ({outcome}) after its connection closed; the requester did not receive the result"
+            );
+        }
     }
 }
 
@@ -72,7 +83,14 @@ impl StateImportService {
 impl Drop for StateImportService {
     fn drop(&mut self) {
         self.task.abort();
-        let _ = fs::remove_file(&self.path);
+        match fs::remove_file(&self.path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => eprintln!(
+                "singularity: the local state import socket {} could not be removed: {error}; the next start refuses it unless it is a stale socket",
+                self.path.display()
+            ),
+        }
     }
 }
 
@@ -96,8 +114,16 @@ pub async fn import_through_service(
     document: &[u8],
 ) -> Result<Option<ImportReport>, AppError> {
     let path = socket_path(state_dir);
-    if !path.exists() {
-        return Ok(None);
+    match fs::symlink_metadata(&path) {
+        Ok(_) => {}
+        // No socket: no runtime owns this state directory, so the caller imports directly.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(AppError::State(format!(
+                "local state import service at {} cannot be inspected: {error}; fix the state directory's permissions",
+                path.display()
+            )));
+        }
     }
     let mut stream = UnixStream::connect(&path).await.map_err(|error| {
         AppError::State(format!(
@@ -178,8 +204,15 @@ fn socket_path(state_dir: &Path) -> PathBuf {
 }
 
 async fn prepare_socket_path(path: &Path) -> Result<(), AppError> {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return Ok(());
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(AppError::State(format!(
+                "local state import path {} cannot be inspected: {error}; fix the state directory's permissions",
+                path.display()
+            )));
+        }
     };
     if !metadata.file_type().is_socket() {
         return Err(AppError::State(format!(
@@ -187,11 +220,26 @@ async fn prepare_socket_path(path: &Path) -> Result<(), AppError> {
             path.display()
         )));
     }
-    if UnixStream::connect(path).await.is_ok() {
-        return Err(AppError::State(
-            "another Singularity runtime already owns the local state import service".into(),
-        ));
+    match UnixStream::connect(path).await {
+        Ok(_) => {
+            return Err(AppError::State(format!(
+                "another Singularity runtime already owns the local state import service at {}; stop it or use another state directory",
+                path.display()
+            )));
+        }
+        // Nobody listens on it: a socket left by a runtime that ended.
+        Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => {}
+        Err(error) => {
+            return Err(AppError::State(format!(
+                "local state import socket {} cannot be probed: {error}; it is left in place",
+                path.display()
+            )));
+        }
     }
-    fs::remove_file(path)?;
-    Ok(())
+    fs::remove_file(path).map_err(|error| {
+        AppError::State(format!(
+            "stale local state import socket {} could not be removed: {error}",
+            path.display()
+        ))
+    })
 }
