@@ -186,14 +186,17 @@ pub struct CommonArgs {
     pub workspace: PathBuf,
     #[arg(long, env = "SINGULARITY_RESUME", default_value = "false")]
     pub resume: bool,
-    /// Brama's base URL. No address is assumed: the host's service directory
-    /// or the launching declaration names it.
+    /// Brama's base URL. Unnamed, the being never dials Brama itself: the
+    /// model service is what `stado capabilities resolve inference
+    /// --consumer singularity` hands out, Brama's route or the endpoint
+    /// declared in its place.
     #[arg(long, env = "BRAMA_BASE_URL")]
-    pub brama_url: String,
+    pub brama_url: Option<String>,
     /// The Brama model or selector (`any`, `any-vision-capable`, `task:<name>`)
-    /// cognition runs on; none is assumed.
+    /// cognition runs on; none is assumed. Required on Brama's route; an
+    /// endpoint in Brama's place serves the model it declares instead.
     #[arg(long, env = "BRAMA_MODEL")]
-    pub brama_model: String,
+    pub brama_model: Option<String>,
     #[arg(long, env = "BRAMA_HMAC_SECRET_FILE")]
     pub brama_secret_file: Option<PathBuf>,
     #[arg(long, env = "BRAMA_BEARER_TOKEN_FILE")]
@@ -242,8 +245,11 @@ pub struct CommonArgs {
     pub trading: crate::trading::TradingArgs,
 }
 
+mod model_service;
 mod runtime;
 mod validation;
+
+pub use model_service::ModelService;
 
 pub use runtime::*;
 pub use validation::*;

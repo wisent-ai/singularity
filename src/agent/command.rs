@@ -136,23 +136,24 @@ pub async fn execute(
 pub(super) async fn doctor(args: &CommonArgs, text: bool) -> Result<(), AppError> {
     let config = RuntimeConfig::from_args(args)?;
     let brama = BramaClient::new(
-        config.brama_url.clone(),
-        config.brama_model.clone(),
+        config.model_service.clone(),
+        config.model.clone(),
         config.identity.agent_id.clone(),
-        config.brama_secret.clone(),
-        config.brama_bearer.clone(),
         config.max_tokens,
         config.temperature,
     )?;
     brama.health().await?;
     let models = brama.models().await?;
-    let selector = config.brama_model == "any"
-        || config.brama_model == "any-vision-capable"
-        || config.brama_model.starts_with("task:");
-    if !selector && !models.iter().any(|model| model == &config.brama_model) {
+    let selector = config.model == "any"
+        || config.model == "any-vision-capable"
+        || config.model.starts_with("task:");
+    if !selector && !models.iter().any(|model| model == &config.model) {
         return Err(AppError::Config(format!(
-            "configured Brama model is unavailable: {}",
-            config.brama_model
+            "configured model {} is not served by {} at {}; it serves {}",
+            config.model,
+            brama.provider(),
+            brama.base_url(),
+            models.join(", ")
         )));
     }
     let health = if let Some(endpoint) = config.most.as_ref() {
@@ -185,7 +186,13 @@ pub(super) async fn doctor(args: &CommonArgs, text: bool) -> Result<(), AppError
     let tools = las.tools().len();
     las.shutdown().await?;
     answer(
-        &json!({"ok":true,"brama_model":config.brama_model,"most":health,"las_tools":tools}),
+        &json!({
+            "ok": true,
+            "model": config.model,
+            "model_service": {"provider": brama.provider(), "url": brama.base_url().as_str()},
+            "most": health,
+            "las_tools": tools,
+        }),
         text,
     )?;
     Ok(())

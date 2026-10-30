@@ -54,15 +54,34 @@ pub async fn jeden(shared: &Shared, args: &[&str]) -> Result<Value, AppError> {
     let mut child = Command::new("jeden");
     child
         .args(args)
-        .env("BRAMA_URL", config.brama_url.as_str())
-        .env("BRAMA_TOKEN", config.brama_bearer.expose_secret())
-        .env(
-            "WISENT_APP_AGENT_AUTH_SECRET",
-            config.brama_secret.expose_secret(),
-        )
         .env("WISENT_APP_AGENT_ID", &config.identity.agent_id)
-        .env("JEDEN_MODEL", &config.brama_model)
         .env("JEDEN_PURSUIT_STATE_ROOT", directory);
+    // On Brama's route Jeden is handed the same address, credentials and
+    // model; with an endpoint in Brama's place it asks Stado's capability
+    // resolution for itself, and no Brama credential is passed on.
+    match &config.model_service {
+        crate::config::ModelService::Brama {
+            url,
+            secret,
+            bearer,
+        } => {
+            child
+                .env("BRAMA_URL", url.as_str())
+                .env("BRAMA_TOKEN", bearer.expose_secret())
+                .env("WISENT_APP_AGENT_AUTH_SECRET", secret.expose_secret())
+                .env("JEDEN_MODEL", &config.model);
+        }
+        crate::config::ModelService::InPlace { .. } => {
+            for name in [
+                "BRAMA_URL",
+                "BRAMA_TOKEN",
+                "WISENT_APP_AGENT_AUTH_SECRET",
+                "JEDEN_MODEL",
+            ] {
+                child.env_remove(name);
+            }
+        }
+    }
     let operation = format!("jeden {}", args.join(" "));
     let output = process::text(child, &operation).await?;
     serde_json::from_str(&output)

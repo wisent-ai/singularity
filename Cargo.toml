@@ -47,6 +47,10 @@ path = "tests/bootstrap/ticket.rs"
 name = "managed-resume"
 path = "tests/bootstrap/resume.rs"
 
+[[test]]
+name = "resolved-model-service"
+path = "tests/configuration/resolved.rs"
+
 [dependencies]
 async-trait = "0.1"
 base64 = "0.22"

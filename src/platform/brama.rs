@@ -10,11 +10,11 @@ mod constants;
 pub use catalog::Quote;
 
 use reqwest::{Client, StatusCode};
-use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
+use crate::config::ModelService;
 use crate::domain::{ChatMessage, TokenUsage, ToolCall, ToolDefinition};
 use crate::error::{AppError, ErrorClass};
 
@@ -101,11 +101,11 @@ pub struct BramaCompletion {
 
 pub struct BramaClient {
     http: Client,
-    base_url: Url,
+    /// Brama, or the endpoint Stado handed out in its place, with only the
+    /// credentials that service may receive.
+    service: ModelService,
     model: String,
     agent_id: String,
-    secret: SecretString,
-    bearer: SecretString,
     /// Sent only when the operator stated one; otherwise the model's own limit applies.
     max_tokens: Option<u32>,
     /// Sent only when the operator stated one; otherwise the provider's default applies.
@@ -114,24 +114,20 @@ pub struct BramaClient {
 
 impl BramaClient {
     pub fn new(
-        base_url: Url,
+        service: ModelService,
         model: String,
         agent_id: String,
-        secret: SecretString,
-        bearer: SecretString,
         max_tokens: Option<u32>,
         temperature: Option<f64>,
     ) -> Result<Self, AppError> {
-        // A call waits for Brama's own answer or the caller's cancellation;
-        // Brama decides how long an upstream may take.
+        // A call waits for the service's own answer or the caller's
+        // cancellation; the service decides how long an upstream may take.
         let http = Client::builder().build().map_err(map_network)?;
         Ok(Self::from_client(
             http,
-            base_url,
+            service,
             model,
             agent_id,
-            secret,
-            bearer,
             max_tokens,
             temperature,
         ))
@@ -140,29 +136,30 @@ impl BramaClient {
     /// Use an explicitly constructed transport, including callers that wait for completion.
     pub fn from_client(
         http: Client,
-        base_url: Url,
+        service: ModelService,
         model: String,
         agent_id: String,
-        secret: SecretString,
-        bearer: SecretString,
         max_tokens: Option<u32>,
         temperature: Option<f64>,
     ) -> Self {
         Self {
             http,
-            base_url,
+            service,
             model,
             agent_id,
-            secret,
-            bearer,
             max_tokens,
             temperature,
         }
     }
 
-    /// The Brama endpoint this client calls; a spawned child is handed the same one.
+    /// The model service this client calls; a spawned child is handed the same one.
     pub fn base_url(&self) -> &Url {
-        &self.base_url
+        self.service.url()
+    }
+
+    /// `brama`, or the provider of the endpoint answering in its place.
+    pub fn provider(&self) -> &str {
+        self.service.provider()
     }
 
     pub fn set_model(&mut self, model: String) {
@@ -268,7 +265,8 @@ impl BramaClient {
     }
 
     fn endpoint(&self, path: &str) -> Result<Url, AppError> {
-        self.base_url
+        self.service
+            .url()
             .join(path)
             .map_err(|error| brama(ErrorClass::Permanent, format!("invalid endpoint: {error}")))
     }

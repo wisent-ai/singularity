@@ -99,9 +99,11 @@ pub(super) fn file_write(workspace: &Path, arguments: Map<String, Value>) -> Too
 }
 
 /// A child is a full being started by its parent, so it is handed everything
-/// the parent was declared with — the Brama address and model, the Las
-/// program, entrypoint and surfaces, and Most — explicitly, never by
-/// inheriting whatever environment this process happened to start in.
+/// the parent was declared with — Brama's address and model (or, when an
+/// endpoint answers in Brama's place, neither, so the child asks Stado's
+/// capability resolution as its parent did), the Las program, entrypoint and
+/// surfaces, and Most — explicitly, never by inheriting whatever environment
+/// this process happened to start in.
 pub(super) async fn spawn_child(
     state: &mut AgentState,
     config: &crate::config::RuntimeConfig,
@@ -109,7 +111,6 @@ pub(super) async fn spawn_child(
     arguments: Map<String, Value>,
 ) -> ToolOutcome {
     let state_dir = config.state_dir.as_path();
-    let brama_url = &config.brama_url;
     let name = match required_text(&arguments, "name") {
         Ok(value) => value,
         Err(error) => return error,
@@ -152,8 +153,6 @@ pub(super) async fn spawn_child(
             "SINGULARITY_CYCLE_INTERVAL_SECS",
             config.cycle_interval.as_secs().to_string(),
         )
-        .env("BRAMA_BASE_URL", brama_url.as_str())
-        .env("BRAMA_MODEL", &config.brama_model)
         .env("LAS_COMMAND", &config.las_command)
         .env("LAS_MCP_ENTRYPOINT", &config.las_entrypoint)
         .env("LAS_ONLY", &config.las_only)
@@ -169,6 +168,18 @@ pub(super) async fn spawn_child(
         .env("LAS_RELEASE_WATERMARK_FILE", &config.las_release_watermark);
     if let Some(skip) = config.las_skip.as_deref() {
         command.env("LAS_SKIP", skip);
+    }
+    match &config.model_service {
+        crate::config::ModelService::Brama { url, .. } => {
+            command
+                .env("BRAMA_BASE_URL", url.as_str())
+                .env("BRAMA_MODEL", &config.model);
+        }
+        crate::config::ModelService::InPlace { .. } => {
+            command
+                .env_remove("BRAMA_BASE_URL")
+                .env_remove("BRAMA_MODEL");
+        }
     }
     if let Some(most) = most {
         command.env("MOST_BASE_URL", most.base_url().as_str());

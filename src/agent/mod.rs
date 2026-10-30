@@ -73,7 +73,7 @@ impl Agent {
                     learnings: Vec::new(),
                     memories: Vec::new(),
                     children: Vec::new(),
-                    current_model: config.brama_model.clone(),
+                    current_model: config.model.clone(),
                 },
                 Budget::new(config.starting_balance)?,
             ),
@@ -92,11 +92,9 @@ impl Agent {
             None
         };
         let brama = BramaClient::new(
-            config.brama_url.clone(),
-            config.brama_model.clone(),
+            config.model_service.clone(),
+            config.model.clone(),
             config.identity.agent_id.clone(),
-            config.brama_secret.clone(),
-            config.brama_bearer.clone(),
             config.max_tokens,
             config.temperature,
         )?;

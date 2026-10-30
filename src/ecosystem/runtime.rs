@@ -24,7 +24,7 @@ fn policy(args: &RunArgs, config: &RuntimeConfig) -> Result<Policy, AppError> {
     if policy.schema_version != Policy::SCHEMA_VERSION
         || policy.id.trim().is_empty()
         || policy.model.trim().is_empty()
-        || policy.model != config.brama_model
+        || policy.model != config.model
         || policy.budget_usd <= Decimal::ZERO
         || policy.initiative_limit_usd <= Decimal::ZERO
         || policy.initiative_limit_usd > policy.budget_usd
@@ -111,14 +111,12 @@ pub(super) async fn run(args: RunArgs, cancellation: CancellationToken) -> Resul
     }
     let http = reqwest::Client::builder()
         .build()
-        .map_err(|e| AppError::Runtime(format!("Brama transport: {e}")))?;
+        .map_err(|e| AppError::Runtime(format!("model service transport: {e}")))?;
     let client = Arc::new(BramaClient::from_client(
         http,
-        config.brama_url.clone(),
-        config.brama_model.clone(),
+        config.model_service.clone(),
+        config.model.clone(),
         config.identity.agent_id.clone(),
-        config.brama_secret.clone(),
-        config.brama_bearer.clone(),
         config.max_tokens,
         config.temperature,
     ));

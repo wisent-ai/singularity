@@ -25,7 +25,7 @@ fn an_undeclared_budget_price_or_cadence_is_refused_before_runtime_startup() {
         ("--code-digest", digest.as_str()),
         ("--policy-digest", digest.as_str()),
         ("--policy-sequence", "1"),
-        ("--brama-url", "https://brama.wisent.com"),
+        ("--brama-url", "http://127.0.0.1:9"),
         ("--brama-model", "any"),
         ("--las-command", "las"),
         ("--las-only", ""),

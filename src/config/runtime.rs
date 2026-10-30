@@ -20,10 +20,12 @@ pub struct RuntimeConfig {
     pub workspace: PathBuf,
     pub state_dir: PathBuf,
     pub resume: bool,
-    pub brama_url: Url,
-    pub brama_model: String,
-    pub brama_secret: SecretString,
-    pub brama_bearer: SecretString,
+    /// Brama, named or resolved, or the endpoint Stado hands out in its place,
+    /// each with only the credentials it may receive.
+    pub model_service: ModelService,
+    /// The model or selector cognition runs on: `BRAMA_MODEL` on Brama's
+    /// route, the model the endpoint declares in its place.
+    pub model: String,
     pub max_tokens: Option<u32>,
     pub temperature: Option<f64>,
     pub las_command: String,
@@ -116,6 +118,70 @@ impl RuntimeConfig {
         validate_digest(&args.executable_digest, "executable digest")?;
         validate_digest(&args.code_digest, "code digest")?;
         validate_digest(&args.policy_digest, "policy digest")?;
+        let named_url = args
+            .brama_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let named_model = args
+            .brama_model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        let resolved = match named_url {
+            Some(url) => model_service::Resolved::Brama(parse_http_url(url, "BRAMA_BASE_URL")?),
+            None => model_service::resolve()?,
+        };
+        let (model_service, model) = match resolved {
+            model_service::Resolved::Brama(url) => {
+                let model = named_model.ok_or_else(|| {
+                    AppError::Config(format!(
+                        "BRAMA_MODEL (--brama-model) is required on Brama's route at {url}: no model or selector is assumed"
+                    ))
+                })?;
+                let secret = match (args.brama_secret_file.as_ref(), inherited) {
+                    (Some(path), _) => read_secret(path)?,
+                    (None, Some(credentials)) => credentials.brama.clone(),
+                    (None, None) => SecretString::from(
+                        std::env::var("WISENT_APP_AGENT_AUTH_SECRET").map_err(|_| {
+                            AppError::Secret(
+                                "BRAMA_HMAC_SECRET_FILE or WISENT_APP_AGENT_AUTH_SECRET is required"
+                                    .into(),
+                            )
+                        })?,
+                    ),
+                };
+                let bearer = match (args.brama_bearer_file.as_ref(), inherited) {
+                    (Some(path), _) => read_secret(path)?,
+                    (None, Some(credentials)) => credentials.bearer.clone(),
+                    (None, None) => return Err(AppError::Secret(
+                        "BRAMA_BEARER_TOKEN_FILE or a bootstrap handoff is required: an agent signature does not replace Brama caller authorization".into()
+                    )),
+                };
+                (
+                    ModelService::Brama {
+                        url,
+                        secret,
+                        bearer,
+                    },
+                    model,
+                )
+            }
+            model_service::Resolved::InPlace {
+                provider,
+                url,
+                model,
+                key,
+            } => {
+                if let Some(named) = named_model.filter(|named| named != &model) {
+                    return Err(AppError::Config(format!(
+                        "BRAMA_MODEL (--brama-model) names {named}, but {provider} at {url} answers in Brama's place serving {model}; unset BRAMA_MODEL or declare that model with stado config set capabilities.inference.endpoint.model"
+                    )));
+                }
+                (ModelService::InPlace { provider, url, key }, model)
+            }
+        };
         Ok(Self {
             identity: AgentIdentity {
                 agent_id: args.agent_id.clone(),
@@ -140,27 +206,8 @@ impl RuntimeConfig {
             workspace,
             state_dir: args.state_dir.clone(),
             resume: args.resume,
-            brama_url: parse_http_url(&args.brama_url, "BRAMA_BASE_URL")?,
-            brama_model: args.brama_model.clone(),
-            brama_secret: match (args.brama_secret_file.as_ref(), inherited) {
-                (Some(path), _) => read_secret(path)?,
-                (None, Some(credentials)) => credentials.brama.clone(),
-                (None, None) => SecretString::from(std::env::var("WISENT_APP_AGENT_AUTH_SECRET").map_err(
-                    |_| {
-                        AppError::Secret(
-                            "BRAMA_HMAC_SECRET_FILE or WISENT_APP_AGENT_AUTH_SECRET is required"
-                                .into(),
-                        )
-                    },
-                )?),
-            },
-            brama_bearer: match (args.brama_bearer_file.as_ref(), inherited) {
-                (Some(path), _) => read_secret(path)?,
-                (None, Some(credentials)) => credentials.bearer.clone(),
-                (None, None) => return Err(AppError::Secret(
-                    "BRAMA_BEARER_TOKEN_FILE or a bootstrap handoff is required: an agent signature does not replace Brama caller authorization".into()
-                )),
-            },
+            model_service,
+            model,
             max_tokens: args.max_tokens,
             temperature: args.temperature,
             las_command: args.las_command.clone(),

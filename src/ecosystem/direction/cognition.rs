@@ -169,7 +169,7 @@ pub async fn ask<T: DeserializeOwned>(
                 let input = Input {
                     id: id.clone(),
                     purpose: purpose.into(),
-                    model: state.config.brama_model.clone(),
+                    model: state.config.model.clone(),
                     max_tokens: state.config.max_tokens,
                     temperature: state.config.temperature,
                     instruction: instruction.into(),
@@ -189,7 +189,7 @@ pub async fn ask<T: DeserializeOwned>(
             state.store.set_meta(&key, &id)?;
         }
         if input.purpose != purpose
-            || input.model != state.config.brama_model
+            || input.model != state.config.model
             || input.max_tokens != state.config.max_tokens
             || input.temperature != state.config.temperature
         {
