@@ -152,12 +152,13 @@ impl BramaClient {
         }
     }
 
-    /// The model service this client calls; a spawned child is handed the same one.
-    pub fn base_url(&self) -> &Url {
-        self.service.url()
+    /// Where this client's requests go: Brama's address, or the command
+    /// each request is handed to Stado with.
+    pub fn describe(&self) -> String {
+        self.service.describe()
     }
 
-    /// `brama`, or the provider of the endpoint answering in its place.
+    /// `brama`, or `stado` when requests go to Stado's alternatives.
     pub fn provider(&self) -> &str {
         self.service.provider()
     }
@@ -179,30 +180,14 @@ impl BramaClient {
             tools,
         };
         let body = serde_json::to_vec(&request)?;
-        let response = stado_wait::request(
-            self.authenticate(self.http.post(self.endpoint("v1/chat/completions")?), &body)?
-                .header("content-type", "application/json")
-                .body(body),
-        )
-        .await
-        .map_err(map_indeterminate)?;
-        let status = response.status();
-        let bytes = response.bytes().await.map_err(map_indeterminate)?;
-        if !status.is_success() {
-            let message = match serde_json::from_slice::<ErrorEnvelope>(&bytes) {
-                Ok(value) => value.error.message,
-                Err(error) => {
-                    let excerpt = String::from_utf8_lossy(&bytes);
-                    format!("error body is not a Brama error envelope ({error}): {excerpt}")
-                }
-            };
-            let class = if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
-                ErrorClass::Transient
-            } else {
-                ErrorClass::Permanent
-            };
-            return Err(brama(class, format!("HTTP {}: {message}", status.as_str())));
-        }
+        let bytes = match &self.service {
+            // No alternative answering now is not this request's fault: one
+            // may answer later (Brama returns, or a statement is recorded).
+            ModelService::Stado => crate::config::model_service::call(&body)
+                .await
+                .map_err(|refusal| brama(ErrorClass::Transient, refusal))?,
+            ModelService::Brama { .. } => self.posted(body).await?,
+        };
         let parsed: CompletionResponse = serde_json::from_slice(&bytes)?;
         let mut choices = parsed.choices.into_iter();
         let (Some(choice), None) = (choices.next(), choices.next()) else {
@@ -264,11 +249,50 @@ impl BramaClient {
         &self.model
     }
 
+    /// The body posted to Brama's chat completions, answered with a success.
+    async fn posted(&self, body: Vec<u8>) -> Result<Vec<u8>, AppError> {
+        let response = stado_wait::request(
+            self.authenticate(self.http.post(self.endpoint("v1/chat/completions")?), &body)?
+                .header("content-type", "application/json")
+                .body(body),
+        )
+        .await
+        .map_err(map_indeterminate)?;
+        let status = response.status();
+        let bytes = response.bytes().await.map_err(map_indeterminate)?;
+        if !status.is_success() {
+            let message = match serde_json::from_slice::<ErrorEnvelope>(&bytes) {
+                Ok(value) => value.error.message,
+                Err(error) => {
+                    let excerpt = String::from_utf8_lossy(&bytes);
+                    format!("error body is not a Brama error envelope ({error}): {excerpt}")
+                }
+            };
+            let class = if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+                ErrorClass::Transient
+            } else {
+                ErrorClass::Permanent
+            };
+            return Err(brama(class, format!("HTTP {}: {message}", status.as_str())));
+        }
+        Ok(bytes.to_vec())
+    }
+
+    /// `path` at the Brama address this launch names. Through Stado there is
+    /// no address: the request is handed to Stado instead.
     fn endpoint(&self, path: &str) -> Result<Url, AppError> {
-        self.service
-            .url()
-            .join(path)
-            .map_err(|error| brama(ErrorClass::Permanent, format!("invalid endpoint: {error}")))
+        match &self.service {
+            ModelService::Brama { url, .. } => url.join(path).map_err(|error| {
+                brama(ErrorClass::Permanent, format!("invalid endpoint: {error}"))
+            }),
+            ModelService::Stado => Err(brama(
+                ErrorClass::Permanent,
+                format!(
+                    "no Brama address is named, so {path} has no address; requests go to `{}`",
+                    self.service.describe()
+                ),
+            )),
+        }
     }
 }
 

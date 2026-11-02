@@ -45,12 +45,13 @@ The CLI refusal regression is `cargo test --test launch-declarations`. It
 starts the real binary without inherited environment values and checks each
 missing declaration before runtime startup. It does not replace a live
 `once` or child-spawn run against the configured Brama and Las services.
-`cargo test --test resolved-model-service` launches `doctor` with no Brama
+`cargo test --test resolved-model-service` runs the real CLI with no Brama
 address against the real Stado (`SINGULARITY_TEST_STADO`) in a home of its
-own: refused naming every alternative, then served by the real endpoint
-(`SINGULARITY_TEST_MODEL_SERVICE_URL`, `_MODEL`, `_KEY_FILE`) declared in
-Brama's place, with the real signed Las release the
-`SINGULARITY_TEST_LAS_*` variables name.
+own: `doctor` without Stado is refused naming the command; with it, `doctor`
+names Stado and its order; one real `once` cycle is refused with Stado's
+sentence, then answered by a statement recorded for exactly its request, and
+Stado records that the attestation alternative served the being. Las is the
+real signed release the `SINGULARITY_TEST_LAS_*` variables name.
 
 `ecosystem run` uses the same runtime declarations. Its control, reconciliation
 and dispatch timers use `SINGULARITY_CYCLE_INTERVAL_SECS`, which must be
@@ -96,25 +97,30 @@ carries Brama's signature headers, which another provider does not read.
 SINGULARITY_MODEL_CATALOG_FILE
 ```
 
-With no `BRAMA_BASE_URL` (`--brama-url`) named, a being never dials Brama
-itself: it asks `stado capabilities resolve inference --consumer singularity`
-(`STADO_BIN` names another executable). Brama's route, when Brama answers, is
-used as a named one, with `BRAMA_MODEL` and Brama's credentials. Otherwise the
-OpenAI-compatible endpoint declared in Brama's place
-(`capabilities.inference.endpoint.url`) serves the model it declares
-(`capabilities.inference.endpoint.model`; a different `BRAMA_MODEL` is refused
-naming both), is sent the `token` of the role
-`capabilities.inference.endpoint.key_role` names, and receives no Brama bearer,
-HMAC secret or signature; neither is required. Its prices come from
-`SINGULARITY_MODEL_CATALOG_FILE`; without it a priced call is refused with
-`<provider> at <url> answers in Brama's place and has no Brama catalog of
-prices; set SINGULARITY_MODEL_CATALOG_FILE …`. When no alternative answers,
-the launch is refused with `no BRAMA_BASE_URL (--brama-url) is named and no
-inference alternative answers singularity: brama at …; model-endpoint at …`.
-`doctor` reports the model and the `model_service` (`provider`, `url`) it
-checked. A Jeden observation run on that route is not handed Brama's address
-or credentials, and asks Stado itself; a child being is handed neither
-`BRAMA_BASE_URL` nor `BRAMA_MODEL`, and resolves as its parent did.
+With no `BRAMA_BASE_URL` (`--brama-url`) named, a being names no model
+service: each request is handed to `stado capabilities call inference
+--consumer singularity --json` (`STADO_BIN` names another executable), which
+asks the first alternative in Stado's selected order that answers it —
+Brama, or a statement recorded for that exact request — and no Brama bearer,
+HMAC secret or signature is read or sent. An alternative Stado gains later is
+used with no change here. `BRAMA_MODEL` is still the model each request asks
+for. Prices come from `SINGULARITY_MODEL_CATALOG_FILE`; without it a priced
+call is refused with `no Brama address is named, so requests go to `stado
+capabilities call inference --consumer singularity --json` and no Brama
+catalog of prices is read; set SINGULARITY_MODEL_CATALOG_FILE …`. An answer
+that states zero tokens of usage (a recorded statement) costs nothing and is
+not priced. When no alternative answers, the cycle is refused with `no
+inference alternative answered `stado capabilities call inference --consumer
+singularity --json` (exit status: 75): …` followed by Stado's sentence, which
+names each alternative's cause and the `stado capabilities attestation record
+inference --consumer singularity <sha> --checked …` command that answers the
+kept request. Without Stado, `doctor` is refused with `no BRAMA_BASE_URL
+(--brama-url) is named and `stado capabilities inference --json` could not
+run: …; name Brama's address or install Stado`. `doctor` reports
+`model_service` as `{provider: "stado", called_through, order}` there, and as
+`{provider: "brama", url}` on a named Brama. A Jeden observation run through
+Stado is not handed Brama's address or credentials; a child being is handed
+`BRAMA_MODEL` and no `BRAMA_BASE_URL`, and hands its requests to Stado too.
 
 Las and Most:
 
@@ -132,10 +138,10 @@ MOST_BASE_URL
 MOST_SERVICE_TOKEN_FILE
 ```
 
-`BRAMA_BASE_URL` (`--brama-url`) is optional: unnamed, the model service is
-resolved through Stado as above. `BRAMA_MODEL` (`--brama-model`) is required
-on Brama's route (`BRAMA_MODEL (--brama-model) is required on Brama's route at
-<url>`). `SINGULARITY_AGENT_NAME` and
+`BRAMA_BASE_URL` (`--brama-url`) is optional: unnamed, requests go to Stado
+as above. `BRAMA_MODEL` (`--brama-model`) is required on every model service
+(`BRAMA_MODEL (--brama-model) is required: no model or selector is
+assumed`). `SINGULARITY_AGENT_NAME` and
 `SINGULARITY_AGENT_TICKER` name the being; no persona is assumed.
 `LAS_COMMAND`, `LAS_MCP_ENTRYPOINT` and `LAS_ONLY` declare the program that
 runs Las, its MCP entrypoint and the surfaces this being is served; no
@@ -144,7 +150,7 @@ Las offers). `MOST_BASE_URL` (`--most-url`) is required whenever a Most
 credential is configured, through `MOST_SERVICE_TOKEN_FILE` or the bootstrap
 handoff; without it the runtime refuses with `a Most credential is configured
 but MOST_BASE_URL (--most-url) is not`. A child being is handed the parent's
-Brama address and model (on Brama's route), Las declaration and Most address
+model, its Brama address when one is named, Las declaration and Most address
 explicitly, so it reaches the same services as its parent.
 
 `BRAMA_MAX_TOKENS` (`--max-tokens`) and `BRAMA_TEMPERATURE` (`--temperature`)

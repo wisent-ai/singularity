@@ -95,11 +95,11 @@ impl BramaClient {
     /// Fetch fresh caller-scoped capacity and prices for `model`, a concrete
     /// route: the configured one before a reserved call, or the one that served
     /// a call when its cost is settled. Unknown capacity is not an affordable call.
-    /// A being whose model service is not Brama reads the same catalog shape
+    /// A being whose prices are not Brama's reads the same catalog shape
     /// from the file `SINGULARITY_MODEL_CATALOG_FILE` names, so its prices and
-    /// limits are the operator's declaration rather than Brama's answer; an
-    /// endpoint Stado hands out in Brama's place has no Brama catalog to ask,
-    /// so without that file its calls are refused before any is made.
+    /// limits are the operator's declaration rather than Brama's answer.
+    /// Through Stado there is no Brama catalog to ask, so without that file
+    /// its calls are refused before any is made.
     pub async fn quote(&self, model: &str) -> Result<Quote, AppError> {
         let (bytes, source) = match declared_catalog()? {
             Some(path) => (
@@ -115,9 +115,8 @@ impl BramaClient {
                 return Err(brama(
                     ErrorClass::Permanent,
                     format!(
-                        "{} at {} answers in Brama's place and has no Brama catalog of prices; set {CATALOG_FILE} to the catalog declaring {model}'s prices and limits",
-                        self.provider(),
-                        self.base_url()
+                        "no Brama address is named, so requests go to `{}` and no Brama catalog of prices is read; set {CATALOG_FILE} to the catalog declaring {model}'s prices and limits",
+                        self.describe()
                     ),
                 ));
             }

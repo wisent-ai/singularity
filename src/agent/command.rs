@@ -142,20 +142,33 @@ pub(super) async fn doctor(args: &CommonArgs, text: bool) -> Result<(), AppError
         config.max_tokens,
         config.temperature,
     )?;
-    brama.health().await?;
-    let models = brama.models().await?;
-    let selector = config.model == "any"
-        || config.model == "any-vision-capable"
-        || config.model.starts_with("task:");
-    if !selector && !models.iter().any(|model| model == &config.model) {
-        return Err(AppError::Config(format!(
-            "configured model {} is not served by {} at {}; it serves {}",
-            config.model,
-            brama.provider(),
-            brama.base_url(),
-            models.join(", ")
-        )));
-    }
+    let model_service = match &config.model_service {
+        // A named Brama: its health, and the model it serves.
+        crate::config::ModelService::Brama { .. } => {
+            brama.health().await?;
+            let models = brama.models().await?;
+            let selector = config.model == "any"
+                || config.model == "any-vision-capable"
+                || config.model.starts_with("task:");
+            if !selector && !models.iter().any(|model| model == &config.model) {
+                return Err(AppError::Config(format!(
+                    "configured model {} is not served by {} at {}; it serves {}",
+                    config.model,
+                    brama.provider(),
+                    brama.describe(),
+                    models.join(", ")
+                )));
+            }
+            json!({"provider": brama.provider(), "url": brama.describe()})
+        }
+        // Stado's alternatives: their order, read without asking any; which
+        // one answers is decided per request.
+        crate::config::ModelService::Stado => json!({
+            "provider": brama.provider(),
+            "called_through": brama.describe(),
+            "order": crate::config::model_service::alternatives()?,
+        }),
+    };
     let health = if let Some(endpoint) = config.most.as_ref() {
         let most = MostClient::new(endpoint.url.clone(), endpoint.token.clone())?;
         let health = most.health().await?;
@@ -189,7 +202,7 @@ pub(super) async fn doctor(args: &CommonArgs, text: bool) -> Result<(), AppError
         &json!({
             "ok": true,
             "model": config.model,
-            "model_service": {"provider": brama.provider(), "url": brama.base_url().as_str()},
+            "model_service": model_service,
             "most": health,
             "las_tools": tools,
         }),

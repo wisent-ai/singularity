@@ -1,67 +1,53 @@
 //! Where cognition's model calls go. A launch that names Brama's address
-//! (`BRAMA_BASE_URL`) uses it; one that names none never dials Brama itself:
-//! Stado's capability resolution (`stado capabilities resolve inference
-//! --consumer singularity`) hands out Brama's route, or the OpenAI-compatible
-//! endpoint the operator declared in its place, with its model and the role
-//! of the item holding its key. When no alternative answers, the refusal
-//! names each one with its route and cause.
-use std::process::Command;
+//! (`BRAMA_BASE_URL`) posts to it with Brama's credentials; one that names
+//! none hands each request to Stado (`stado capabilities call inference
+//! --consumer singularity`), which asks the first alternative in its selected
+//! order that answers it — Brama, or a statement recorded for that exact
+//! request — and prints that answer, or refuses naming every alternative with
+//! its cause. The being names no alternative and reads no credential then, so
+//! one Stado gains later is used with no change here.
+use std::process::{Command, Stdio};
 
 use secrecy::SecretString;
 use serde_json::Value;
 use url::Url;
 
-use super::{parse_http_url, secret_value};
 use crate::error::AppError;
 
-/// The consumer a being asks Stado's capability resolution as.
-const CONSUMER: &str = "singularity";
+/// The consumer a being asks Stado's capabilities as.
+pub const CONSUMER: &str = "singularity";
 
 /// The model service and the credentials only it may receive.
 #[derive(Clone)]
 pub enum ModelService {
-    /// Brama: every request carries the bearer and the agent's signature.
+    /// Brama at the address the launch names: every request carries the
+    /// bearer and the agent's signature.
     Brama {
         url: Url,
         secret: SecretString,
         bearer: SecretString,
     },
-    /// The endpoint Stado hands out in Brama's place: no agent signature,
-    /// and its key only when its role names one.
-    InPlace {
-        provider: String,
-        url: Url,
-        key: Option<SecretString>,
-    },
+    /// Stado's inference alternatives: each request is handed to `stado
+    /// capabilities call`, which presents what the alternative it asks needs.
+    Stado,
 }
 
 impl ModelService {
-    pub fn url(&self) -> &Url {
-        match self {
-            Self::Brama { url, .. } | Self::InPlace { url, .. } => url,
-        }
-    }
-
-    /// `brama`, or the provider Stado names for the endpoint in its place.
+    /// `brama`, or `stado` when requests go to Stado's alternatives.
     pub fn provider(&self) -> &str {
         match self {
             Self::Brama { .. } => "brama",
-            Self::InPlace { provider, .. } => provider,
+            Self::Stado => "stado",
         }
     }
-}
 
-/// What Stado's capability resolution answered.
-pub(super) enum Resolved {
-    /// Brama answers this being at the route.
-    Brama(Url),
-    /// Brama does not; this endpoint answers in its place, serving `model`.
-    InPlace {
-        provider: String,
-        url: Url,
-        model: String,
-        key: Option<SecretString>,
-    },
+    /// Where requests go, as a report and a refusal name it.
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Brama { url, .. } => url.to_string(),
+            Self::Stado => call_operation(),
+        }
+    }
 }
 
 /// The executable answering Stado's commands: `STADO_BIN`, else `stado`.
@@ -72,118 +58,144 @@ fn stado() -> String {
         .unwrap_or_else(|| "stado".into())
 }
 
-/// Run one Stado command and hand back its stdout, or the refusal naming it.
-fn run(words: &[&str]) -> Result<std::process::Output, AppError> {
+const CALL: [&str; 6] = [
+    "capabilities",
+    "call",
+    "inference",
+    "--consumer",
+    CONSUMER,
+    "--json",
+];
+
+/// The command each request is handed to.
+pub fn call_operation() -> String {
+    format!("{} {}", stado(), CALL.join(" "))
+}
+
+/// The `Error:` line of a failed Stado command, else its last line.
+fn cause(said: &str) -> String {
+    let lines: Vec<&str> = said
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    lines
+        .iter()
+        .rev()
+        .find_map(|line| line.strip_prefix("Error: "))
+        .or_else(|| lines.last().copied())
+        .unwrap_or("it said nothing")
+        .to_owned()
+}
+
+/// Run `stado <words>` with `input` on its standard input to its end.
+async fn run(words: &[&str], input: &[u8]) -> Result<std::process::Output, String> {
     let binary = stado();
-    stado_wait::output(Command::new(&binary).args(words)).map_err(|error| {
-        AppError::Config(format!(
-            "no BRAMA_BASE_URL (--brama-url) is named and `{binary} {}` could not run: {error}; name Brama's address or install Stado",
-            words.join(" ")
-        ))
-    })
+    let operation = format!("{binary} {}", words.join(" "));
+    let mut child = tokio::process::Command::new(&binary)
+        .args(words)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|error| {
+            format!("no BRAMA_BASE_URL (--brama-url) is named and `{operation}` could not run: {error}; name Brama's address or install Stado")
+        })?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| format!("`{operation}` has no input pipe"))?;
+    tokio::io::AsyncWriteExt::write_all(&mut stdin, input)
+        .await
+        .map_err(|error| format!("cannot hand the request to `{operation}`: {error}"))?;
+    drop(stdin);
+    stado_wait::until(
+        stado_wait::Kind::Process,
+        &operation,
+        "this host's Stado",
+        child.wait_with_output(),
+    )
+    .await
+    .map_err(|error| format!("`{operation}` did not end: {error}"))
 }
 
-/// Ask Stado where this being's model calls go.
-pub(super) fn resolve() -> Result<Resolved, AppError> {
-    let words = [
-        "capabilities",
-        "resolve",
-        "inference",
-        "--consumer",
-        CONSUMER,
-        "--json",
-    ];
-    let output = run(&words)?;
+/// One chat-completions request body, answered by the alternative Stado
+/// chose, as the bytes an endpoint would have answered with. Refused with
+/// Stado's sentence when no alternative answers.
+pub async fn call(body: &[u8]) -> Result<Vec<u8>, String> {
+    let output = run(&CALL, body).await?;
     if !output.status.success() {
-        let named = [&output.stdout, &output.stderr]
-            .into_iter()
-            .filter_map(|bytes| serde_json::from_slice::<Value>(bytes).ok())
-            .find_map(|envelope| envelope["details"]["unreachable"].as_array().cloned())
-            .map(|items| {
-                items
-                    .iter()
-                    .map(|item| {
-                        format!(
-                            "{} at {}: {}",
-                            item["product"].as_str().unwrap_or("an alternative"),
-                            item["route"].as_str().unwrap_or("its route"),
-                            item["cause"].as_str().unwrap_or("no cause given")
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            })
-            .filter(|named| !named.is_empty());
-        return Err(AppError::Config(match named {
-            Some(named) => format!(
-                "no BRAMA_BASE_URL (--brama-url) is named and no inference alternative answers {CONSUMER}: {named}; name Brama's address, or declare an endpoint in Brama's place (stado config set capabilities.inference.endpoint.url <url> and capabilities.inference.endpoint.model <model>)"
-            ),
-            None => format!(
-                "no BRAMA_BASE_URL (--brama-url) is named and `{} {}` exited {}: {}",
-                stado(),
-                words.join(" "),
-                output.status,
-                String::from_utf8_lossy(&output.stderr).trim()
-            ),
-        }));
-    }
-    let answer: Value = serde_json::from_slice(&output.stdout).map_err(|error| {
-        AppError::Config(format!(
-            "`stado {}` printed an answer that is not JSON: {error}",
-            words.join(" ")
-        ))
-    })?;
-    let text = |field: &str| {
-        answer[field]
-            .as_str()
-            .map(str::trim)
-            .filter(|text| !text.is_empty())
-            .map(str::to_owned)
-    };
-    let (Some(provider), Some(route)) = (text("provider"), text("route")) else {
-        return Err(AppError::Config(format!(
-            "`stado {}` answered no provider and route: {answer}",
-            words.join(" ")
-        )));
-    };
-    let url = parse_http_url(&route, &format!("the {provider} route Stado resolved"))?;
-    if provider == "brama" {
-        return Ok(Resolved::Brama(url));
-    }
-    let model = text("model").ok_or_else(|| {
-        AppError::Config(format!(
-            "{provider} at {route} answers in Brama's place but declares no model: set capabilities.inference.endpoint.model"
-        ))
-    })?;
-    let key = match text("key_role") {
-        Some(role) => Some(role_key(&provider, &route, &role)?),
-        None => None,
-    };
-    Ok(Resolved::InPlace {
-        provider,
-        url,
-        model,
-        key,
-    })
-}
-
-/// The `token` field of the item playing `role`, read with
-/// `stado credentials get --role`.
-fn role_key(provider: &str, route: &str, role: &str) -> Result<SecretString, AppError> {
-    let words = ["credentials", "get", "--role", role, "--field", "token"];
-    let output = run(&words)?;
-    if !output.status.success() {
-        return Err(AppError::Secret(format!(
-            "{provider} at {route} answers in Brama's place, but `stado {}` exited {}: {}",
-            words.join(" "),
+        return Err(format!(
+            "no inference alternative answered `{}` ({}): {}",
+            call_operation(),
             output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
+            cause(&String::from_utf8_lossy(&output.stderr))
+        ));
+    }
+    let printed: Value = serde_json::from_slice(&output.stdout).map_err(|error| {
+        format!(
+            "`{}` printed an answer that is not JSON ({error}): {}",
+            call_operation(),
+            String::from_utf8_lossy(&output.stdout).trim()
+        )
+    })?;
+    match printed.get("answer") {
+        Some(answer) if !answer.is_null() => {
+            serde_json::to_vec(answer).map_err(|error| error.to_string())
+        }
+        _ => Err(format!(
+            "`{}` printed no answer: {printed}",
+            call_operation()
+        )),
+    }
+}
+
+/// Stado's inference alternatives for this being, in their selected order,
+/// read without asking any of them: what `doctor` checks when no Brama
+/// address is named.
+pub fn alternatives() -> Result<Vec<String>, AppError> {
+    let binary = stado();
+    let operation = format!("{binary} capabilities inference --json");
+    let output = stado_wait::output(
+        Command::new(&binary)
+            .args(["capabilities", "inference", "--json"])
+            .stdin(Stdio::null()),
+    )
+    .map_err(|error| {
+        AppError::Config(format!(
+            "no BRAMA_BASE_URL (--brama-url) is named and `{operation}` could not run: {error}; name Brama's address or install Stado"
+        ))
+    })?;
+    if !output.status.success() {
+        return Err(AppError::Config(format!(
+            "no BRAMA_BASE_URL (--brama-url) is named and `{operation}` failed ({}): {}",
+            output.status,
+            cause(&String::from_utf8_lossy(&output.stderr))
         )));
     }
-    let text = zeroize::Zeroizing::new(String::from_utf8(output.stdout).map_err(|_| {
-        AppError::Secret(format!(
-            "the key of role {role} for {provider} at {route} is not UTF-8"
-        ))
-    })?);
-    secret_value(&text, &format!("the key of role {role}"))
+    let listed: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|error| AppError::Config(format!("`{operation}` printed no JSON: {error}")))?;
+    let order: Vec<String> = listed["alternatives"]
+        .as_array()
+        .and_then(|families| {
+            families
+                .iter()
+                .find(|family| family["family"].as_str() == Some("inference"))
+        })
+        .and_then(|family| family["order"].as_array())
+        .map(|order| {
+            order
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    if order.is_empty() {
+        return Err(AppError::Config(format!(
+            "`{operation}` selects no inference alternative: {listed}"
+        )));
+    }
+    Ok(order)
 }

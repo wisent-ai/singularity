@@ -20,11 +20,11 @@ pub struct RuntimeConfig {
     pub workspace: PathBuf,
     pub state_dir: PathBuf,
     pub resume: bool,
-    /// Brama, named or resolved, or the endpoint Stado hands out in its place,
-    /// each with only the credentials it may receive.
+    /// Brama at the address the launch names, with only the credentials it
+    /// may receive, or Stado's inference alternatives.
     pub model_service: ModelService,
-    /// The model or selector cognition runs on: `BRAMA_MODEL` on Brama's
-    /// route, the model the endpoint declares in its place.
+    /// The model or selector cognition runs on: `BRAMA_MODEL`, on every
+    /// model service.
     pub model: String,
     pub max_tokens: Option<u32>,
     pub temperature: Option<f64>,
@@ -129,17 +129,14 @@ impl RuntimeConfig {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_owned);
-        let resolved = match named_url {
-            Some(url) => model_service::Resolved::Brama(parse_http_url(url, "BRAMA_BASE_URL")?),
-            None => model_service::resolve()?,
-        };
-        let (model_service, model) = match resolved {
-            model_service::Resolved::Brama(url) => {
-                let model = named_model.ok_or_else(|| {
-                    AppError::Config(format!(
-                        "BRAMA_MODEL (--brama-model) is required on Brama's route at {url}: no model or selector is assumed"
-                    ))
-                })?;
+        let model = named_model.ok_or_else(|| {
+            AppError::Config(
+                "BRAMA_MODEL (--brama-model) is required: no model or selector is assumed".into(),
+            )
+        })?;
+        let model_service = match named_url {
+            Some(url) => {
+                let url = parse_http_url(url, "BRAMA_BASE_URL")?;
                 let secret = match (args.brama_secret_file.as_ref(), inherited) {
                     (Some(path), _) => read_secret(path)?,
                     (None, Some(credentials)) => credentials.brama.clone(),
@@ -159,28 +156,15 @@ impl RuntimeConfig {
                         "BRAMA_BEARER_TOKEN_FILE or a bootstrap handoff is required: an agent signature does not replace Brama caller authorization".into()
                     )),
                 };
-                (
-                    ModelService::Brama {
-                        url,
-                        secret,
-                        bearer,
-                    },
-                    model,
-                )
-            }
-            model_service::Resolved::InPlace {
-                provider,
-                url,
-                model,
-                key,
-            } => {
-                if let Some(named) = named_model.filter(|named| named != &model) {
-                    return Err(AppError::Config(format!(
-                        "BRAMA_MODEL (--brama-model) names {named}, but {provider} at {url} answers in Brama's place serving {model}; unset BRAMA_MODEL or declare that model with stado config set capabilities.inference.endpoint.model"
-                    )));
+                ModelService::Brama {
+                    url,
+                    secret,
+                    bearer,
                 }
-                (ModelService::InPlace { provider, url, key }, model)
             }
+            // Nothing named: Stado decides per request which alternative
+            // answers, and is checked when the being starts (`doctor`).
+            None => ModelService::Stado,
         };
         Ok(Self {
             identity: AgentIdentity {

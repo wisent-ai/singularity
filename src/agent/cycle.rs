@@ -61,11 +61,21 @@ impl Agent {
                 .complete(&messages, self.catalog.definitions())
                 .await?;
             let elapsed = started.elapsed();
-            let api = self
-                .brama
-                .quote(&completion.model)
-                .await?
-                .cost(&completion)?;
+            // An answer that spent no model tokens (a statement Stado's
+            // attestation alternative recorded) costs nothing and has no
+            // catalog price to read; every other answer is priced by the
+            // catalog of the model that served it.
+            let api = if completion.usage.total_tokens == 0
+                && completion.cache_read_tokens == 0
+                && completion.cache_write_tokens == 0
+            {
+                rust_decimal::Decimal::ZERO
+            } else {
+                self.brama
+                    .quote(&completion.model)
+                    .await?
+                    .cost(&completion)?
+            };
             let amount =
                 self.state
                     .budget

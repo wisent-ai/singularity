@@ -169,16 +169,15 @@ pub(super) async fn spawn_child(
     if let Some(skip) = config.las_skip.as_deref() {
         command.env("LAS_SKIP", skip);
     }
+    // A child being is handed the same model; on a named Brama, its address
+    // too, and through Stado none, so it hands its requests to Stado as well.
+    command.env("BRAMA_MODEL", &config.model);
     match &config.model_service {
         crate::config::ModelService::Brama { url, .. } => {
-            command
-                .env("BRAMA_BASE_URL", url.as_str())
-                .env("BRAMA_MODEL", &config.model);
+            command.env("BRAMA_BASE_URL", url.as_str());
         }
-        crate::config::ModelService::InPlace { .. } => {
-            command
-                .env_remove("BRAMA_BASE_URL")
-                .env_remove("BRAMA_MODEL");
+        crate::config::ModelService::Stado => {
+            command.env_remove("BRAMA_BASE_URL");
         }
     }
     if let Some(most) = most {

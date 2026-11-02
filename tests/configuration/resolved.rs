@@ -1,14 +1,14 @@
-//! A being launched with no Brama address takes the model service Stado's
-//! capability resolution hands it, through the real `singularity doctor`.
-//! The real Stado `SINGULARITY_TEST_STADO` runs first on PATH in a home of
-//! the case's own, whose registry places Brama nowhere. With nothing declared
-//! the launch is refused naming every inference alternative. With the real
-//! OpenAI-compatible endpoint `SINGULARITY_TEST_MODEL_SERVICE_URL` declared in
-//! Brama's place, it serves `SINGULARITY_TEST_MODEL_SERVICE_MODEL`, and its key
-//! is read from the owner-only file `SINGULARITY_TEST_MODEL_SERVICE_KEY_FILE`
-//! into the case's own credential store as a role. Doctor checks that
-//! endpoint's health and models and names it as the model service, with no
-//! Brama credential declared. Las is the real one the release fixture names:
+//! A being launched with no Brama address hands its model requests to
+//! Stado's inference alternatives, through the real `singularity` CLI. The
+//! real Stado `SINGULARITY_TEST_STADO` runs first on PATH in a home of the
+//! case's own, whose registry places Brama nowhere. With no Stado at all,
+//! `doctor` is refused naming the command that could not run; with Stado,
+//! `doctor` names Stado and the order of its alternatives. One real `once`
+//! cycle is refused with Stado's sentence (Brama's cause and the command that
+//! answers the kept request); a statement recorded for exactly that request
+//! then answers the same cycle, which completes, and Stado records that the
+//! attestation alternative served the being. No Brama address, credential or
+//! catalog is declared. Las is the real one a signed release names:
 //! `SINGULARITY_TEST_LAS_COMMAND`, `_ENTRYPOINT`, `_ONLY`, `_MANIFEST`,
 //! `_SIGNATURE`, `_TRUST_STORE` and `_REQUIRED_SURFACES` (surfaces the signed
 //! release serves).
@@ -30,7 +30,7 @@ fn root(case: &str) -> PathBuf {
     if root.exists() {
         std::fs::remove_dir_all(&root).expect("remove the previous case");
     }
-    for directory in ["home/tmp", "home/storage", "bin", "state", "workspace"] {
+    for directory in ["home/tmp", "home/storage", "bin", "no-stado", "workspace"] {
         std::fs::create_dir_all(root.join(directory)).expect("create the case's directories");
     }
     std::os::unix::fs::symlink(declared("SINGULARITY_TEST_STADO"), root.join("bin/stado"))
@@ -39,9 +39,10 @@ fn root(case: &str) -> PathBuf {
 }
 
 /// The environment every command of the case runs in: its own home, the
-/// real Stado first on PATH, and no inherited route or credential.
-fn isolate(command: &mut Command, root: &Path) {
-    let mut path = root.join("bin").into_os_string();
+/// real Stado first on PATH (or none, when `bin` is the empty directory),
+/// and no inherited route or credential.
+fn isolate(command: &mut Command, root: &Path, bin: &str) {
+    let mut path = root.join(bin).into_os_string();
     path.push(":");
     path.push(std::env::var_os("PATH").unwrap_or_default());
     command
@@ -50,12 +51,13 @@ fn isolate(command: &mut Command, root: &Path) {
         .env("TMPDIR", root.join("home/tmp"))
         .env("WC_STORAGE_BACKEND", "local")
         .env("WC_LOCAL_STORAGE_PATH", root.join("home/storage"))
+        .env("STADO_BIN", root.join(bin).join("stado"))
         .env("PATH", path);
 }
 
 fn stado(root: &Path, arguments: &[&str], input: &str) -> String {
     let mut command = Command::new(root.join("bin/stado"));
-    isolate(&mut command, root);
+    isolate(&mut command, root, "bin");
     let mut child = command
         .args(arguments)
         .stdin(Stdio::piped())
@@ -79,13 +81,13 @@ fn stado(root: &Path, arguments: &[&str], input: &str) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
-/// `singularity doctor` with every declaration but Brama's address, model
-/// and credentials.
-fn doctor(root: &Path) -> Output {
+/// `singularity <verb>` with every declaration but Brama's address and
+/// credentials, its state in `state`, Stado found in `bin`.
+fn singularity(root: &Path, verb: &str, bin: &str, state: &str) -> Output {
     let digest = "a".repeat(64);
     let mut command = Command::new(env!("CARGO_BIN_EXE_singularity"));
-    isolate(&mut command, root);
-    command.arg("doctor");
+    isolate(&mut command, root, bin);
+    command.arg(verb);
     for (flag, value) in [
         ("--agent-id", "resolved-test"),
         ("--agent-name", "Resolved test"),
@@ -102,6 +104,7 @@ fn doctor(root: &Path) -> Output {
         ("--starting-balance", "1"),
         ("--instance-price", "0"),
         ("--cycle-interval-secs", "60"),
+        ("--brama-model", "any"),
     ] {
         command.args([flag, value]);
     }
@@ -125,19 +128,32 @@ fn doctor(root: &Path) -> Output {
     ] {
         command.args([flag, declared(variable).as_str()]);
     }
+    std::fs::create_dir_all(root.join(state)).expect("create the state directory");
     command
         .arg("--las-release-watermark")
         .arg(root.join("las-watermark.json"))
         .arg("--state-dir")
-        .arg(root.join("state"))
+        .arg(root.join(state))
         .arg("--workspace")
         .arg(root.join("workspace"));
-    command.output().expect("run the real singularity CLI")
+    let output = command.output().expect("run the real singularity CLI");
+    std::fs::write(
+        root.join(format!("{verb}-{state}-{bin}.json")),
+        serde_json::json!({
+            "command": format!("{command:?}"), "status": output.status.to_string(),
+            "stdout": String::from_utf8_lossy(&output.stdout),
+            "stderr": String::from_utf8_lossy(&output.stderr),
+        })
+        .to_string(),
+    )
+    .expect("keep the run");
+    output
 }
 
 #[test]
-fn with_no_brama_address_the_being_takes_the_model_service_stado_resolves() {
-    let root = root("doctor");
+fn with_no_brama_address_the_being_hands_its_requests_to_stados_alternatives() {
+    let root = root("call");
+    // The watermark the signed release's sequence must exceed, owner-only.
     std::fs::write(
         root.join("las-watermark.json"),
         "{\"version\":1,\"sequence\":0}\n",
@@ -148,75 +164,96 @@ fn with_no_brama_address_the_being_takes_the_model_service_stado_resolves() {
         std::os::unix::fs::PermissionsExt::from_mode(0o600),
     )
     .expect("make the watermark owner-only");
-    stado(&root, &["config", "init"], "");
 
-    // Nothing answers: the launch is refused naming every alternative.
-    let refused = doctor(&root);
+    // No Stado to hand requests to: refused naming the command.
+    let absent = singularity(&root, "doctor", "no-stado", "doctor");
+    let said = String::from_utf8_lossy(&absent.stderr).into_owned();
+    assert!(!absent.status.success(), "doctor answered: {absent:?}");
+    assert!(
+        said.contains("no BRAMA_BASE_URL (--brama-url) is named and `")
+            && said.contains("capabilities inference --json` could not run"),
+        "{said}"
+    );
+
+    stado(&root, &["config", "init"], "");
+    let checked = singularity(&root, "doctor", "bin", "doctor");
+    assert!(
+        checked.status.success(),
+        "doctor refused: {}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+    let report: Value = serde_json::from_slice(&checked.stdout).expect("doctor answers JSON");
+    assert_eq!(report["model_service"]["provider"], "stado", "{report}");
+    assert_eq!(
+        report["model_service"]["order"],
+        serde_json::json!(["brama", "attestation"]),
+        "{report}"
+    );
+
+    // Nothing answers the cycle's request yet: Stado's sentence.
+    let refused = singularity(&root, "once", "bin", "refused");
     let said = String::from_utf8_lossy(&refused.stderr).into_owned();
-    assert!(!refused.status.success(), "doctor answered: {refused:?}");
+    assert!(!refused.status.success(), "once answered: {refused:?}");
     for named in [
-        "no BRAMA_BASE_URL (--brama-url) is named and no inference alternative answers singularity",
+        "no inference alternative answered `",
+        "capabilities call inference --consumer singularity --json`",
         "brama at ",
-        "model-endpoint at capabilities.inference.endpoint.url",
+        "stado capabilities attestation record inference --consumer singularity",
     ] {
         assert!(said.contains(named), "{named:?} is not named: {said}");
     }
 
-    // The real endpoint answers in Brama's place.
-    let model = declared("SINGULARITY_TEST_MODEL_SERVICE_MODEL");
-    let key = std::fs::read_to_string(declared("SINGULARITY_TEST_MODEL_SERVICE_KEY_FILE"))
-        .expect("read the model service key");
-    let store = root.join("credentials.json");
-    stado(
+    // The statement for exactly that request answers the same cycle.
+    let kept: Value = serde_json::from_str(&stado(
         &root,
         &[
-            "config",
-            "set",
-            "credentials.store",
-            &format!("file://{}", store.display()),
+            "capabilities",
+            "attestation",
+            "list",
+            "inference",
+            "--consumer",
+            "singularity",
+            "--json",
         ],
         "",
-    );
+    ))
+    .expect("the attestation list is JSON");
+    let request = kept[0]["request"]
+        .as_str()
+        .expect("one kept request")
+        .to_owned();
     stado(
         &root,
         &[
-            "credentials",
-            "put",
-            "--role",
-            "singularity-journey-endpoint",
+            "capabilities",
+            "attestation",
+            "record",
+            "inference",
+            "--consumer",
+            "singularity",
+            &request,
+            "--checked",
+            "the opening cycle has no opportunity worth a tool call",
         ],
-        &serde_json::json!({ "token": key.trim() }).to_string(),
+        "Nothing to act on in this cycle.",
     );
-    for (field, value) in [
-        (
-            "capabilities.inference.endpoint.url",
-            declared("SINGULARITY_TEST_MODEL_SERVICE_URL"),
-        ),
-        ("capabilities.inference.endpoint.model", model.clone()),
-        (
-            "capabilities.inference.endpoint.key_role",
-            "singularity-journey-endpoint".to_owned(),
-        ),
-    ] {
-        stado(&root, &["config", "set", field, &value], "");
-    }
-    let answered = doctor(&root);
+    let answered = singularity(&root, "once", "bin", "answered");
     assert!(
         answered.status.success(),
-        "doctor refused: {}",
+        "once refused: {}",
         String::from_utf8_lossy(&answered.stderr)
     );
-    let report: Value = serde_json::from_slice(&answered.stdout).expect("doctor answers JSON");
-    assert_eq!(report["model"], model.as_str(), "{report}");
-    assert_eq!(
-        report["model_service"]["provider"], "model-endpoint",
-        "{report}"
+    // The cycle's report carries the statement's text as the model's answer.
+    let printed = String::from_utf8_lossy(&answered.stdout);
+    assert!(
+        printed.contains("Nothing to act on in this cycle."),
+        "{printed}"
     );
     let record: Value =
         serde_json::from_str(&stado(&root, &["capabilities", "inference", "--json"], ""))
             .expect("stado answers JSON");
     assert_eq!(
-        record["alternatives"][0]["served"]["singularity"]["provider"], "model-endpoint",
+        record["alternatives"][0]["served"]["singularity"]["provider"], "attestation",
         "{record}"
     );
     std::fs::remove_dir_all(&root).expect("remove the case");

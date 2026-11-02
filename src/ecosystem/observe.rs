@@ -56,9 +56,9 @@ pub async fn jeden(shared: &Shared, args: &[&str]) -> Result<Value, AppError> {
         .args(args)
         .env("WISENT_APP_AGENT_ID", &config.identity.agent_id)
         .env("JEDEN_PURSUIT_STATE_ROOT", directory);
-    // On Brama's route Jeden is handed the same address, credentials and
-    // model; with an endpoint in Brama's place it asks Stado's capability
-    // resolution for itself, and no Brama credential is passed on.
+    // On a named Brama Jeden is handed the same address, credentials and
+    // model; through Stado it hands its own requests to Stado's alternatives,
+    // and no Brama credential is passed on.
     match &config.model_service {
         crate::config::ModelService::Brama {
             url,
@@ -71,7 +71,7 @@ pub async fn jeden(shared: &Shared, args: &[&str]) -> Result<Value, AppError> {
                 .env("WISENT_APP_AGENT_AUTH_SECRET", secret.expose_secret())
                 .env("JEDEN_MODEL", &config.model);
         }
-        crate::config::ModelService::InPlace { .. } => {
+        crate::config::ModelService::Stado => {
             for name in [
                 "BRAMA_URL",
                 "BRAMA_TOKEN",

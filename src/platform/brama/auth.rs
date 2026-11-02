@@ -6,9 +6,8 @@ use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
 
 impl BramaClient {
-    /// Brama's request carries its bearer and the agent's signature; the
-    /// endpoint in Brama's place receives its own key, when it has one, and
-    /// never Brama's credentials or a signature it does not read.
+    /// Brama's request carries its bearer and the agent's signature. Through
+    /// Stado nothing is posted from here, so nothing is authenticated.
     pub(super) fn authenticate(
         &self,
         request: reqwest::RequestBuilder,
@@ -16,11 +15,14 @@ impl BramaClient {
     ) -> Result<reqwest::RequestBuilder, AppError> {
         let (secret, bearer) = match &self.service {
             ModelService::Brama { secret, bearer, .. } => (secret, bearer),
-            ModelService::InPlace { key, .. } => {
-                return Ok(match key {
-                    Some(key) => request.bearer_auth(key.expose_secret()),
-                    None => request,
-                });
+            ModelService::Stado => {
+                return Err(brama(
+                    ErrorClass::Permanent,
+                    format!(
+                        "no Brama address is named, so no request is signed here; requests go to `{}`",
+                        self.service.describe()
+                    ),
+                ));
             }
         };
         let timestamp = chrono::Utc::now().timestamp().to_string();
