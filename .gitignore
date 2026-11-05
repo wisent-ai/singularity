@@ -14,3 +14,6 @@
 *.swo
 
 /.wisent-output/
+# One local run's evidence (receipt, preference evidence) names this machine's
+# paths; it belongs to the run, not to the repository.
+/.pursuit/
