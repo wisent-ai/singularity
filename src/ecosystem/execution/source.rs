@@ -175,7 +175,7 @@ pub fn accepted_receipt(response: &Value) -> Result<(), AppError> {
     // before the run starts; here the contract's shape is checked again.
     pursuit::validate_contract(&contract, &contract.rough_objective).map_err(AppError::State)?;
     pursuit::validate_verdict(&verdict, &contract).map_err(AppError::State)?;
-    if receipt.state != "succeeded"
+    if receipt.state != super::super::model::ExecutionState::Succeeded.word()
         || Some(receipt.run_id.as_str()) != response["run_id"].as_str()
         || !pursuit::verdict_accepted(&verdict)
     {

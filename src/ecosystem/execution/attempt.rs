@@ -8,17 +8,6 @@ use sha2::{Digest, Sha256};
 /// The pursuit request and response schema Jeden declares and refuses any other of.
 const JEDEN_SCHEMA_VERSION: u32 = 1; // https://github.com/wisent-ai/jeden/blob/main/rust/autonomy/requests/mod.rs const SCHEMA_VERSION: u32 = 1
 
-/// The states a Jeden pursuit response reports, as its schema names them.
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum Outcome {
-    Running,
-    Succeeded,
-    Failed,
-    Blocked,
-    Indeterminate,
-}
-
 pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Result<(), AppError> {
     let policy = shared.lock()?.policy.clone();
     let opportunity: Opportunity = shared
@@ -41,7 +30,7 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
     );
     let previous: Option<Execution> = shared.lock()?.store.get("execution", &request_id)?;
     if let Some(execution) = previous.as_ref() {
-        if execution.state == "succeeded" {
+        if execution.state == ExecutionState::Succeeded {
             let response = shared
                 .lock()?
                 .store
@@ -53,7 +42,7 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
             source::accepted_receipt(&response)?;
             return delivery::advance(shared, initiative, &product, &cwd, execution).await;
         }
-        if execution.state == "indeterminate" {
+        if execution.state == ExecutionState::Indeterminate {
             return Err(AppError::State(format!(
                 "Jeden request {request_id} has an unresolved external effect; it will not be replayed"
             )));
@@ -97,7 +86,7 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
             initiative_id: initiative.id.clone(),
             request_id: request_id.clone(),
             kind: "pursuit".into(),
-            state: "prepared".into(),
+            state: ExecutionState::Prepared,
             external_id: None,
             source_revision: None,
             evidence_refs: Vec::new(),
@@ -109,7 +98,7 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
     let path = {
         let state = shared.lock()?;
         let path = source::immutable_request(&state.directory, &request_id, &request)?;
-        if execution.state == "prepared" {
+        if execution.state == ExecutionState::Prepared {
             state.store.put(
                 "execution",
                 &request_id,
@@ -120,7 +109,7 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
             state
                 .store
                 .reserve(&request_id, initiative.budget_usd, policy.budget_usd)?;
-            execution.state = "dispatching".into();
+            execution.state = ExecutionState::Dispatching;
             initiative.reserved_usd = initiative.budget_usd;
             state.store.put(
                 "execution",
@@ -138,7 +127,7 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
     let paused = !shared.admission_open()?;
     let response = if paused {
         observe::jeden(shared, &["pursue", "--status", &request_id, "--json"]).await?
-    } else if execution.state == "blocked" {
+    } else if execution.state == ExecutionState::Blocked {
         observe::jeden(shared, &["pursue", "--resume-run", &request_id, "--json"]).await?
     } else {
         observe::jeden(
@@ -164,10 +153,11 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
             "Jeden returned a response for a different request or schema".into(),
         ));
     }
-    execution.state = response["state"]
-        .as_str()
-        .ok_or_else(|| AppError::State("Jeden response has no state".into()))?
-        .into();
+    execution.state = serde_json::from_value(response["state"].clone()).map_err(|error| {
+        AppError::State(format!(
+            "Jeden returned an execution state this runtime does not know: {error}"
+        ))
+    })?;
     execution.external_id = response["run_id"].as_str().map(str::to_owned);
     execution.source_revision = response["source_revision"].as_str().map(str::to_owned);
     execution.error = response["error"].as_str().map(str::to_owned);
@@ -199,38 +189,39 @@ pub(super) async fn progress(shared: &Shared, initiative: &mut Initiative) -> Re
             "Read back durable execution state",
         )?;
     }
-    let outcome: Outcome = serde_json::from_value(response["state"].clone()).map_err(|error| {
-        AppError::State(format!(
-            "Jeden returned an execution state this runtime does not know: {error}"
-        ))
-    })?;
-    match outcome {
-        Outcome::Running => {
+    match execution.state {
+        ExecutionState::Running => {
             initiative.state = InitiativeState::Executing;
             initiative.blocked_reason = None;
         }
-        Outcome::Succeeded => {
+        ExecutionState::Succeeded => {
             settle(shared, initiative, &request_id, &response)?;
             source::accepted_receipt(&response)?;
             initiative.state = InitiativeState::Verifying;
             initiative.blocked_reason = None;
         }
-        Outcome::Failed => {
+        ExecutionState::Failed => {
             if !response["spent_usd"].is_null() {
                 settle(shared, initiative, &request_id, &response)?;
             }
             initiative.state = InitiativeState::Failed;
             initiative.blocked_reason = execution.error;
         }
-        Outcome::Blocked | Outcome::Indeterminate => {
+        ExecutionState::Blocked | ExecutionState::Indeterminate => {
             let reason = match execution.error {
                 Some(reason) => reason,
                 None => format!(
                     "Jeden reported request {request_id} {} without saying why",
-                    execution.state
+                    execution.state.word()
                 ),
             };
             return Err(AppError::State(reason));
+        }
+        ExecutionState::Prepared | ExecutionState::Dispatching => {
+            return Err(AppError::State(format!(
+                "Jeden reported request {request_id} {}, a step of this runtime, not a result",
+                execution.state.word()
+            )));
         }
     }
     initiative.next_review_at =

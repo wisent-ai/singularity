@@ -112,6 +112,37 @@ pub struct Initiative {
     pub blocked_reason: Option<String>,
 }
 
+/// Where one execution stands: prepared and dispatching are this runtime's
+/// own steps before Jeden answers; the rest are the states a Jeden pursuit
+/// response reports, as its schema names them. A stored record or a response
+/// naming any other word is refused where it is read.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionState {
+    Prepared,
+    Dispatching,
+    Running,
+    Succeeded,
+    Failed,
+    Blocked,
+    Indeterminate,
+}
+
+impl ExecutionState {
+    /// The state as the store and Jeden write it.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Prepared => "prepared",
+            Self::Dispatching => "dispatching",
+            Self::Running => "running",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::Blocked => "blocked",
+            Self::Indeterminate => "indeterminate",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Execution {
@@ -119,7 +150,7 @@ pub struct Execution {
     pub initiative_id: String,
     pub request_id: String,
     pub kind: String,
-    pub state: String,
+    pub state: ExecutionState,
     pub external_id: Option<String>,
     pub source_revision: Option<String>,
     pub evidence_refs: Vec<String>,

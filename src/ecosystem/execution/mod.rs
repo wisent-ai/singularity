@@ -4,7 +4,7 @@ mod provision;
 pub(super) mod source;
 use super::{
     Shared,
-    model::{Initiative, InitiativeState},
+    model::{ExecutionState, Initiative, InitiativeState},
 };
 use crate::AppError;
 use chrono::{Duration, Utc};
@@ -16,7 +16,10 @@ pub(super) fn recover(shared: &Shared) -> Result<(), AppError> {
     let responses = shared
         .lock()?
         .store
-        .in_states::<Value>("execution_response", &["succeeded", "failed"])?;
+        .in_states::<Value>(
+            "execution_response",
+            &[ExecutionState::Succeeded.word(), ExecutionState::Failed.word()],
+        )?;
     for response in responses {
         let id = response["request_id"].as_str().ok_or_else(|| {
             AppError::State("retained execution response has no request identity".into())
