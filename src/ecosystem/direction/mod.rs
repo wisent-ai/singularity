@@ -37,7 +37,7 @@ pub async fn select(shared: &Shared, client: &BramaClient) -> Result<bool, AppEr
     let pending = shared.lock()?.store.list::<Opportunity>("opportunity")?;
     for opportunity in pending
         .into_iter()
-        .filter(|value| value.status == "proposed")
+        .filter(|value| value.status == OpportunityStatus::Proposed)
     {
         if !review::due(shared, &opportunity.id)? {
             continue;
@@ -75,7 +75,7 @@ pub async fn select(shared: &Shared, client: &BramaClient) -> Result<bool, AppEr
 pub fn materialize(shared: &Shared) -> Result<(), AppError> {
     let state = shared.lock()?;
     for mut opportunity in state.store.list::<Opportunity>("opportunity")? {
-        if opportunity.status == "rejected" {
+        if opportunity.status == OpportunityStatus::Rejected {
             continue;
         }
         let Some(review) = state.store.get::<Review>("review", &opportunity.id)? else {
@@ -152,7 +152,7 @@ pub fn materialize(shared: &Shared) -> Result<(), AppError> {
         ) && exploration_spent + opportunity.estimated_cost_usd
             > state.policy.exploration_budget_usd
         {
-            opportunity.status = "rejected".into();
+            opportunity.status = OpportunityStatus::Rejected;
             state.store.put(
                 "opportunity",
                 &opportunity.id,

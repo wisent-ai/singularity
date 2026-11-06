@@ -79,11 +79,10 @@ async fn review_one(
         review
     };
     opportunity.status = if review.accept && review.rejection_reasons.is_empty() {
-        "selected"
+        OpportunityStatus::Selected
     } else {
-        "rejected"
-    }
-    .into();
+        OpportunityStatus::Rejected
+    };
     shared.lock()?.store.put(
         "opportunity",
         &opportunity.id,

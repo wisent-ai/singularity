@@ -45,7 +45,7 @@ pub(super) async fn discover(
         .as_object_mut()
         .ok_or_else(|| AppError::State("opportunity must be an object or null".into()))?;
     object.insert("id".into(), json!(id));
-    object.insert("status".into(), json!("proposed"));
+    object.insert("status".into(), json!(OpportunityStatus::Proposed));
     object.insert("created_at".into(), json!(Utc::now()));
     let opportunity: Opportunity = serde_json::from_value(proposal)?;
     evidence_valid(shared, &opportunity.evidence_refs)?;

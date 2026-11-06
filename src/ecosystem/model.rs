@@ -61,6 +61,17 @@ pub enum OpportunityKind {
     Maintenance,
 }
 
+/// Where a discovered opportunity stands: proposed by discovery, then
+/// selected or rejected by its review or by the exploration budget. A stored
+/// opportunity naming any other status is refused when it is read.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OpportunityStatus {
+    Proposed,
+    Selected,
+    Rejected,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Opportunity {
@@ -76,7 +87,7 @@ pub struct Opportunity {
     pub alternatives: Vec<String>,
     pub estimated_cost_usd: Decimal,
     pub uncertainty: String,
-    pub status: String,
+    pub status: OpportunityStatus,
     pub created_at: DateTime<Utc>,
 }
 
